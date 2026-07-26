@@ -1734,6 +1734,8 @@ function _wireShortcuts() {
     onCopyNote: () => _copyNoteToClipboard(),
     onCursorChat: () => _openCursorChatComposer(),
     onOpenCommandPalette: () => _openCommandPalette(),
+    onApplyFormat: (action) => _applyFormatToActiveSurface(action),
+    isLiveFocused: () => LiveEditor.isMounted() && LiveEditor.hasFocus(),
   });
 
 }

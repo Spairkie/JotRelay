@@ -1,27 +1,45 @@
 // SyncPad – shortcuts.js
 // Keyboard shortcut handling. All modifying shortcuts respect read-only mode.
 //
+// "In the editor" means either the plain Write-mode textarea OR the CM6
+// live surface that Preview/Split show — see handlers.isLiveFocused below.
+// Formatting actions (bold/italic/link/code) are dispatched through
+// handlers.onApplyFormat rather than manipulated here directly, so they go
+// through the same surface-aware logic the toolbar and context menu use
+// (app.js's _applyFormatToActiveSurface) instead of a second copy of it
+// hardcoded against the plain textarea.
+//
 // Shortcuts:
 //   Ctrl/Cmd + S             Force save
-//   Ctrl/Cmd + Shift + P     Toggle preview
-//   Ctrl/Cmd + Shift + S     Split view
-//   Ctrl/Cmd + Shift + M     Toggle monospace
 //   Ctrl/Cmd + F             Find in note
 //   Ctrl/Cmd + B             Bold selected text
 //   Ctrl/Cmd + I             Italic selected text
 //   Ctrl/Cmd + K             Insert markdown link (in the editor) / open the
 //                            command palette (everywhere else)
 //   Ctrl/Cmd + `             Inline code
-//   Ctrl/Cmd + Shift + K     Open share modal
-//   Ctrl/Cmd + Shift + T     Insert timestamp
-//   Ctrl/Cmd + Shift + C     Copy note
+//   Ctrl/Cmd + Shift + S     Split view
+//   Ctrl/Cmd + Shift + M     Toggle monospace
 //   Ctrl/Cmd + Shift + /     Send a cursor chat message
 //   Ctrl/Cmd + /             Open shortcuts modal
+//   Alt + Shift + P          Toggle preview
+//   Alt + Shift + S          Open share modal
+//   Alt + Shift + T          Insert timestamp
+//   Alt + Shift + C          Copy note
 //   Esc                      Close panel / modal / dropdown
+//
+// Why Alt+Shift for those last four: Ctrl/Cmd+Shift+<letter> collides with
+// browser/OS chrome shortcuts that page JS cannot override no matter what
+// preventDefault() does — Shift+T reopens the last closed tab in every major
+// browser, Shift+C opens Chrome/Edge's "Inspect Element" picker, Shift+P
+// opens a new Private Window in Firefox, and Shift+K opens Firefox's Web
+// Console. Those four previously either silently didn't fire or fired a
+// browser action instead of (or alongside) the app's. Alt+Shift+<letter> is
+// not claimed by any current major browser's page-level or DevTools
+// shortcuts, so it was picked as the replacement — same mnemonic letter,
+// different modifier.
 
 import { flushSave } from './sync.js';
 import { canEdit }   from './permissions.js';
-import * as UI       from './ui.js';
 
 // Provided by app.js at init time
 let _onTogglePreview  = null;
@@ -35,6 +53,8 @@ let _onInsertTimestamp = null;
 let _onCopyNote       = null;
 let _onCursorChat     = null;
 let _onOpenCommandPalette = null;
+let _onApplyFormat    = null;  // (action: 'bold'|'italic'|'link'|'code') => void
+let _isLiveFocused    = null;  // () => boolean — true when the CM6 live surface has real DOM focus
 
 /** @type {HTMLTextAreaElement|null} */
 let _editor = null;
@@ -48,6 +68,8 @@ let _editor = null;
  * @param {Function} handlers.onOpenSearch
  * @param {Function} handlers.onForceClose   – called for Esc when not in editor
  * @param {Function} handlers.onOpenShortcuts
+ * @param {Function} handlers.onApplyFormat  – (action) => void, surface-aware formatting
+ * @param {Function} handlers.isLiveFocused  – () => boolean, is the CM6 live surface focused
  */
 export function initShortcuts(handlers) {
   _onTogglePreview   = handlers.onTogglePreview;
@@ -61,6 +83,8 @@ export function initShortcuts(handlers) {
   _onCopyNote        = handlers.onCopyNote;
   _onCursorChat      = handlers.onCursorChat;
   _onOpenCommandPalette = handlers.onOpenCommandPalette;
+  _onApplyFormat     = handlers.onApplyFormat;
+  _isLiveFocused     = handlers.isLiveFocused;
   _editor = document.getElementById('note-editor');
 
   document.addEventListener('keydown', _handleKeyDown, { capture: false });
@@ -76,15 +100,32 @@ function _isMod(e) {
 
 function _handleKeyDown(e) {
   const mod   = _isMod(e);
+  const alt   = e.altKey;
   const shift = e.shiftKey;
   const key   = e.key;
-  const inEditor = document.activeElement === _editor;
+  // The plain textarea OR the CM6 live surface (Preview/Split) — whichever
+  // actually has focus. Without the isLiveFocused() half of this, every
+  // shortcut below would silently stop working the moment the live surface
+  // (the default mode for new rooms) had focus, since document.activeElement
+  // would be inside CM6's contenteditable content div, never `_editor`.
+  const inEditor = document.activeElement === _editor || !!_isLiveFocused?.();
   const inTypingField = _isTypingField(document.activeElement);
 
   // ── Esc — close any open panel/modal/dropdown ────────────────────────────
   if (key === 'Escape') {
     _onForceClose?.();
     return; // don't preventDefault — allow browser default for inputs etc.
+  }
+
+  // ── Alt+Shift shortcuts — see the file header for why these four live on
+  //    Alt+Shift instead of Ctrl/Cmd+Shift. ──────────────────────────────
+  if (alt && shift && !mod) {
+    if (inTypingField && !inEditor) return;
+    if (key === 'P' || key === 'p') { e.preventDefault(); _onTogglePreview?.(); return; }
+    if (key === 'S' || key === 's') { e.preventDefault(); _onOpenShare?.(); return; }
+    if (key === 'T' || key === 't') { e.preventDefault(); if (canEdit()) _onInsertTimestamp?.(); return; }
+    if (key === 'C' || key === 'c') { e.preventDefault(); _onCopyNote?.(); return; }
+    return;
   }
 
   if (!mod) return;
@@ -117,33 +158,32 @@ function _handleKeyDown(e) {
     return;
   }
 
-  // Ctrl+K outside the editor — command palette. Inside the editor, Ctrl+K
-  // stays "insert markdown link" (below) — same key, contextual like Ctrl+F
-  // above, so it never fights muscle memory for either use.
+  // Ctrl+K outside the editor — command palette. Inside the editor (either
+  // surface), Ctrl+K stays "insert markdown link" (below) — same key,
+  // contextual like Ctrl+F above, so it never fights muscle memory for
+  // either use.
   if (key === 'k' && !shift && !inEditor) {
     e.preventDefault();
     _onOpenCommandPalette?.();
     return;
   }
 
-  // ── Shift combos ─────────────────────────────────────────────────────────
+  // ── Ctrl/Cmd+Shift combos ────────────────────────────────────────────────
   if (shift) {
-    if (key === 'P' || key === 'p') { e.preventDefault(); _onTogglePreview?.();   return; }
     if (key === 'S' || key === 's') { e.preventDefault(); _onToggleSplit?.();     return; }
     if (key === 'M' || key === 'm') { e.preventDefault(); _onToggleMonospace?.(); return; }
-    if (key === 'K' || key === 'k') { e.preventDefault(); _onOpenShare?.(); return; }
-    if (key === 'T' || key === 't') { e.preventDefault(); if (canEdit()) _onInsertTimestamp?.(); return; }
-    if (key === 'C' || key === 'c') { e.preventDefault(); _onCopyNote?.(); return; }
     if (key === '?' || key === '/') { e.preventDefault(); _onCursorChat?.(); return; }
   }
 
-  // ── Markdown formatting (editor only, edit mode only) ───────────────────
+  // ── Markdown formatting (editor only, edit mode only) — routed through
+  //    onApplyFormat so both surfaces (Write textarea, CM6 live) format
+  //    whichever one the user is actually looking at. ─────────────────────
   if (!inEditor || !canEdit()) return;
 
-  if (key === 'b' && !shift) { e.preventDefault(); _wrapSelection(_editor, '**', '**'); return; }
-  if (key === 'i' && !shift) { e.preventDefault(); _wrapSelection(_editor, '_',  '_');  return; }
-  if (key === 'k' && !shift) { e.preventDefault(); _insertLink(_editor);                return; }
-  if (key === '`' && !shift) { e.preventDefault(); _wrapSelection(_editor, '`',  '`');  return; }
+  if (key === 'b' && !shift) { e.preventDefault(); _onApplyFormat?.('bold');   return; }
+  if (key === 'i' && !shift) { e.preventDefault(); _onApplyFormat?.('italic'); return; }
+  if (key === 'k' && !shift) { e.preventDefault(); _onApplyFormat?.('link');   return; }
+  if (key === '`' && !shift) { e.preventDefault(); _onApplyFormat?.('code');   return; }
 }
 
 function _isTypingField(el) {
@@ -156,33 +196,4 @@ function _isTypingField(el) {
   const type = (el.getAttribute('type') || 'text').toLowerCase();
   const nonTyping = new Set(['button', 'submit', 'checkbox', 'radio', 'range', 'color', 'file', 'image', 'hidden', 'reset']);
   return !nonTyping.has(type);
-}
-
-/** Wrap the current textarea selection with prefix/suffix markdown markers. */
-function _wrapSelection(editor, prefix, suffix) {
-  const start = editor.selectionStart;
-  const end   = editor.selectionEnd;
-  const sel   = editor.value.slice(start, end);
-
-  // If already wrapped (and there's actual inner content), unwrap.
-  // Guard against sel === prefix+suffix (no inner content) to avoid producing empty string.
-  if (sel.startsWith(prefix) && sel.endsWith(suffix) && sel.length > prefix.length + suffix.length) {
-    const inner = sel.slice(prefix.length, sel.length - suffix.length);
-    UI.replaceEditorRange(start, end, inner, start, start + inner.length);
-  } else {
-    const replacement = prefix + (sel || 'text') + suffix;
-    const innerStart = start + prefix.length;
-    UI.replaceEditorRange(start, end, replacement, innerStart, innerStart + (sel || 'text').length);
-  }
-}
-
-/** Insert a [text](url) markdown link at cursor. */
-function _insertLink(editor) {
-  const start = editor.selectionStart;
-  const end   = editor.selectionEnd;
-  const sel   = editor.value.slice(start, end).trim();
-  const insert = sel ? `[${sel}](url)` : '[link text](url)';
-  // Select the "url" part for easy replacement
-  const urlStart = start + insert.indexOf('url');
-  UI.replaceEditorRange(start, end, insert, urlStart, urlStart + 3);
 }
