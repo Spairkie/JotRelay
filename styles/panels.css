@@ -382,6 +382,21 @@
   border-radius: var(--radius-md); background: var(--bg-elevated); border: 1px solid var(--border);
   cursor: pointer; font-size: 12px; color: var(--text-primary); text-align: left;
   transition: background var(--transition), border-color var(--transition);
+  /* Grid items default to an automatic minimum width of their content's
+     min-content size, NOT 0 — a flex container child (.theme-label) having
+     overflow:hidden only zeroes out ITS OWN min-content contribution one
+     level up (inside this flex row), not this grid item's contribution to
+     its 1fr column track. Without this, the two "equal" 1fr columns actually
+     size themselves to each column's widest label's full unwrapped text
+     width (e.g. "Charcoal Amber" vs "Midnight Blue" pull their columns to
+     different widths), overflowing .panel-body horizontally — which, on top
+     of its own overflow-y:auto, silently promotes overflow-x to auto too
+     (the CSS "one non-visible axis forces the other out of visible" rule),
+     producing the reported subtle sideways scroll. min-width: 0 lets the
+     column tracks actually shrink to the panel's width, so .theme-label's
+     existing ellipsis rule (below) is what visibly truncates long names
+     instead of the grid silently overflowing around it. */
+  min-width: 0;
 }
 .theme-option:hover { background: var(--bg-base); }
 .theme-option.active { border-color: var(--accent); color: var(--accent); }

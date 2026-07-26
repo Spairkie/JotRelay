@@ -97,6 +97,30 @@ test.describe('Settings panel', () => {
     expect(htmlTheme).not.toBe('');
   });
 
+  test('theme picker does not overflow the settings panel horizontally', async ({ page }) => {
+    // Regression test: .theme-picker's grid-template-columns: 1fr 1fr tracks
+    // defaulted to their content's min-content width (the longest theme
+    // label's full unwrapped text) instead of actually shrinking to fit,
+    // because only .theme-label (not .theme-option, the grid item itself)
+    // had overflow:hidden. That silently overflowed .panel-body
+    // horizontally, which — because .panel-body already sets
+    // overflow-y:auto — promoted overflow-x to auto too, producing an
+    // unwanted sideways scroll. See styles/panels.css .theme-option's
+    // min-width:0 for the fix.
+    await createRoom(page);
+    await openSettingsPanel(page);
+    const overflow = await page.evaluate(() => {
+      const body   = document.querySelector('#settings-panel .panel-body');
+      const picker = document.getElementById('theme-picker');
+      return {
+        bodyOverflowsX:   body.scrollWidth   > body.clientWidth,
+        pickerOverflowsX: picker.scrollWidth > picker.clientWidth,
+      };
+    });
+    expect(overflow.bodyOverflowsX).toBe(false);
+    expect(overflow.pickerOverflowsX).toBe(false);
+  });
+
   test('strip formatting on paste toggle is visible', async ({ page }) => {
     await createRoom(page);
     await openSettingsPanel(page);
