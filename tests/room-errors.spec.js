@@ -2,7 +2,7 @@
 // Room load error states, retry button, and read-only share link handling.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, goToLanding, roomIdFromUrl, supabaseAvailable } from './helpers.js';
+import { createRoom, goToLanding, roomIdFromUrl, supabaseAvailable, typeInEditor, getEditorContent } from './helpers.js';
 
 test.describe('Room load retry button', () => {
   test('loading screen retry button is hidden on normal load', async ({ page }) => {
@@ -142,5 +142,79 @@ test.describe('Multi-room navigation', () => {
     const editorWrap = page.locator('.editor-wrap');
     const classes = await editorWrap.getAttribute('class') || '';
     expect(classes).not.toContain('mode-split');
+  });
+});
+
+test.describe('Reconnect reconciliation (SP-AUDIT-0016)', () => {
+  // Supabase Realtime does not replay postgres_changes events missed while a
+  // client's socket was disconnected. reconcileAfterReconnect() (src/sync.js)
+  // is what the 'online' handler calls before flushing the queued debounced
+  // save, specifically to avoid silently overwriting an edit another device
+  // made during the outage. These exercise it directly against the app's
+  // already-initialized sync module state, the same way CLAUDE.md's
+  // in-browser module-testing pattern is used elsewhere in this suite.
+
+  test('a divergent remote edit made while offline triggers the conflict prompt instead of being silently overwritten', async ({ page }) => {
+    const roomId = await createRoom(page);
+    await typeInEditor(page, 'my local edit');
+    // Let the local debounced save land so this isn't racing its own flush.
+    await page.waitForTimeout(1500);
+
+    await expect(page.locator('#remote-notice')).toBeHidden();
+
+    await page.evaluate(async (rid) => {
+      const { reconcileAfterReconnect } = await import('/SyncPad/src/sync.js');
+      // Simulate the room row fetched fresh right after reconnect, carrying
+      // an edit from a different device that was made — and never
+      // broadcast to us — while we were offline.
+      await reconcileAfterReconnect({
+        room_id: rid,
+        content: 'edit made by another device while this client was offline',
+        updated_by_device: 'some-other-device-id',
+        updated_at: new Date().toISOString(),
+      });
+    }, roomId);
+
+    await expect(page.locator('#remote-notice')).toBeVisible();
+    // The editor must still show the local edit — reconciliation only
+    // prompts, it never applies the remote content on its own.
+    expect(await getEditorContent(page)).toBe('my local edit');
+  });
+
+  test('a remote room row that matches local content does not trigger the conflict prompt', async ({ page }) => {
+    const roomId = await createRoom(page);
+    await typeInEditor(page, 'same everywhere');
+    await page.waitForTimeout(1500);
+
+    await page.evaluate(async (rid) => {
+      const { reconcileAfterReconnect } = await import('/SyncPad/src/sync.js');
+      await reconcileAfterReconnect({
+        room_id: rid,
+        content: 'same everywhere',
+        updated_by_device: 'some-other-device-id',
+        updated_at: new Date().toISOString(),
+      });
+    }, roomId);
+
+    await expect(page.locator('#remote-notice')).toBeHidden();
+  });
+
+  test('a room row written by this same device is treated as our own save, not a conflict', async ({ page }) => {
+    const roomId = await createRoom(page);
+    await typeInEditor(page, 'my local edit');
+    await page.waitForTimeout(1500);
+
+    await page.evaluate(async (rid) => {
+      const { reconcileAfterReconnect } = await import('/SyncPad/src/sync.js');
+      const { getDeviceId } = await import('/SyncPad/src/utils.js');
+      await reconcileAfterReconnect({
+        room_id: rid,
+        content: 'stale content from before our own last save',
+        updated_by_device: getDeviceId(),
+        updated_at: new Date().toISOString(),
+      });
+    }, roomId);
+
+    await expect(page.locator('#remote-notice')).toBeHidden();
   });
 });

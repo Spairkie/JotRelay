@@ -30,7 +30,7 @@ import {
   onLocalInput, onEditorBlur, flushSave, cancelPendingSave,
   handleRemoteTyping, handleRemoteLiveContent, handleRemoteDatabaseChange,
   setContentNoSave, applyPendingRemote, dismissPendingRemote, getPendingRemote, getPendingRemoteTs,
-  setEncryption, snapshotBeforeDestructiveChange,
+  setEncryption, snapshotBeforeDestructiveChange, reconcileAfterReconnect,
 } from './sync.js';
 
 import { uploadFile, listFiles, deleteFile, getDownloadUrl, getForceDownloadUrl, subscribeToFiles } from './files.js';
@@ -1118,7 +1118,7 @@ async function startApp() {
   wireEvents();
 
   _onlineCleanup = onOnlineChange((online) => {
-    if (online) { UI.hideOfflineBanner(); UI.setStatus('connected'); flushSave(); }
+    if (online) { UI.hideOfflineBanner(); UI.setStatus('connected'); _reconcileAndFlush(); }
     else        { UI.showOfflineBanner();  UI.setStatus('offline'); }
   });
   if (!isOnline()) UI.showOfflineBanner();
@@ -3535,6 +3535,24 @@ function _handleSlashMenuKeydown(e) {
   }
   if (e.key === 'Escape') { e.preventDefault(); _closeSlashMenu(); return true; }
   return false;
+}
+
+/**
+ * Called when the browser regains connectivity, before letting the queued
+ * debounced save flush. Realtime doesn't replay events missed while
+ * offline, so fetch the room fresh (a plain REST read, independent of
+ * Realtime) and let reconcileAfterReconnect() decide whether it's safe to
+ * flush or whether a remote edit made during the outage needs the conflict
+ * prompt instead of being silently overwritten. Best-effort: if the fetch
+ * itself fails (still flaky connectivity), fall back to a normal flush
+ * rather than leaving local edits stuck unsaved indefinitely.
+ */
+async function _reconcileAndFlush() {
+  if (!_roomId) return;
+  let fresh = null;
+  try { fresh = await loadRoom(_roomId); } catch { /* fall through to flush below */ }
+  if (fresh) _room = fresh;
+  await reconcileAfterReconnect(fresh);
 }
 
 function teardownRealtimeSession() {

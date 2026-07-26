@@ -201,6 +201,48 @@ export function handleRemoteLiveContent(payload) {
   _onDismissPending();
 }
 
+// ── Reconnect reconciliation ───────────────────────────────────────────────────
+
+/**
+ * Reconcile with the server immediately after coming back online, BEFORE
+ * flushing the queued debounced save.
+ *
+ * Supabase Realtime does not replay postgres_changes events that were missed
+ * while a client's socket was disconnected — so a reconnect that just calls
+ * flushSave() unconditionally can silently overwrite an edit another device
+ * made during the outage, with no conflict prompt (unlike the live-typing
+ * conflict path in handleRemoteDatabaseChange, which never sees this update
+ * because it never arrives). Callers must loadRoom() fresh (a plain fetch,
+ * bypassing Realtime entirely) and pass the result here first.
+ *
+ * Deliberately does NOT use the `_isLocallyActive()` 3 s idle window that
+ * handleRemoteDatabaseChange() uses — an offline gap can be arbitrarily
+ * longer than that window, so it can't be trusted to gate this decision.
+ * Instead, any actual content divergence always routes through the same
+ * pending-remote conflict prompt; an unchanged room just flushes normally.
+ * @param {object|null} freshRoom  – the room row as returned by loadRoom()
+ */
+export async function reconcileAfterReconnect(freshRoom) {
+  if (!_roomId || !freshRoom || freshRoom.updated_by_device === getDeviceId()) {
+    _debouncedSave.flush?.();
+    return;
+  }
+  if (_mustIgnoreEncryptedRemote()) { _debouncedSave.flush?.(); return; }
+
+  let remoteText = freshRoom.content || '';
+  if (_decryptFn && remoteText) {
+    try { remoteText = await _decryptFn(remoteText); }
+    catch { _debouncedSave.flush?.(); return; }
+  }
+
+  if (remoteText === _getEditorVal()) { _debouncedSave.flush?.(); return; }
+
+  _debouncedSave.cancel?.();
+  _pendingRemoteContent   = remoteText;
+  _pendingRemoteTimestamp = freshRoom.updated_at || null;
+  _onPendingRemote(remoteText, 'db');
+}
+
 // ── Remote: Postgres DB change ────────────────────────────────────────────────
 
 export async function handleRemoteDatabaseChange(newRoom) {
