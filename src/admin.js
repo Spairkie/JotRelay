@@ -176,7 +176,7 @@ async function _renderDashboard(sb, session) {
     <div class="admin-shell">
 
       <div class="admin-header">
-        <div class="admin-header-brand">🛠️ SyncPad Admin</div>
+        <div class="admin-header-brand">${getIcon('admin', 18)} SyncPad Admin</div>
         <div class="admin-header-actions">
           <span class="admin-user-email">${escapeHtml(session?.user?.email ?? '')}</span>
           <span class="admin-refreshed-label" id="admin-refreshed-label" title="Last data refresh"></span>
@@ -1696,7 +1696,7 @@ async function _renderCleanupTab(contentEl) {
   contentEl.innerHTML = `
     <div class="admin-tab-content admin-cleanup">
       <div class="admin-cleanup-section">
-        <h3>🧹 Cleanup Expired Rooms</h3>
+        <h3>${getIcon('clock', 16)} Cleanup Expired Rooms</h3>
         <p class="admin-cleanup-desc">
           Run the server-side cleanup function to permanently delete all rooms whose
           expiry time (<code>expires_at</code>) has passed. This calls the
@@ -1709,7 +1709,7 @@ async function _renderCleanupTab(contentEl) {
       <hr class="admin-divider" />
 
       <div class="admin-cleanup-section admin-cleanup-danger">
-        <h3>⚠️ Manual Expired Room Deletion</h3>
+        <h3>${getIcon('warning', 16)} Manual Expired Room Deletion</h3>
         <p class="admin-cleanup-desc">
           Directly delete all rooms where <code>expires_at</code> is in the past.
           Use this only if the RPC function is unavailable. This action is <strong>irreversible</strong>.
@@ -1721,13 +1721,16 @@ async function _renderCleanupTab(contentEl) {
       <hr class="admin-divider" />
 
       <div class="admin-cleanup-section">
-        <h3>🗑️ Storage Orphan Reconciliation</h3>
+        <h3>${getIcon('trash', 16)} Storage Orphan Reconciliation</h3>
         <p class="admin-cleanup-desc">
           Calls the <code>syncpad-cleanup</code> Edge Function to find files that exist in
           Storage but have no matching <code>syncpad_files</code> row — left behind by
           interrupted uploads or gaps this dashboard doesn't otherwise cover — and remove
           them. Starts with a dry run; nothing is deleted until you confirm the count.
-          Requires the Edge Function to be deployed (<code>supabase functions deploy syncpad-cleanup</code>).
+          This is a separate, optional deploy step — it does not run automatically and
+          is not required for the rest of SyncPad to work.
+          Requires the Edge Function to be deployed (<code>supabase functions deploy syncpad-cleanup --no-verify-jwt</code>,
+          see <code>supabase/functions/syncpad-cleanup/README.md</code>).
         </p>
         <button id="admin-orphan-preview-btn" class="admin-action-btn admin-action-primary">Preview orphaned files</button>
         <div id="admin-orphan-result" class="admin-cleanup-result hidden"></div>
@@ -1808,7 +1811,19 @@ function _wireOrphanReconciliation() {
 
   const showError = (error) => {
     resultEl.classList.remove('hidden'); resultEl.className = 'admin-cleanup-result admin-cleanup-result--error';
-    resultEl.textContent = `Error: ${error?.message || 'Edge Function unavailable — is it deployed?'}`;
+    // supabase-js's FunctionsFetchError ("Failed to send a request to the
+    // Edge Function") means the request never even reached a function —
+    // almost always because syncpad-cleanup was never deployed to this
+    // Supabase project (it's a separate, optional `supabase functions
+    // deploy` step, not something any migration or the app itself sets up).
+    // Swap the SDK's generic network-failure wording for the actual likely
+    // cause and the exact command to fix it, rather than leaving the admin
+    // to guess what a bare "failed to send a request" means.
+    const isUnreachable = error?.name === 'FunctionsFetchError'
+      || /failed to send a request/i.test(error?.message || '');
+    resultEl.textContent = isUnreachable
+      ? 'The syncpad-cleanup Edge Function isn\'t reachable — it likely hasn\'t been deployed to this Supabase project yet. Deploy it with: supabase functions deploy syncpad-cleanup --no-verify-jwt (see supabase/functions/syncpad-cleanup/README.md). This feature is optional; the rest of the dashboard works without it.'
+      : `Error: ${_friendlyErrorMessage(error)}`;
   };
 
   const runRemoval = async (orphanCount) => {
