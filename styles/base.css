@@ -21,7 +21,7 @@
   --accent-glow:    rgba(245,166,35,0.25);
   --text-primary:   #e8e8ed;
   --text-secondary: #8a8a9a;
-  --text-muted:     #55556a;
+  --text-muted:     #8888a0;
   --text-inverse:   #0f0f11;
   --green:          #4ade80;
   --red:            #f87171;
@@ -60,7 +60,7 @@
   --accent-glow:    rgba(96,165,250,0.25);
   --text-primary:   #dde4f0;
   --text-secondary: #7a87a8;
-  --text-muted:     #404d6a;
+  --text-muted:     #7687ac;
   --text-inverse:   #0c0e1a;
   --landing-glow:   rgba(96,165,250,0.06);
 }
@@ -78,8 +78,8 @@
   --accent-dim:     rgba(74,222,128,0.12);
   --accent-glow:    rgba(74,222,128,0.25);
   --text-primary:   #d8edd8;
-  --text-secondary: #6a8a6e;
-  --text-muted:     #385040;
+  --text-secondary: #6d8d71;
+  --text-muted:     #659073;
   --text-inverse:   #0a0f0d;
   --landing-glow:   rgba(74,222,128,0.06);
 }
@@ -98,7 +98,7 @@
   --accent-glow:    rgba(193,125,46,0.25);
   --text-primary:   #1a1612;
   --text-secondary: #6a5e50;
-  --text-muted:     #a89a88;
+  --text-muted:     #776957;
   --text-inverse:   #ffffff;
   /* Semantic status colours — darker shades for legibility on light backgrounds */
   --green:          #15803d;
@@ -130,7 +130,7 @@
   --accent-glow:    rgba(0,255,65,0.20);
   --text-primary:   #c8ffc8;
   --text-secondary: #5a8a5a;
-  --text-muted:     #2a4a2a;
+  --text-muted:     #4e894e;
   --text-inverse:   #020202;
   --font-ui:        'DM Mono', 'Fira Code', monospace;
   --landing-glow:   rgba(0,255,65,0.05);
@@ -149,8 +149,8 @@
   --accent-dim:     rgba(212,149,106,0.12);
   --accent-glow:    rgba(212,149,106,0.25);
   --text-primary:   #eddcc8;
-  --text-secondary: #8a7060;
-  --text-muted:     #5a4030;
+  --text-secondary: #9e8373;
+  --text-muted:     #ac7e63;
   --text-inverse:   #1a110a;
   --landing-glow:   rgba(212,149,106,0.07);
 }
@@ -169,7 +169,7 @@
   --accent-glow:    rgba(124,92,191,0.25);
   --text-primary:   #1e1632;
   --text-secondary: #6b5a8a;
-  --text-muted:     #a898c4;
+  --text-muted:     #765da2;
   --text-inverse:   #ffffff;
   /* Semantic status colours — darker shades for legibility on light backgrounds */
   --green:          #15803d;
