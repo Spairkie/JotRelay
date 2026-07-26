@@ -105,8 +105,10 @@ Collects small, stateless helper functions (string formatting, date utilities, d
 6. Back on the **originating tab**, a 1-second debounce timer is (re)started on every keystroke.
 7. When the debounce fires, `sync.js` → **Durable lane**: the content is written to the `syncpad_rooms` row in Postgres (encrypted if text encryption is enabled).
 8. Supabase **Postgres Realtime** fires an `UPDATE` event on all other subscribers.
-9. `sync.js` (receiver, durable lane) receives the Realtime event and performs a **conflict check**: if the incoming `updated_at` timestamp is older than the local last-save timestamp, the update is discarded to avoid overwriting a more recent local edit.
-10. If the conflict check passes, `ui.js` updates the textarea on the remote tab.
+9. `sync.js` (receiver, durable lane) receives the Realtime event via `handleRemoteDatabaseChange()`. It first ignores the event entirely if `updated_by_device` matches this client's own device id (it's an echo of our own write, not a remote change) — client clocks are not compared, since they can drift. Otherwise it checks whether the local user has typed within the last 3 seconds (`_isLocallyActive()`):
+   - **Idle** → the remote content is applied immediately.
+   - **Actively typing** → the remote content is held as a "pending remote" update and `ui.js` shows a conflict notice (Apply / Keep / Copy) instead of overwriting the user's in-progress edit.
+10. If applied immediately, `ui.js` updates the textarea on the remote tab.
 
 ---
 
@@ -164,7 +166,8 @@ SyncPad uses two parallel synchronisation tracks to balance perceived latency ag
 - **Latency**: 1 s debounce + Realtime propagation (~100–300 ms)
 - **Use case**: Persisting the authoritative room content and propagating it to tabs that may have missed broadcast events
 - **Durability**: Full — content survives page refreshes, reconnections, and new joiners
-- **Conflict detection**: Receiver compares incoming `updated_at` against local last-save timestamp; stale updates are discarded
+- **Conflict detection**: An incoming update whose `updated_by_device` isn't this client's own is applied immediately if the user is idle, or held as a "pending remote" update with a conflict notice (Apply / Keep / Copy) if the user typed in the last 3 seconds. See `handleRemoteDatabaseChange()` in `sync.js`.
+- **Reconnect reconciliation**: Realtime does **not** replay events missed while a socket was disconnected. On regaining connectivity, `app.js`'s `online` handler calls `loadRoom()` fresh (bypassing Realtime) and passes the result to `reconcileAfterReconnect()` (`sync.js`) *before* letting the queued debounced save flush. If another device wrote to the room during the outage and its content differs from what's in the editor, this always shows the same pending-remote conflict notice — regardless of the 3-second idle window above, since an offline gap can be far longer than that window covers — rather than silently overwriting the remote edit with the stale local queue. See `SP-AUDIT-0016` in the audit remediation history.
 
 ---
 
@@ -179,7 +182,7 @@ const _urlCache = new Map(); // fileId → { url, expiresAt }
 - **TTL**: 55 minutes (conservative margin below Supabase's 60-minute signed-URL lifetime)
 - **Cache hit**: The cached URL is returned immediately with no API call
 - **Cache miss**: A new signed URL is fetched from Supabase Storage and stored with a fresh `expiresAt = Date.now() + 55 * 60 * 1000`
-- **Cache eviction**: Entries are removed immediately on `deleteFile()` to prevent returning URLs for deleted objects
+- **Cache eviction**: Entries are removed immediately on `deleteFile()` to prevent returning URLs for deleted objects. Expired entries are also swept lazily — every `getDownloadUrl()` / `getForceDownloadUrl()` call prunes any entry past its `expiresAt` before doing its own lookup — so a long-running session with many distinct files previewed over time doesn't grow the map unboundedly with dead entries.
 - **Benefit**: Eliminates redundant API calls when the same file is previewed or linked multiple times within a session
 
 ---

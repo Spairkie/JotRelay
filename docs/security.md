@@ -169,7 +169,7 @@ SyncPad is a personal/demo project. The following are known weaknesses that shou
 
 **localStorage is origin-scoped.** Custom templates and drafts stored in `localStorage` are accessible to any JavaScript running on the same origin. If a third-party script is ever loaded on the SyncPad origin (analytics, embeds), it would have access to this data.
 
-**View-once is not atomic.** The server clears view-once content after the first qualifying view, but there is a window between the content being delivered to the client and the server clearing it. A viewer can copy or screenshot the content before it is cleared.
+**View-once display precedes clearing, by design.** The client must render the content before the server clears it, so a viewer can always copy or screenshot the content in that window — no server-side design can prevent that without refusing to show the content at all. The clearing *write* itself is atomic: `consumeViewOnceAtomic()` (`src/rooms.js`) conditions the `UPDATE` on `viewed = false`, so two viewers opening the same view-once link at nearly the same instant can't both have their write "win" — exactly one clear succeeds, closing the read-then-write race a naive check-then-update would have.
 
 **Recommendation:** Do NOT use SyncPad to store passwords, personal health information (HIPAA/PHI), personally identifiable information (PII), classified or regulated data, or any information that would cause harm if disclosed.
 
