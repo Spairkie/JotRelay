@@ -11,7 +11,7 @@ Run `supabase/migrations/0001_base_schema.sql` in the Supabase SQL Editor first.
 - admin-only RLS policies for rooms, files, reports, and share links
 - authenticated baseline policies so normal app behavior still works after an admin signs in
 
-Optionally, also run [`supabase/migrations/0006_admin_dashboard_improvements.sql`](migrations/admin-dashboard-improvements.sql) for the admin audit log and room quarantine support — see [Optional feature migrations](../DEPLOYMENT.md#optional-feature-migrations) in `DEPLOYMENT.md` for the full list of opt-in migrations.
+Optionally, also run [`supabase/migrations/0006_admin_dashboard_improvements.sql`](../supabase/migrations/0006_admin_dashboard_improvements.sql) for the admin audit log and room quarantine support — see [Optional feature migrations](../DEPLOYMENT.md#optional-feature-migrations) in `DEPLOYMENT.md` for the full list of opt-in migrations.
 
 ## 2. Create an Auth User
 
@@ -40,7 +40,7 @@ set email = excluded.email;
 
 1. Open `/SyncPad/admin`.
 2. Sign in with the Auth user's email/password.
-3. Confirm the Rooms, Reports, and Cleanup tabs load.
+3. Confirm the Rooms, Reports, Files, Audit Log, and Cleanup tabs load. (Audit Log requires the optional `0006_admin_dashboard_improvements.sql` migration above — without it, that tab shows a "not configured" message instead of an error, which is expected.)
 
 If sign-in succeeds but dashboard data does not load, verify that the Auth user's UUID exactly matches the `syncpad_admins.user_id` row.
 

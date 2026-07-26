@@ -340,7 +340,7 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 - [x] Admin dashboard — Supabase Auth gate, rooms / reports / cleanup tabs
 - [x] Templates Library v2 — 13 built-ins, searchable modal, export / import JSON
 - [x] PDF export — browser `window.print()` in a styled preview window
-- [x] Playwright test suite — ~75 scenarios across 6 spec files, 4 browser projects
+- [x] Playwright test suite — grown from an initial ~75 scenarios across 6 spec files to 28 spec files today; see `docs/playwright.md` for current scope
 - [x] Editor modernization — floating card layout, comfortable max writing width, split-view divider
 
 ### Takeover roadmap completed
@@ -358,8 +358,7 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 
 ### Outside current demo scope
 
-- Recovering a lost editable link (would reopen the hole the edit-token system closes — see Known Limitations)
-- Rate limiting (room creation, edit-token verification attempts, share-link resolution)
+- Rate limiting (room creation, share-link resolution, report submission) — see `docs/security.md`
 - Live deployment verification after Supabase/GitHub Pages secrets are configured
 
 ---

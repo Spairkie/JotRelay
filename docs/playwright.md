@@ -35,7 +35,7 @@ The static server must be running on port 5555 before executing tests. In CI, Pl
 
 | Command | Description |
 |---|---|
-| `npm test` | Run all tests across all browser projects, headless |
+| `npm test` | Run all tests against the active browser project(s) — Chromium only by default, headless |
 | `npm run test:chrome` | Run all tests in Chromium only |
 | `npm run test:headed` | Run tests with the browser window visible |
 | `npm run test:ui` | Launch Playwright's interactive UI mode |
@@ -59,14 +59,14 @@ npx playwright test --project=webkit
 
 ## 3. Browser Projects
 
-Tests run against four browser configurations defined in `playwright.config.js`:
+`playwright.config.js` defines four browser configurations, but **only `chromium` is active by default** — `npm test`/`npm run test:chrome` both currently mean "Chromium only." The other three are present but commented out in the `projects` array so `npm test` works out of the box without a full Playwright browser download (`npx playwright install` only fetches Chromium by default). Uncomment the ones you want in `playwright.config.js` and run `npx playwright install` again to pull their binaries before using `--project=firefox`/`webkit`/`mobile-chrome` — passing one of those flags while its project is still commented out fails with "no tests found," not a browser-not-installed error, which is the confusing part if you haven't looked at the config first.
 
 | Project | Device preset | Notes |
 |---|---|---|
-| `chromium` | Desktop Chrome | Primary desktop target |
-| `firefox` | Desktop Firefox | Gecko engine coverage |
-| `webkit` | Desktop Safari | WebKit engine coverage |
-| `mobile-chrome` | Pixel 5 | Mobile viewport and touch behaviour |
+| `chromium` | Desktop Chrome | Primary desktop target — active by default |
+| `firefox` | Desktop Firefox | Gecko engine coverage — commented out by default |
+| `webkit` | Desktop Safari | WebKit engine coverage — commented out by default |
+| `mobile-chrome` | Pixel 5 | Mobile viewport and touch behaviour — commented out by default |
 
 **CI behaviour:** When `process.env.CI` is set, Playwright enables `retries: 2` (each failing test is retried up to twice before being marked as failed) and limits workers to 1 to avoid resource contention. `forbidOnly` is also enabled in CI so accidentally committed `test.only` calls cause the run to fail immediately.
 
