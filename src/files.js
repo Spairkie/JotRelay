@@ -41,6 +41,18 @@ const _urlCache         = new Map(); // filePath → { url: string, expiresAt: n
 const _downloadUrlCache = new Map(); // filePath → { url: string, expiresAt: number }
 const URL_TTL_MS = 55 * 60 * 1000; // 55 minutes in milliseconds
 
+// Both caches are only pruned reactively (on lookup/delete), not on a timer —
+// a room with many distinct files previewed over a long session would
+// otherwise accumulate expired entries indefinitely for the life of the tab.
+// Sweeping expired entries on every read keeps steady-state size bounded by
+// "distinct files actually requested in the last 55 min", not "ever".
+function _evictExpired(cache) {
+  const now = Date.now();
+  for (const [key, entry] of cache) {
+    if (now >= entry.expiresAt) cache.delete(key);
+  }
+}
+
 export async function uploadFile(roomId, file) {
   if (file.size > MAX_SIZE) throw new Error('File too large. Maximum size is 10 MB.');
   const sb       = getSupabaseClient();
@@ -83,6 +95,7 @@ export async function uploadFile(roomId, file) {
  * rather than forcing a download; does not carry the original filename.
  */
 export async function getDownloadUrl(filePath) {
+  _evictExpired(_urlCache);
   // Return cached URL if still valid
   const cached = _urlCache.get(filePath);
   if (cached && Date.now() < cached.expiresAt) return cached.url;
@@ -112,6 +125,7 @@ export async function getDownloadUrl(filePath) {
  *   point is a link that's actually good for close to the full ~55 minutes.
  */
 export async function getForceDownloadUrl(filePath, filename, { fresh = false } = {}) {
+  _evictExpired(_downloadUrlCache);
   const cached = fresh ? null : _downloadUrlCache.get(filePath);
   if (cached && Date.now() < cached.expiresAt) return cached.url;
 
