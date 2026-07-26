@@ -97,6 +97,27 @@ export async function updateRoom(roomId, data) {
   if (error) { logSupabaseError('updateRoom', error, { room_id: roomId }); throw error; }
 }
 
+/**
+ * Atomically consume a view-once room: the UPDATE itself is conditioned on
+ * `viewed = false` (via `.eq('viewed', false)`), so two viewers racing to
+ * open the same view-once link can never both "win" the clear — only the
+ * request that finds the row still unviewed actually changes it, and
+ * PostgREST returns the updated row only to that winner. This closes the
+ * read-then-write race that a plain loadRoom() + updateRoom() pair would
+ * have (both readers could observe viewed=false before either writes).
+ * @returns {Promise<boolean>} true if THIS call performed the clear.
+ */
+export async function consumeViewOnceAtomic(roomId, data) {
+  const sb   = getSupabaseClient();
+  const safe = { ...data };
+  delete safe.room_id;
+  const { data: rows, error } = await sb.from(TABLE).update(safe)
+    .eq('room_id', roomId).eq('viewed', false)
+    .select('room_id');
+  if (error) { logSupabaseError('consumeViewOnceAtomic', error, { room_id: roomId }); throw error; }
+  return !!rows?.length;
+}
+
 // ── Clear content ─────────────────────────────────────────────────────────────
 
 export async function clearRoomContent(roomId, reason, replacementContent = '') {

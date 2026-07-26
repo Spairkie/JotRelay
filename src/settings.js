@@ -1,6 +1,6 @@
 // SyncPad – settings.js
 // Passcode, encryption, expiration, and view-once management.
-import { updateRoomSettings, updateRoom } from './rooms.js';
+import { updateRoomSettings, updateRoom, consumeViewOnceAtomic } from './rooms.js';
 import { generateSalt, deriveKey, encryptContent, decryptContent, looksEncrypted } from './encryption.js';
 import { hashPasscode, getDeviceId, parseDuration } from './utils.js';
 
@@ -169,6 +169,12 @@ export async function disableViewOnce(roomId) {
  * this function. The content should be captured for display before the DB
  * write clears it.
  *
+ * The actual clear is atomic (consumeViewOnceAtomic conditions the UPDATE on
+ * viewed=false), so two viewers opening the same view-once link at nearly the
+ * same instant can't both "win" — only one write actually goes through, even
+ * though both clients pass the client-side checks below using the same
+ * stale-but-still-accurate-at-read-time `room` snapshot.
+ *
  * Idempotent: no-op if already consumed or creator.
  * @returns {Promise<boolean>} true if this call consumed the note
  */
@@ -177,13 +183,12 @@ export async function consumeViewOnce(roomId, room, isCreator, replacementConten
   if (isCreator)        return false;
   if (room.viewed || room.cleared_reason === 'view_once') return false;
 
-  await updateRoom(roomId, {
+  return consumeViewOnceAtomic(roomId, {
     viewed:            true,
     content:           replacementContent,
     updated_by_device: getDeviceId(),
     cleared_reason:    'view_once',
   });
-  return true;
 }
 
 export async function resetViewOnceNote(roomId, replacementContent = '', keepViewOnce = true) {

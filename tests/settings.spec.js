@@ -149,6 +149,33 @@ test.describe('View-once mode', () => {
     await btn.click();
     await expect(status).toHaveText(before || '', { timeout: 5000 });
   });
+
+  test('consumeViewOnce is atomic — two racing consumers cannot both win (SP-AUDIT-0006)', async ({ page }) => {
+    const roomId = await createRoom(page);
+
+    // consumeViewOnceAtomic() conditions its UPDATE on viewed=false, so of
+    // two consumers racing from the exact same pre-consumption room
+    // snapshot (as two viewers opening the same view-once link nearly
+    // simultaneously would), only one write can go through — never both,
+    // and never neither.
+    const result = await page.evaluate(async (rid) => {
+      const { enableViewOnce, consumeViewOnce } = await import('/SyncPad/src/settings.js');
+      const { loadRoom } = await import('/SyncPad/src/rooms.js');
+      await enableViewOnce(rid);
+      const room = await loadRoom(rid);
+      const [a, b] = await Promise.all([
+        consumeViewOnce(rid, room, false, 'seen by A'),
+        consumeViewOnce(rid, room, false, 'seen by B'),
+      ]);
+      const after = await loadRoom(rid);
+      return { a, b, viewed: after.viewed, clearedReason: after.cleared_reason };
+    }, roomId);
+
+    // Exactly one side won the race.
+    expect(result.a !== result.b).toBe(true);
+    expect(result.viewed).toBe(true);
+    expect(result.clearedReason).toBe('view_once');
+  });
 });
 
 test.describe('Device limit', () => {
