@@ -507,6 +507,7 @@ async function _renderRoomsTab(contentEl) {
       <div class="admin-toolbar">
         <input id="admin-room-search" class="admin-search-input" placeholder="Search by ID or name… (press /)" autocomplete="off" />
         <span class="admin-count-label" id="admin-room-count"></span>
+        <button class="admin-action-btn" id="admin-rooms-export" title="Export the current filter/search as CSV">⬇ Export CSV</button>
       </div>
 
       <div class="admin-bulk-bar hidden" id="admin-rooms-bulk-bar">
@@ -534,9 +535,7 @@ async function _renderRoomsTab(contentEl) {
         <div id="admin-rooms-empty" class="admin-empty hidden"></div>
       </div>
 
-      <div class="admin-load-more-row" id="admin-rooms-load-more-row">
-        <button class="admin-load-more-btn hidden" id="admin-rooms-load-more">Load more rooms</button>
-      </div>
+      <div class="admin-pager-row" id="admin-rooms-pager"></div>
 
     </div>`;
 
@@ -559,13 +558,12 @@ function _roomFilterChips() {
   ).join('');
 }
 
-async function _fetchRooms(selectCols, offset) {
-  let q = _sb.from('syncpad_rooms')
-    .select(selectCols, { count: 'exact' })
-    .order(_roomsSort.col, { ascending: _roomsSort.dir === 'asc' })
-    .range(offset, offset + ROOMS_PAGE_SIZE - 1);
-
-  // Apply server-side filter
+/**
+ * Apply the current Rooms tab filter chip + search box to a query. Shared by
+ * the paginated fetch and the CSV export, so "export" always means "export
+ * exactly what's on screen" rather than drifting from it over time.
+ */
+function _applyRoomsFilters(q) {
   const now = new Date().toISOString();
   if (_roomsFilter === 'active')      q = q.or(`expires_at.is.null,expires_at.gt.${now}`);
   else if (_roomsFilter === 'active-today') q = q.gte('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
@@ -576,7 +574,6 @@ async function _fetchRooms(selectCols, offset) {
   else if (_roomsFilter === 'quarantined' && _hasQuarantine)
     q = q.not('quarantined_at', 'is', null);
 
-  // Apply search
   if (_roomsSearch) {
     // PostgREST's .or() filter string treats comma/parenthesis/period as
     // syntax (condition separators, grouping), so a search term containing
@@ -585,12 +582,82 @@ async function _fetchRooms(selectCols, offset) {
     const s = `%${_escapePostgrestFilterValue(_roomsSearch)}%`;
     q = q.or(`room_id.ilike."${s}",room_name.ilike."${s}"`);
   }
-
   return q;
+}
+
+async function _fetchRooms(selectCols, offset) {
+  const q = _sb.from('syncpad_rooms')
+    .select(selectCols, { count: 'exact' })
+    .order(_roomsSort.col, { ascending: _roomsSort.dir === 'asc' })
+    .range(offset, offset + ROOMS_PAGE_SIZE - 1);
+  return _applyRoomsFilters(q);
 }
 
 function _escapePostgrestFilterValue(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/**
+ * Export every room matching the current filter/search (not just the
+ * visible page) as a downloadable CSV. Room content is deliberately
+ * excluded — this is a metadata export for record-keeping/audits, not a
+ * bulk content dump.
+ */
+async function _exportRoomsCsv() {
+  const btn = document.getElementById('admin-rooms-export');
+  if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
+
+  const cols = [
+    'room_id', 'room_name', 'created_at', 'updated_at', 'expires_at',
+    'encryption_enabled', 'passcode_hash', 'view_once', 'editing_locked',
+    ..._hasQuarantine ? ['quarantined_at'] : [],
+  ].join(', ');
+
+  const { rows, error } = await _selectAllPages((from, to) =>
+    _applyRoomsFilters(
+      _sb.from('syncpad_rooms').select(cols).order('room_id', { ascending: true }).range(from, to)
+    )
+  );
+
+  if (btn) { btn.disabled = false; btn.textContent = '⬇ Export CSV'; }
+  if (error) { await showAlert(`Export failed: ${_friendlyErrorMessage(error)}`); return; }
+  if (!rows.length) { _showToast('No rooms match the current filter — nothing to export.', ''); return; }
+
+  const header = [
+    'room_id', 'room_name', 'created_at', 'updated_at', 'expires_at',
+    'encrypted', 'has_passcode', 'view_once', 'editing_locked',
+    ..._hasQuarantine ? ['quarantined'] : [],
+  ];
+  const csvRows = rows.map((r) => [
+    r.room_id, r.room_name || '', r.created_at || '', r.updated_at || '', r.expires_at || '',
+    r.encryption_enabled ? 'yes' : 'no', r.passcode_hash ? 'yes' : 'no',
+    r.view_once ? 'yes' : 'no', r.editing_locked ? 'yes' : 'no',
+    ..._hasQuarantine ? [r.quarantined_at ? 'yes' : 'no'] : [],
+  ]);
+
+  _downloadCsv(`syncpad-rooms-${new Date().toISOString().slice(0, 10)}.csv`, header, csvRows);
+  await _logAdminAction('export_rooms_csv', { metadata: { count: rows.length } });
+  _showToast(`Exported ${rows.length} room${rows.length !== 1 ? 's' : ''}.`, 'success');
+}
+
+/** RFC 4180-ish CSV serialization: quote a field only when it needs it. */
+function _toCsv(header, rows) {
+  const esc = (v) => {
+    const s = v == null ? '' : String(v);
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [header, ...rows].map((row) => row.map(esc).join(',')).join('\r\n');
+}
+
+function _downloadCsv(filename, header, rows) {
+  const blob = new Blob([_toCsv(header, rows)], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function _wireRoomsTab(contentEl, selectCols) {
@@ -600,38 +667,45 @@ function _wireRoomsTab(contentEl, selectCols) {
   const emptyEl    = document.getElementById('admin-rooms-empty');
   const bulkBar    = document.getElementById('admin-rooms-bulk-bar');
   const bulkLabel  = document.getElementById('admin-bulk-label');
-  const loadMoreBtn = document.getElementById('admin-rooms-load-more');
+  const pagerEl    = document.getElementById('admin-rooms-pager');
+
+  // ── Shared page loader — fetches exactly one page at `offset` and
+  //    replaces the current row set. Used by search/filter/sort (always
+  //    offset 0, since the result set changed shape) and by the pager's
+  //    Prev/Next (offset ± ROOMS_PAGE_SIZE).
+  async function goToPage(offset) {
+    _roomsOffset = offset;
+    const r = await _fetchRooms(selectCols, offset);
+    if (!r.error) { _rooms = r.data || []; _roomsTotal = r.count ?? 0; }
+    renderRows();
+  }
 
   // ── Search (debounced) ─────────────────────────────────────────
   let searchTimer;
   searchEl.value = _roomsSearch;
   searchEl.addEventListener('input', () => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(async () => {
+    searchTimer = setTimeout(() => {
       _roomsSearch = searchEl.value.trim();
-      _roomsOffset = 0; _rooms = []; _roomsSelected.clear();
-      const r = await _fetchRooms(selectCols, 0);
-      if (!r.error) { _rooms = r.data || []; _roomsTotal = r.count ?? 0; }
-      renderRows();
+      _roomsSelected.clear();
+      goToPage(0);
     }, 300);
   });
 
   // ── Filter chips ───────────────────────────────────────────────
-  document.getElementById('admin-room-filter-chips')?.addEventListener('click', async (e) => {
+  document.getElementById('admin-room-filter-chips')?.addEventListener('click', (e) => {
     const chip = e.target.closest('.admin-chip');
     if (!chip) return;
     _roomsFilter = chip.dataset.filter;
-    _roomsOffset = 0; _rooms = []; _roomsSelected.clear();
+    _roomsSelected.clear();
     document.querySelectorAll('.admin-chip').forEach(c => c.classList.toggle('active', c === chip));
-    const r = await _fetchRooms(selectCols, 0);
-    if (!r.error) { _rooms = r.data || []; _roomsTotal = r.count ?? 0; }
-    renderRows();
+    goToPage(0);
   });
 
   // ── Column sorting ─────────────────────────────────────────────
   document.querySelectorAll('.admin-th-sortable').forEach(th => {
     th.style.cursor = 'pointer';
-    th.addEventListener('click', async () => {
+    th.addEventListener('click', () => {
       const col = th.dataset.col;
       if (_roomsSort.col === col) {
         _roomsSort.dir = _roomsSort.dir === 'asc' ? 'desc' : 'asc';
@@ -643,12 +717,14 @@ function _wireRoomsTab(contentEl, selectCols) {
       const icon = document.getElementById(`sort-icon-${col}`);
       if (icon) icon.textContent = _roomsSort.dir === 'asc' ? '↑' : '↓';
 
-      _roomsOffset = 0; _rooms = []; _roomsSelected.clear();
-      const r = await _fetchRooms(selectCols, 0);
-      if (!r.error) { _rooms = r.data || []; _roomsTotal = r.count ?? 0; }
-      renderRows();
+      _roomsSelected.clear();
+      goToPage(0);
     });
   });
+
+  // ── CSV export (current filter/search, every matching row — not just
+  //    the visible page) ──────────────────────────────────────────
+  document.getElementById('admin-rooms-export')?.addEventListener('click', () => _exportRoomsCsv());
 
   // ── Select-all checkbox ────────────────────────────────────────
   document.getElementById('admin-rooms-select-all')?.addEventListener('change', (e) => {
@@ -728,18 +804,6 @@ function _wireRoomsTab(contentEl, selectCols) {
     else _showToast(`Deleted ${ids.length} room${ids.length !== 1 ? 's' : ''}.`, 'success');
   });
 
-  // ── Load more ──────────────────────────────────────────────────
-  loadMoreBtn?.addEventListener('click', async () => {
-    loadMoreBtn.disabled = true; loadMoreBtn.textContent = 'Loading…';
-    _roomsOffset += ROOMS_PAGE_SIZE;
-    const r = await _fetchRooms(selectCols, _roomsOffset);
-    if (!r.error && r.data?.length) {
-      _rooms.push(...r.data);
-      renderRows(true); // true = append (don't rebuild whole tbody)
-    }
-    loadMoreBtn.disabled = false; loadMoreBtn.textContent = 'Load more rooms';
-  });
-
   // ── Row renderer ───────────────────────────────────────────────
   function buildFlags(room) {
     const flags = [];
@@ -752,21 +816,19 @@ function _wireRoomsTab(contentEl, selectCols) {
     return flags.join(' ') || '<span class="admin-muted">—</span>';
   }
 
-  function renderRows(append = false) {
-    const visibleRooms = append ? _rooms.slice(-ROOMS_PAGE_SIZE) : _rooms;
-
-    if (!append) tbody.innerHTML = '';
+  function renderRows() {
+    tbody.innerHTML = '';
 
     if (!_rooms.length) {
       emptyEl.textContent = _roomsSearch || _roomsFilter !== 'all'
         ? 'No rooms match your search / filter.' : 'No rooms found.';
       emptyEl.classList.remove('hidden');
-      if (loadMoreBtn) loadMoreBtn.classList.add('hidden');
+      if (pagerEl) pagerEl.innerHTML = '';
       return;
     }
     emptyEl.classList.add('hidden');
 
-    const rows = visibleRooms.map(room => {
+    const rows = _rooms.map(room => {
       const contentPreview = room.encryption_enabled
         ? '<span class="admin-muted admin-badge admin-badge--enc">Encrypted</span>'
         : room.content
@@ -795,15 +857,12 @@ function _wireRoomsTab(contentEl, selectCols) {
     }).join('');
     tbody.insertAdjacentHTML('beforeend', rows);
 
-    // Count display
-    const loaded = _rooms.length;
-    const total  = _roomsTotal;
-    if (countEl) countEl.textContent = total > loaded
-      ? `Showing ${loaded} of ${total} rooms`
-      : `${total} room${total !== 1 ? 's' : ''}`;
-
-    // Load more visibility
-    if (loadMoreBtn) loadMoreBtn.classList.toggle('hidden', loaded >= total);
+    if (countEl) countEl.textContent = `${_roomsTotal} room${_roomsTotal !== 1 ? 's' : ''}`;
+    _renderPager(pagerEl, {
+      offset: _roomsOffset, pageSize: ROOMS_PAGE_SIZE,
+      loadedCount: _rooms.length, total: _roomsTotal,
+      onNavigate: goToPage,
+    });
 
     // Wire newly-added rows
     _wireRows(tbody, updateBulkBar, selectCols, renderRows);
@@ -1179,9 +1238,7 @@ async function _renderReportsTab(contentEl) {
         <div id="admin-reports-empty" class="admin-empty hidden"></div>
       </div>
 
-      <div class="admin-load-more-row">
-        <button class="admin-load-more-btn hidden" id="admin-reports-load-more">Load more reports</button>
-      </div>
+      <div class="admin-pager-row" id="admin-reports-pager"></div>
 
     </div>`;
 
@@ -1213,31 +1270,22 @@ function _wireReportsTab() {
   const tbody    = document.getElementById('admin-reports-tbody');
   const emptyEl  = document.getElementById('admin-reports-empty');
   const countEl  = document.getElementById('admin-reports-count');
-  const loadMore = document.getElementById('admin-reports-load-more');
+  const pagerEl  = document.getElementById('admin-reports-pager');
+
+  async function goToPage(offset) {
+    _reportsOffset = offset;
+    const r = await _fetchReports(offset);
+    if (!r.error) { _reports = r.data || []; _reportsTotal = r.count ?? 0; }
+    renderRows();
+  }
 
   // Filter chips
-  document.getElementById('admin-report-filter-chips')?.addEventListener('click', async (e) => {
+  document.getElementById('admin-report-filter-chips')?.addEventListener('click', (e) => {
     const chip = e.target.closest('.admin-chip');
     if (!chip) return;
     _reportsFilter = chip.dataset.filter;
-    _reportsOffset = 0; _reports = [];
     document.querySelectorAll('#admin-report-filter-chips .admin-chip').forEach(c => c.classList.toggle('active', c === chip));
-    const r = await _fetchReports(0);
-    if (!r.error) { _reports = r.data || []; _reportsTotal = r.count ?? 0; }
-    renderRows();
-  });
-
-  // Load more
-  loadMore?.addEventListener('click', async () => {
-    loadMore.disabled = true; loadMore.textContent = 'Loading…';
-    _reportsOffset += REPORTS_PAGE_SIZE;
-    const r = await _fetchReports(_reportsOffset);
-    if (!r.error && r.data?.length) {
-      _reports.push(...r.data);
-      _reportsTotal = r.count ?? _reportsTotal;
-      renderRows(true);
-    }
-    loadMore.disabled = false; loadMore.textContent = 'Load more reports';
+    goToPage(0);
   });
 
   function statusBadge(status) {
@@ -1245,21 +1293,20 @@ function _wireReportsTab() {
     return `<span class="admin-badge ${map[status] || 'admin-badge--muted'}">${escapeHtml(status || '—')}</span>`;
   }
 
-  function renderRows(append = false) {
-    const visibleReports = append ? _reports.slice(-REPORTS_PAGE_SIZE) : _reports;
-    if (!append) tbody.innerHTML = '';
+  function renderRows() {
+    tbody.innerHTML = '';
 
     if (!_reports.length) {
       emptyEl.textContent = _reportsFilter === 'new'
         ? '✅ No open reports. You\'re all caught up!' : 'No reports match this filter.';
       emptyEl.classList.remove('hidden');
       if (countEl) countEl.textContent = '0 reports';
-      if (loadMore) loadMore.classList.add('hidden');
+      if (pagerEl) pagerEl.innerHTML = '';
       return;
     }
     emptyEl.classList.add('hidden');
 
-    const rows = visibleReports.map(rep => {
+    const rows = _reports.map(rep => {
       const details = rep.report_details
         ? escapeHtml(String(rep.report_details).slice(0, 80)) + (String(rep.report_details).length > 80 ? '…' : '')
         : '<span class="admin-muted">—</span>';
@@ -1288,9 +1335,12 @@ function _wireReportsTab() {
     }).join('');
     tbody.insertAdjacentHTML('beforeend', rows);
 
-    const loaded = _reports.length;
-    if (countEl) countEl.textContent = `${loaded} report${loaded !== 1 ? 's' : ''}`;
-    if (loadMore) loadMore.classList.toggle('hidden', loaded >= (_reportsTotal || loaded));
+    if (countEl) countEl.textContent = `${_reportsTotal} report${_reportsTotal !== 1 ? 's' : ''}`;
+    _renderPager(pagerEl, {
+      offset: _reportsOffset, pageSize: REPORTS_PAGE_SIZE,
+      loadedCount: _reports.length, total: _reportsTotal,
+      onNavigate: goToPage,
+    });
 
     // Wire actions
     tbody.querySelectorAll('button[data-action]:not([data-wired])').forEach(btn => {
@@ -1354,14 +1404,34 @@ function _wireReportsTab() {
 
 // ── Files tab ─────────────────────────────────────────────────────────────────
 
+const FILES_SELECT_COLS = 'id, filename, room_id, file_size, mime_type, uploaded_at, file_path';
+
+let _filesSearch = '';
+
+/** Apply the current Files tab search box to a query — shared by the
+ *  paginated fetch so search covers every matching file, not just
+ *  whatever page happened to be loaded already. */
+function _applyFilesFilters(q) {
+  if (_filesSearch) {
+    const s = `%${_escapePostgrestFilterValue(_filesSearch)}%`;
+    q = q.or(`filename.ilike."${s}",room_id.ilike."${s}"`);
+  }
+  return q;
+}
+
+async function _fetchFiles(offset) {
+  const q = _sb.from('syncpad_files')
+    .select(FILES_SELECT_COLS, { count: 'exact' })
+    .order('uploaded_at', { ascending: false })
+    .range(offset, offset + FILES_PAGE_SIZE - 1);
+  return _applyFilesFilters(q);
+}
+
 async function _renderFilesTab(contentEl) {
-  _filesOffset = 0; _files = [];
+  _filesOffset = 0; _files = []; _filesSearch = '';
 
   const [filesRes, statsRes] = await Promise.allSettled([
-    _sb.from('syncpad_files')
-      .select('id, filename, room_id, file_size, mime_type, uploaded_at, file_path', { count: 'exact' })
-      .order('uploaded_at', { ascending: false })
-      .range(0, FILES_PAGE_SIZE - 1),
+    _fetchFiles(0),
     _sb.from('syncpad_files').select('file_size'),
   ]);
 
@@ -1370,11 +1440,11 @@ async function _renderFilesTab(contentEl) {
     return;
   }
 
-  _files     = filesRes.value.data || [];
+  _files      = filesRes.value.data || [];
   _filesTotal = filesRes.value.count ?? 0;
 
-  const allFiles   = statsRes.status === 'fulfilled' ? statsRes.value.data || [] : [];
-  const totalSize  = allFiles.reduce((s, f) => s + (f.file_size || 0), 0);
+  const allFiles  = statsRes.status === 'fulfilled' ? statsRes.value.data || [] : [];
+  const totalSize = allFiles.reduce((s, f) => s + (f.file_size || 0), 0);
 
   contentEl.innerHTML = `
     <div class="admin-tab-content">
@@ -1412,9 +1482,7 @@ async function _renderFilesTab(contentEl) {
         <div id="admin-files-empty" class="admin-empty hidden">No files found.</div>
       </div>
 
-      <div class="admin-load-more-row">
-        <button class="admin-load-more-btn hidden" id="admin-files-load-more">Load more files</button>
-      </div>
+      <div class="admin-pager-row" id="admin-files-pager"></div>
 
     </div>`;
 
@@ -1425,58 +1493,38 @@ function _wireFilesTab() {
   const tbody    = document.getElementById('admin-files-tbody');
   const emptyEl  = document.getElementById('admin-files-empty');
   const countEl  = document.getElementById('admin-files-count');
-  const loadMore = document.getElementById('admin-files-load-more');
+  const pagerEl  = document.getElementById('admin-files-pager');
   const searchEl = document.getElementById('admin-files-search');
 
-  let allFiles = [..._files]; // local copy for search
+  async function goToPage(offset) {
+    _filesOffset = offset;
+    const r = await _fetchFiles(offset);
+    if (!r.error) { _files = r.data || []; _filesTotal = r.count ?? 0; }
+    renderRows();
+  }
 
   let searchTimer;
   searchEl?.addEventListener('input', () => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
-      const q = searchEl.value.toLowerCase().trim();
-      const filtered = q
-        ? _files.filter(f => f.filename.toLowerCase().includes(q) || f.room_id.toLowerCase().includes(q))
-        : _files;
-      renderRows(filtered);
-    }, 250);
+      _filesSearch = searchEl.value.trim();
+      goToPage(0);
+    }, 300);
   });
 
-  loadMore?.addEventListener('click', async () => {
-    loadMore.disabled = true; loadMore.textContent = 'Loading…';
-    _filesOffset += FILES_PAGE_SIZE;
-    const { data, error } = await _sb.from('syncpad_files')
-      .select('id, filename, room_id, file_size, mime_type, uploaded_at, file_path')
-      .order('uploaded_at', { ascending: false })
-      .range(_filesOffset, _filesOffset + FILES_PAGE_SIZE - 1);
-    if (!error && data?.length) {
-      _files.push(...data);
-      allFiles = [..._files];
-      // Re-apply the active search filter (if any) to the newly-extended set
-      // and do a full (non-append) re-render, so "Load more" doesn't silently
-      // drop back to showing unfiltered results.
-      const q = searchEl?.value.toLowerCase().trim();
-      const filtered = q
-        ? allFiles.filter(f => f.filename.toLowerCase().includes(q) || f.room_id.toLowerCase().includes(q))
-        : allFiles;
-      renderRows(filtered, false);
-    }
-    loadMore.disabled = false; loadMore.textContent = 'Load more files';
-  });
+  function renderRows() {
+    tbody.innerHTML = '';
 
-  function renderRows(files, append = false) {
-    if (!append) tbody.innerHTML = '';
-
-    if (!files.length) {
+    if (!_files.length) {
+      emptyEl.textContent = _filesSearch ? 'No files match your search.' : 'No files found.';
       emptyEl.classList.remove('hidden');
       if (countEl) countEl.textContent = '0 files';
-      if (loadMore) loadMore.classList.add('hidden');
+      if (pagerEl) pagerEl.innerHTML = '';
       return;
     }
     emptyEl.classList.add('hidden');
 
-    const visibleFiles = append ? files.slice(-FILES_PAGE_SIZE) : files;
-    tbody.insertAdjacentHTML('beforeend', visibleFiles.map(f => `
+    tbody.insertAdjacentHTML('beforeend', _files.map(f => `
       <tr data-file-id="${escapeHtml(String(f.id))}">
         <td class="admin-filename">${escapeHtml(f.filename || '—')}</td>
         <td>
@@ -1490,8 +1538,12 @@ function _wireFilesTab() {
         </td>
       </tr>`).join(''));
 
-    if (countEl) countEl.textContent = `${_files.length}${_filesTotal > _files.length ? ' of ' + _filesTotal : ''} file${_files.length !== 1 ? 's' : ''}`;
-    if (loadMore) loadMore.classList.toggle('hidden', _files.length >= _filesTotal);
+    if (countEl) countEl.textContent = `${_filesTotal} file${_filesTotal !== 1 ? 's' : ''}`;
+    _renderPager(pagerEl, {
+      offset: _filesOffset, pageSize: FILES_PAGE_SIZE,
+      loadedCount: _files.length, total: _filesTotal,
+      onNavigate: goToPage,
+    });
 
     // Wire room ID links
     tbody.querySelectorAll('.admin-room-id-btn:not([data-wired])').forEach(btn => {
@@ -1520,19 +1572,17 @@ function _wireFilesTab() {
         if (de) { await showAlert(`DB row delete error: ${_friendlyErrorMessage(de)}`); btn.disabled = false; return; }
 
         const idx = _files.findIndex(f => String(f.id) === fileId);
-        if (idx !== -1) { _files.splice(idx, 1); allFiles = [..._files]; }
+        if (idx !== -1) _files.splice(idx, 1);
         await _logAdminAction('delete_file', { target_file_id: fileId });
-        const row = tbody.querySelector(`tr[data-file-id="${CSS.escape(fileId)}"]`);
-        row?.remove();
         _filesTotal = Math.max(0, _filesTotal - 1);
-        if (countEl) countEl.textContent = `${_files.length} file${_files.length !== 1 ? 's' : ''}`;
         await _loadStats();
+        renderRows();
         _showToast('File deleted.', 'success');
       });
     });
   }
 
-  renderRows(allFiles);
+  renderRows();
 }
 
 // ── Audit log tab ─────────────────────────────────────────────────────────────
@@ -1565,6 +1615,7 @@ async function _renderAuditTab(contentEl) {
 
   if (error) { contentEl.innerHTML = _accessDeniedHtml(error); return; }
   _audit = data || [];
+  let total = count ?? 0;
 
   contentEl.innerHTML = `
     <div class="admin-tab-content">
@@ -1586,27 +1637,35 @@ async function _renderAuditTab(contentEl) {
         </table>
         <div id="admin-audit-empty" class="admin-empty hidden">No audit logs found.</div>
       </div>
-      <div class="admin-load-more-row">
-        <button class="admin-load-more-btn hidden" id="admin-audit-load-more">Load more logs</button>
-      </div>
+      <div class="admin-pager-row" id="admin-audit-pager"></div>
     </div>`;
 
-  const tbody    = document.getElementById('admin-audit-tbody');
-  const emptyEl  = document.getElementById('admin-audit-empty');
-  const countEl  = document.getElementById('admin-audit-count');
-  const loadMore = document.getElementById('admin-audit-load-more');
-  let total = count ?? 0;
+  const tbody   = document.getElementById('admin-audit-tbody');
+  const emptyEl = document.getElementById('admin-audit-empty');
+  const countEl = document.getElementById('admin-audit-count');
+  const pagerEl = document.getElementById('admin-audit-pager');
 
-  function renderRows(append = false) {
-    const visible = append ? _audit.slice(-AUDIT_PAGE_SIZE) : _audit;
-    if (!append) tbody.innerHTML = '';
+  async function goToPage(offset) {
+    _auditOffset = offset;
+    const { data: page, error: e2, count: c2 } = await _sb
+      .from('syncpad_admin_audit_logs')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + AUDIT_PAGE_SIZE - 1);
+    if (!e2) { _audit = page || []; total = c2 ?? total; }
+    renderRows();
+  }
+
+  function renderRows() {
+    tbody.innerHTML = '';
     if (!_audit.length) {
       emptyEl.textContent = 'No audit logs yet.'; emptyEl.classList.remove('hidden');
       if (countEl) countEl.textContent = '0 entries';
+      if (pagerEl) pagerEl.innerHTML = '';
       return;
     }
     emptyEl.classList.add('hidden');
-    tbody.insertAdjacentHTML('beforeend', visible.map(log => `
+    tbody.insertAdjacentHTML('beforeend', _audit.map(log => `
       <tr>
         <td class="admin-ts">${escapeHtml(log.admin_email || '—')}</td>
         <td><code class="admin-audit-action">${escapeHtml(log.action_type || '—')}</code></td>
@@ -1615,25 +1674,18 @@ async function _renderAuditTab(contentEl) {
         <td class="admin-ts">${formatTimestamp(log.created_at)}</td>
       </tr>`).join(''));
 
-    if (countEl) countEl.textContent = `${_audit.length}${total > _audit.length ? ' of ' + total : ''} log entries`;
-    if (loadMore) loadMore.classList.toggle('hidden', _audit.length >= total);
+    if (countEl) countEl.textContent = `${total} log entr${total !== 1 ? 'ies' : 'y'}`;
+    _renderPager(pagerEl, {
+      offset: _auditOffset, pageSize: AUDIT_PAGE_SIZE,
+      loadedCount: _audit.length, total,
+      onNavigate: goToPage,
+    });
 
     tbody.querySelectorAll('.admin-room-id-btn:not([data-wired])').forEach(btn => {
       btn.dataset.wired = '1';
       btn.addEventListener('click', () => _openRoomDetail(btn.dataset.roomId));
     });
   }
-
-  loadMore?.addEventListener('click', async () => {
-    loadMore.disabled = true; loadMore.textContent = 'Loading…';
-    _auditOffset += AUDIT_PAGE_SIZE;
-    const { data: more, error: e2 } = await _sb
-      .from('syncpad_admin_audit_logs')
-      .select('*').order('created_at', { ascending: false })
-      .range(_auditOffset, _auditOffset + AUDIT_PAGE_SIZE - 1);
-    if (!e2 && more?.length) { _audit.push(...more); renderRows(true); }
-    loadMore.disabled = false; loadMore.textContent = 'Load more logs';
-  });
 
   renderRows();
 }
@@ -1961,6 +2013,50 @@ async function _deleteExpiredRoomsAndStorage() {
 function _isExpired(expiresAt) {
   if (!expiresAt) return false;
   return new Date(expiresAt) < new Date();
+}
+
+/**
+ * Render Prev/Next pagination controls + a "Showing X-Y of Z" range label.
+ * Shared by every paginated tab (Rooms/Reports/Files/Audit) so page-turning
+ * UI and its edge cases (first/last page, empty result set) live in exactly
+ * one place instead of four near-duplicate copies.
+ *
+ * Each page replaces the tab's row set outright (a real server-fetched page,
+ * not an ever-growing appended list) — callers own re-fetching the data for
+ * the new offset and re-rendering rows; this only renders the controls and
+ * wires Prev/Next to call back with the new offset.
+ *
+ * @param {HTMLElement} container
+ * @param {object} opts
+ * @param {number}   opts.offset       - current page's starting offset
+ * @param {number}   opts.pageSize
+ * @param {number}   opts.loadedCount  - rows actually returned for this page
+ * @param {number}   opts.total        - total matching rows (server count)
+ * @param {(nextOffset:number) => void} opts.onNavigate - called with the new offset on Prev/Next
+ */
+function _renderPager(container, { offset, pageSize, loadedCount, total, onNavigate }) {
+  if (!container) return;
+  if (!total) { container.innerHTML = ''; return; }
+
+  const from = offset + 1;
+  const to   = offset + loadedCount;
+  const page = Math.floor(offset / pageSize) + 1;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const hasPrev = offset > 0;
+  const hasNext = offset + loadedCount < total;
+
+  container.innerHTML = `
+    <div class="admin-pager">
+      <span class="admin-pager-range">Showing ${from}–${to} of ${total}</span>
+      <div class="admin-pager-nav">
+        <button class="admin-pager-btn" id="admin-pager-prev" ${hasPrev ? '' : 'disabled'} aria-label="Previous page">‹ Prev</button>
+        <span class="admin-pager-page">Page ${page} of ${pageCount}</span>
+        <button class="admin-pager-btn" id="admin-pager-next" ${hasNext ? '' : 'disabled'} aria-label="Next page">Next ›</button>
+      </div>
+    </div>`;
+
+  container.querySelector('#admin-pager-prev')?.addEventListener('click', () => onNavigate(Math.max(0, offset - pageSize)));
+  container.querySelector('#admin-pager-next')?.addEventListener('click', () => onNavigate(offset + pageSize));
 }
 
 function _fullDate(dateStr) {

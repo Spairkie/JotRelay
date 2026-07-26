@@ -336,16 +336,23 @@
 .admin-action-dismiss { background: rgba(74,222,128,0.08); color: var(--green); border-color: var(--green); }
 .admin-action-dismiss:hover { background: rgba(74,222,128,0.18); }
 
-/* ── Load More button ─────────────────────────────────────── */
-.admin-load-more-row { display: flex; justify-content: center; padding: 12px 0 4px; }
-.admin-load-more-btn {
-  padding: 7px 20px; font-size: 13px; font-weight: 500;
+/* ── Pagination ────────────────────────────────────────────── */
+.admin-pager-row { padding: 12px 0 4px; }
+.admin-pager {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.admin-pager-range { font-size: 12px; color: var(--text-secondary); }
+.admin-pager-nav { display: flex; align-items: center; gap: 10px; }
+.admin-pager-page { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.admin-pager-btn {
+  padding: 6px 14px; font-size: 13px; font-weight: 500;
   background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: var(--radius-md); color: var(--text-secondary);
+  border-radius: var(--radius-md); color: var(--text-primary);
   cursor: pointer; transition: background var(--transition), border-color var(--transition);
 }
-.admin-load-more-btn:hover { border-color: var(--accent); color: var(--text-primary); }
-.admin-load-more-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.admin-pager-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.admin-pager-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── File stats row ───────────────────────────────────────── */
 .admin-file-stats-row {
