@@ -1,5 +1,6 @@
 // tests/editor-context-menu.spec.js
-// Right-click (selection) context menu: Add comment + quick formatting.
+// Right-click context menu: clipboard (Cut/Copy/Paste/Copy as plain text),
+// selection (Select all/Delete), Add comment, and quick formatting.
 //
 // Playwright's synthetic right-click (page.mouse.click(..., {button:'right'}))
 // doesn't reliably fire a real `contextmenu` DOM event across environments —
@@ -19,6 +20,12 @@ async function rightClickSelection(page, selectionStart, selectionEnd) {
   });
 }
 
+// Grants clipboard-read/write permission so Paste (navigator.clipboard.readText)
+// and Copy (navigator.clipboard.writeText) actually round-trip in Chromium.
+async function grantClipboardPermissions(context) {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+}
+
 test.describe('Editor selection context menu', () => {
   test('right-click with a selection shows the menu', async ({ page }) => {
     await createRoom(page);
@@ -27,11 +34,30 @@ test.describe('Editor selection context menu', () => {
     await expect(page.locator('#editor-context-menu')).toHaveClass(/visible/);
   });
 
-  test('right-click with no selection does not show the menu', async ({ page }) => {
+  test('right-click with no selection still shows the menu, with a reduced item set', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page, 'hello world');
     await rightClickSelection(page, 0, 0);
-    await page.waitForTimeout(150);
+    await expect(page.locator('#editor-context-menu')).toHaveClass(/visible/);
+    // Selection-only actions are hidden when nothing is selected.
+    await expect(page.locator('[data-ctx-action="cut"]')).toHaveClass(/hidden/);
+    await expect(page.locator('[data-ctx-action="copy"]')).toHaveClass(/hidden/);
+    await expect(page.locator('[data-ctx-action="bold"]')).toHaveClass(/hidden/);
+    // But actions that don't need a selection remain available.
+    await expect(page.locator('[data-ctx-action="paste"]')).not.toHaveClass(/hidden/);
+    await expect(page.locator('[data-ctx-action="select-all"]')).not.toHaveClass(/hidden/);
+    await expect(page.locator('[data-ctx-action="copy-plain"]')).not.toHaveClass(/hidden/);
+  });
+
+  test('Shift+right-click bypasses the custom menu', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, 'hello selectable world');
+    const editor = page.locator('#note-editor');
+    await editor.evaluate((el) => { el.selectionStart = 0; el.selectionEnd = 5; });
+    await editor.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, shiftKey: true, clientX: rect.x + 40, clientY: rect.y + 20 }));
+    });
     await expect(page.locator('#editor-context-menu')).not.toHaveClass(/visible/);
   });
 
@@ -69,5 +95,118 @@ test.describe('Editor selection context menu', () => {
     await page.locator('.app-footer').click();
     await expect(page.locator('#editor-context-menu')).not.toHaveClass(/visible/);
     await expect(page.locator('#note-editor')).toHaveValue('hello world');
+  });
+});
+
+test.describe('Editor context menu — clipboard actions', () => {
+  test('Cut removes the selection and copies it to the clipboard', async ({ page, context }) => {
+    await grantClipboardPermissions(context);
+    await createRoom(page);
+    await typeInEditor(page, 'hello selectable world');
+    await rightClickSelection(page, 6, 16); // "selectable"
+    await page.locator('[data-ctx-action="cut"]').click();
+    await expect(page.locator('#note-editor')).toHaveValue('hello  world');
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toBe('selectable');
+  });
+
+  test('Copy leaves the text unchanged and copies the selection', async ({ page, context }) => {
+    await grantClipboardPermissions(context);
+    await createRoom(page);
+    await typeInEditor(page, 'hello selectable world');
+    await rightClickSelection(page, 0, 5);
+    await page.locator('[data-ctx-action="copy"]').click();
+    await expect(page.locator('#note-editor')).toHaveValue('hello selectable world');
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toBe('hello');
+  });
+
+  test('Copy as plain text strips Markdown syntax from the selection', async ({ page, context }) => {
+    await grantClipboardPermissions(context);
+    await createRoom(page);
+    await typeInEditor(page, 'a **bold** word');
+    await rightClickSelection(page, 2, 10); // "**bold**"
+    await page.locator('[data-ctx-action="copy-plain"]').click();
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toBe('bold');
+  });
+
+  test('Copy as plain text with no selection copies the whole note, stripped', async ({ page, context }) => {
+    await grantClipboardPermissions(context);
+    await createRoom(page);
+    await typeInEditor(page, '# Title\n\nSome **bold** text.');
+    await rightClickSelection(page, 0, 0);
+    await page.locator('[data-ctx-action="copy-plain"]').click();
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toBe('Title\nSome bold text.');
+  });
+
+  test('Paste inserts clipboard text at the caret', async ({ page, context }) => {
+    await grantClipboardPermissions(context);
+    await createRoom(page);
+    await typeInEditor(page, 'hello world');
+    await page.evaluate(() => navigator.clipboard.writeText('PASTED'));
+    // Caret at position 5 (end of "hello"), no selection.
+    await rightClickSelection(page, 5, 5);
+    await page.locator('[data-ctx-action="paste"]').click();
+    await expect(page.locator('#note-editor')).toHaveValue('helloPASTED world');
+  });
+
+  test('Paste replaces an active selection', async ({ page, context }) => {
+    await grantClipboardPermissions(context);
+    await createRoom(page);
+    await typeInEditor(page, 'hello world');
+    await page.evaluate(() => navigator.clipboard.writeText('there'));
+    await rightClickSelection(page, 6, 11); // "world"
+    await page.locator('[data-ctx-action="paste"]').click();
+    await expect(page.locator('#note-editor')).toHaveValue('hello there');
+  });
+});
+
+test.describe('Editor context menu — selection actions', () => {
+  test('Select all selects the entire note', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, 'select everything please');
+    await rightClickSelection(page, 0, 0);
+    await page.locator('[data-ctx-action="select-all"]').click();
+    const sel = await page.locator('#note-editor').evaluate((el) => ({ start: el.selectionStart, end: el.selectionEnd }));
+    expect(sel).toEqual({ start: 0, end: 'select everything please'.length });
+  });
+
+  test('Delete removes the selection without touching the clipboard', async ({ page, context }) => {
+    await grantClipboardPermissions(context);
+    await createRoom(page);
+    await page.evaluate(() => navigator.clipboard.writeText('untouched'));
+    await typeInEditor(page, 'hello selectable world');
+    await rightClickSelection(page, 6, 16); // "selectable"
+    await page.locator('[data-ctx-action="delete"]').click();
+    await expect(page.locator('#note-editor')).toHaveValue('hello  world');
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toBe('untouched');
+  });
+});
+
+test.describe('Editor context menu — read-only viewers', () => {
+  test('read-only viewers see Copy/Copy as plain text/Select all but not Cut/Paste/Delete/formatting', async ({ page }) => {
+    const roomId = await createRoom(page);
+    await typeInEditor(page, 'read only content here');
+    const shareUrl = await page.evaluate(async () => {
+      const { getOrCreateReadOnlyShareLink } = await import('/SyncPad/src/rooms.js');
+      const roomIdFromUrl = location.pathname.split('/').filter(Boolean).pop();
+      const link = await getOrCreateReadOnlyShareLink(roomIdFromUrl);
+      return link?.token;
+    });
+    test.skip(!shareUrl, 'read-only share links require the optional share-link migration');
+    await page.goto(`/SyncPad/share/${shareUrl}`);
+    await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
+    await rightClickSelection(page, 0, 4);
+    await expect(page.locator('#editor-context-menu')).toHaveClass(/visible/);
+    await expect(page.locator('[data-ctx-action="copy"]')).not.toHaveClass(/hidden/);
+    await expect(page.locator('[data-ctx-action="copy-plain"]')).not.toHaveClass(/hidden/);
+    await expect(page.locator('[data-ctx-action="select-all"]')).not.toHaveClass(/hidden/);
+    await expect(page.locator('[data-ctx-action="cut"]')).toHaveClass(/hidden/);
+    await expect(page.locator('[data-ctx-action="paste"]')).toHaveClass(/hidden/);
+    await expect(page.locator('[data-ctx-action="delete"]')).toHaveClass(/hidden/);
+    await expect(page.locator('[data-ctx-action="bold"]')).toHaveClass(/hidden/);
   });
 });

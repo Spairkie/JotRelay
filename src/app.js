@@ -53,7 +53,7 @@ import {
   editBlockedReason,
 } from './permissions.js';
 
-import { renderMarkdown, renderMarkdownWithToc, renderTocHtml, toggleChecklistItem } from './markdown.js';
+import { renderMarkdown, renderMarkdownWithToc, renderTocHtml, toggleChecklistItem, markdownToPlainText } from './markdown.js';
 import {
   TEMPLATES, getTemplate, getCustomTemplates,
   saveCustomTemplate, renameCustomTemplate, deleteCustomTemplate,
@@ -2259,10 +2259,16 @@ function _wireHeader() {
 }
 
 // ── Editor selection context menu ───────────────────────────────────────────
-// Right-click (or long-press, on touch) a text selection in either surface
-// (Source textarea or Live/Split's CM6 pane) for quick formatting/comment
-// actions, instead of always having to reach for the toolbar or open the
-// Comments panel first.
+// Right-click (or long-press, on touch) anywhere in either editor surface
+// (Source textarea or Live/Split's CM6 pane) for clipboard, selection,
+// comment, and quick-formatting actions — modeled on the right-click menu
+// in Typora/Obsidian: always available (not just with an active selection),
+// with items that don't apply to the current state or permission level
+// hidden rather than shown disabled. Shift+right-click bypasses this
+// entirely for the browser's native menu (spell-check suggestions,
+// "Inspect", etc.) — the same escape hatch Gmail/Docs/Notion use.
+
+const _CTX_FORMAT_ACTIONS = ['bold', 'italic', 'strikethrough', 'highlight', 'code', 'link'];
 
 function _closeEditorContextMenu() {
   document.getElementById('editor-context-menu')?.classList.remove('visible');
@@ -2280,26 +2286,59 @@ function _openEditorContextMenu(x, y) {
   menu.style.top  = `${Math.max(8, top)}px`;
 }
 
+/**
+ * Show/hide each menu item for the current permission level and whether a
+ * selection is active, then collapse any separator left with nothing
+ * visible on one side of it (e.g. every formatting item hidden for a
+ * read-only viewer shouldn't leave a dangling divider line).
+ */
+function _updateContextMenuAvailability(hasSelection) {
+  const menu = document.getElementById('editor-context-menu');
+  if (!menu) return;
+  const editable = canEdit();
+  const setVisible = (action, visible) => {
+    menu.querySelector(`[data-ctx-action="${action}"]`)?.classList.toggle('hidden', !visible);
+  };
+
+  setVisible('cut',        editable && hasSelection);
+  setVisible('copy',       hasSelection);
+  setVisible('paste',      editable);
+  setVisible('copy-plain', true);
+  setVisible('select-all', true);
+  setVisible('delete',     editable && hasSelection);
+  setVisible('comment',    editable && hasSelection);
+  _CTX_FORMAT_ACTIONS.forEach((a) => setVisible(a, editable && hasSelection));
+
+  const isVisibleItem = (el) => el.classList.contains('editor-context-item') && !el.classList.contains('hidden');
+  const children = Array.from(menu.children);
+  children.forEach((el, i) => {
+    if (!el.classList.contains('editor-context-sep')) return;
+    const hasBefore = children.slice(0, i).some(isVisibleItem);
+    const hasAfter  = children.slice(i + 1).some(isVisibleItem);
+    el.classList.toggle('hidden', !(hasBefore && hasAfter));
+  });
+}
+
 function _wireEditorContextMenu() {
   const menu = document.getElementById('editor-context-menu');
   const wrap = document.querySelector('.editor-wrap');
   if (!menu || !wrap) return;
 
   wrap.addEventListener('contextmenu', (e) => {
-    if (!canEdit()) return; // fall through to the native menu (still lets read-only visitors copy)
+    if (e.shiftKey) return; // Shift+right-click → native browser menu
     const range = _currentSelectionRange();
-    if (!range || range.to <= range.from) return; // no selection — native menu is more useful here
+    const hasSelection = !!range && range.to > range.from;
     e.preventDefault();
+    _updateContextMenuAvailability(hasSelection);
     _openEditorContextMenu(e.clientX, e.clientY);
   });
 
   menu.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-ctx-action]');
-    if (!btn) return;
+    if (!btn || btn.classList.contains('hidden')) return;
     const action = btn.dataset.ctxAction;
     _closeEditorContextMenu();
-    if (action === 'comment') _openCommentsPanel();
-    else _applyFormatToActiveSurface(action);
+    _runContextMenuAction(action);
   });
 
   document.addEventListener('click', (e) => {
@@ -2307,6 +2346,91 @@ function _wireEditorContextMenu() {
   });
   document.addEventListener('scroll', _closeEditorContextMenu, true);
   window.addEventListener('resize', _closeEditorContextMenu);
+}
+
+function _runContextMenuAction(action) {
+  switch (action) {
+    case 'comment':    _openCommentsPanel(); return;
+    case 'cut':        _ctxCut(); return;
+    case 'copy':       _ctxCopy(); return;
+    case 'copy-plain': _ctxCopyPlain(); return;
+    case 'paste':      _ctxPaste(); return;
+    case 'delete':     _ctxDelete(); return;
+    case 'select-all': _ctxSelectAll(); return;
+    default:           _applyFormatToActiveSurface(action);
+  }
+}
+
+/** The current selection range, or a collapsed range at the end of the note if none. */
+function _ctxRangeOrEnd() {
+  const range = _currentSelectionRange();
+  if (range && Number.isFinite(range.from) && Number.isFinite(range.to)) return range;
+  const len = UI.getEditorValue().length;
+  return { from: len, to: len };
+}
+
+async function _ctxCopy() {
+  const { from, to } = _ctxRangeOrEnd();
+  const text = UI.getEditorValue().slice(from, to);
+  if (!text) return;
+  const ok = await copyToClipboard(text);
+  UI.showToast(ok ? 'Copied.' : 'Could not copy — your browser may be blocking clipboard access.', ok ? 'success' : 'error');
+}
+
+async function _ctxCopyPlain() {
+  const { from, to } = _ctxRangeOrEnd();
+  const val = UI.getEditorValue();
+  // No selection → plain-text-ify the whole note, matching Typora's "Copy as
+  // Plain Text" when nothing is selected, rather than copying nothing.
+  const src = to > from ? val.slice(from, to) : val;
+  const text = markdownToPlainText(src);
+  if (!text) return;
+  const ok = await copyToClipboard(text);
+  UI.showToast(ok ? 'Copied as plain text.' : 'Could not copy — your browser may be blocking clipboard access.', ok ? 'success' : 'error');
+}
+
+async function _ctxCut() {
+  if (!canEdit()) return;
+  const { from, to } = _ctxRangeOrEnd();
+  if (to <= from) return;
+  const text = UI.getEditorValue().slice(from, to);
+  const ok = await copyToClipboard(text);
+  UI.replaceEditorRange(from, to, '', from, from);
+  if (!ok) UI.showToast('Removed, but could not copy to clipboard.', 'warning');
+}
+
+function _ctxDelete() {
+  if (!canEdit()) return;
+  const { from, to } = _ctxRangeOrEnd();
+  if (to <= from) return;
+  UI.replaceEditorRange(from, to, '', from, from);
+}
+
+async function _ctxPaste() {
+  if (!canEdit()) return;
+  let text;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    UI.showToast('Could not read clipboard — use Ctrl/Cmd+V instead.', 'error');
+    return;
+  }
+  if (!text) return;
+  const { from, to } = _ctxRangeOrEnd();
+  const caret = from + text.length;
+  UI.replaceEditorRange(from, to, text, caret, caret);
+}
+
+function _ctxSelectAll() {
+  const len = UI.getEditorValue().length;
+  const useLive = LiveEditor.isMounted() && (_markdownMode === 'preview' || LiveEditor.hasFocus());
+  if (useLive) {
+    LiveEditor.focus();
+    LiveEditor.setSelection(0, len);
+  } else {
+    UI.focusEditor();
+    UI.setEditorSelection(0, len);
+  }
 }
 
 // Dismiss the slash menu on an outside click (e.g. clicking elsewhere in the

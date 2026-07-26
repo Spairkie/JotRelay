@@ -688,7 +688,7 @@ kbd {
   position: fixed; z-index: 1300; /* above modals (1200) — a right-click while a modal is open should still win */
   background: var(--bg-surface); border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
   border-radius: 10px; box-shadow: var(--shadow-lg);
-  padding: 6px; min-width: 168px;
+  padding: 6px; min-width: 190px; max-height: min(420px, 80vh); overflow-y: auto;
   opacity: 0; transform: scale(0.96); pointer-events: none;
   transition: opacity 0.12s ease, transform 0.12s ease;
 }

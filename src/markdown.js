@@ -184,6 +184,29 @@ export function renderTocHtml(headings) {
 }
 
 /**
+ * Render Markdown down to plain reading text — strip syntax markers (**,
+ * #, etc.) rather than showing them literally. Used by the editor's "Copy
+ * as plain text" context-menu action, for pasting into places that don't
+ * understand Markdown (chat apps, plain-text fields) without the raw `**`/
+ * `_`/`#`/`[]()`/etc. syntax cluttering the pasted text.
+ *
+ * Reuses the real renderer + tag-stripper rather than a separate regex
+ * pass, so this always matches what the note actually renders to — a
+ * second, independent "plain-text" parser would drift from the real one's
+ * edge cases (nested emphasis, escaped punctuation, reference links, …).
+ * @param {string} src
+ * @returns {string}
+ */
+export function markdownToPlainText(src) {
+  if (!src) return '';
+  const html = renderMarkdown(src);
+  return _stripHtmlTags(html)
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
  * Toggle a GFM-style checkbox at a 0-based index inside the source text.
  * Returns the updated source string. The index matches the order in which
  * checkboxes appear top-to-bottom in the rendered preview (the same value
