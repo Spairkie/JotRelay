@@ -38,7 +38,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 | File | Responsibility |
 |---|---|
 | `src/app.js` | Client-side routing, event wiring, global state coordination |
-| `src/ui.js` | All DOM manipulation — `showConfirm()`, `openTemplatesModal()`, `renderFilesList()`, `renderDevicesList()`, etc. |
+| `src/ui.js` | Barrel re-exporting `src/ui/*.js` — all DOM manipulation: `showConfirm()`, `openTemplatesModal()`, `renderFilesList()`, `renderDevicesList()`, etc. See `src/ui.js`'s header comment for the per-file split (core/dialogs/panels/editor/collab/feature-modals). |
 | `src/sync.js` | Live typing via Supabase Broadcast + durable save to Postgres (1 s debounce) |
 | `src/presence.js` | Device tracking, typing indicators, cursor position broadcasting |
 | `src/live-broadcast.js` | Low-level Supabase Broadcast event wiring |
@@ -51,7 +51,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 | `src/templates.js` | 13 built-in templates + localStorage custom templates; `BODY_MAX = 50000` |
 | `src/theme.js` | CSS variable theme system — 7 themes, toggled via `data-theme` on `<html>` |
 | `src/shortcuts.js` | Keyboard shortcut handler |
-| `src/admin.js` | Admin dashboard — Supabase Auth (`signInWithPassword`), RLS via `is_syncpad_admin()` |
+| `src/admin.js` | Admin dashboard entry point (auth-state routing only) — Supabase Auth (`signInWithPassword`), RLS via `is_syncpad_admin()`. Dashboard shell + tabs live in `src/admin/*.js`; see `src/admin.js`'s header comment for the module map. |
 | `src/utils.js` | `escapeHtml()`, `formatFileSize()`, `countWords()` |
 | `src/icons.js` | SVG icon strings |
 | `src/supabase.js` | Supabase client initialisation |
