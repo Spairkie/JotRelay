@@ -1,0 +1,164 @@
+// SyncPad – app/header.js
+// The app header: toolbar buttons, the "More" dropdown, room title
+// inline-edit, room link copy, the mobile action bar, footer quick buttons
+// (timestamp insert, floating-comment FAB, footer clock), and the segmented
+// Write/Preview/Split control.
+
+import { copyToClipboard, buildRoomUrl, insertTimestamp } from '../utils.js';
+import { updateRoomDisplayName, normalizeRoomDisplayName } from '../rooms.js';
+import { canEdit, editBlockedReason } from '../permissions.js';
+import * as UI from '../ui.js';
+import { state, BASE } from './state.js';
+import { _applyMarkdownMode, _openFloatingCommentComposer } from './comments-preview.js';
+import { _insertTextAtActiveCursor } from './editor-behavior.js';
+import { _renderRoomHeader } from './room-lifecycle.js';
+import { _openShareModal } from './landing.js';
+
+export function closeMoreDropdown() {
+  document.getElementById('more-dropdown')?.classList.remove('open');
+  document.getElementById('btn-more')?.setAttribute('aria-expanded', 'false');
+}
+
+export function _copyNoteToClipboard() {
+  return copyToClipboard(UI.getEditorValue())
+    .then(ok => ok
+      ? UI.showToast('Copied to clipboard.', 'success')
+      : UI.showToast('Could not copy.', 'error'));
+}
+
+export function _wireHeader() {
+  // ── Header ─────────────────────────────────────────────────────────────────
+  document.getElementById('btn-tools')?.addEventListener('click', () => { closeMoreDropdown(); UI.togglePanel('tools-panel'); });
+  document.getElementById('btn-files')?.addEventListener('click', () => { closeMoreDropdown(); UI.togglePanel('files-panel'); });
+  document.getElementById('btn-presence')?.addEventListener('click', () => { closeMoreDropdown(); UI.togglePanel('presence-panel'); });
+  document.getElementById('btn-settings')?.addEventListener('click', () => { closeMoreDropdown(); UI.togglePanel('settings-panel'); });
+  document.getElementById('btn-about')?.addEventListener('click', () => { closeMoreDropdown(); UI.openModal('about-modal'); });
+  // A-3: device-count-badge — keyboard accessibility (role="button" set in HTML)
+  const deviceCountBtn = document.getElementById('device-count-btn');
+  deviceCountBtn?.addEventListener('click', () => UI.togglePanel('presence-panel'));
+  deviceCountBtn?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); UI.togglePanel('presence-panel'); }
+  });
+
+  // More dropdown toggle
+  const moreBtn      = document.getElementById('btn-more');
+  const moreDropdown = document.getElementById('more-dropdown');
+  moreBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = moreDropdown?.classList.toggle('open');
+    moreBtn.setAttribute('aria-expanded', String(!!open));
+    // A-4: move focus to the first menu item when the dropdown opens.
+    if (open) {
+      const firstItem = moreDropdown?.querySelector('[role="menuitem"]');
+      requestAnimationFrame(() => firstItem?.focus());
+    }
+  });
+  // A-4: Arrow-key navigation and Escape within the more-dropdown.
+  moreDropdown?.addEventListener('keydown', (e) => {
+    const items = [...(moreDropdown.querySelectorAll('[role="menuitem"]'))];
+    const idx   = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      items[(idx + 1) % items.length]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[(idx - 1 + items.length) % items.length]?.focus();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeMoreDropdown();
+      moreBtn?.focus();
+    } else if (e.key === 'Tab') {
+      // Close the dropdown when tabbing out of it.
+      closeMoreDropdown();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!moreDropdown?.contains(e.target) && e.target !== moreBtn) closeMoreDropdown();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMoreDropdown(); UI.closeAllPanels(); UI.closeAllModals(); } });
+
+  document.getElementById('btn-share')?.addEventListener('click', () => {
+    _openShareModal();
+  });
+
+  document.getElementById('room-name')?.addEventListener('click', () => {
+    copyToClipboard(buildRoomUrl(BASE, state.roomId))
+      .then(ok => ok
+        ? UI.showToast('Room link copied!', 'success')
+        : UI.showToast('Could not copy link.', 'error'));
+  });
+
+  document.getElementById('room-title-edit-btn')?.addEventListener('click', () => {
+    if (!canEdit()) return;
+    UI.setRoomTitleEditMode(true, (state.room?.room_name || '').trim());
+  });
+  document.getElementById('room-title-cancel-btn')?.addEventListener('click', () => UI.setRoomTitleEditMode(false));
+  const saveTitle = async () => {
+    if (!canEdit()) return;
+    const input = document.getElementById('room-title-input');
+    const normalized = normalizeRoomDisplayName(input?.value || '');
+    // No-op when the name hasn't actually changed — avoids an unnecessary DB
+    // write and a misleading "Room title updated." toast on blur without edits.
+    if (normalized === (state.room?.room_name || '').trim()) {
+      UI.setRoomTitleEditMode(false);
+      return;
+    }
+    const saveBtn = document.getElementById('room-title-save-btn');
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      await updateRoomDisplayName(state.roomId, normalized);
+      state.room.room_name = normalized;
+      _renderRoomHeader();
+      UI.setRoomTitleEditMode(false);
+      UI.showToast('Room title updated.', 'success');
+    } catch {
+      // Keep edit mode open so the user can retry without clicking Edit again.
+      if (saveBtn) saveBtn.disabled = false;
+      input?.focus();
+      input?.select();
+      UI.showToast('Could not save title — check your connection and try again.', 'error');
+    }
+  };
+  document.getElementById('room-title-save-btn')?.addEventListener('click', saveTitle);
+  document.getElementById('room-title-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); saveTitle(); }
+    if (e.key === 'Escape') { e.preventDefault(); UI.setRoomTitleEditMode(false); }
+  });
+
+}
+
+export function _wireSegmentedMarkdownControl() {
+  // ── Segmented markdown control ─────────────────────────────────────────────
+  document.querySelectorAll('.md-seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode;
+      if (!mode) return;
+      _applyMarkdownMode(mode);
+    });
+  });
+
+}
+
+export function _wireMobileActionBar() {
+  // ── Mobile action bar ──────────────────────────────────────────────────────
+  document.getElementById('mob-btn-share')?.addEventListener('click', () => {
+    _openShareModal();
+  });
+  document.getElementById('mob-btn-files')?.addEventListener('click',    () => UI.togglePanel('files-panel'));
+  document.getElementById('mob-btn-tools')?.addEventListener('click',    () => UI.togglePanel('tools-panel'));
+  document.getElementById('mob-btn-presence')?.addEventListener('click', () => UI.togglePanel('presence-panel'));
+  document.getElementById('mob-btn-settings')?.addEventListener('click', () => UI.togglePanel('settings-panel'));
+
+}
+
+export function _wireFooterQuickButtons() {
+  // ── Footer quick buttons ───────────────────────────────────────────────────
+  document.getElementById('btn-insert-ts')?.addEventListener('click', () => {
+    if (!canEdit()) { UI.showToast(editBlockedReason() || 'Editing is disabled.', 'warning'); return; }
+    _insertTextAtActiveCursor(insertTimestamp());
+  });
+  UI.initFooterClock();
+
+  document.getElementById('btn-add-comment-fab')?.addEventListener('click', () => _openFloatingCommentComposer());
+
+}

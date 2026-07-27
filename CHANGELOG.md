@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 39 — Split `app.js` into `src/app/*.js`
+
+Branch: `claude/syncpad-review-fixes-180t01`
+
+`app.js` (4303 lines) was the last remaining monolith, explicitly deferred in Phase 36's `ui.js`/`admin.js` split as "a separate, larger effort" because of `wireEvents()`'s many helper closures. Split it into 14 focused modules under `src/app/`, following the same shared-mutable-`state`-object pattern already proven for `src/admin/state.js`:
+
+- `state.js` — the shared `state` object, `BASE`, editor-preference localStorage keys, and the slash-menu item list.
+- `routing.js` — URL route parsing, PWA "resume last room", recent-rooms list, and the Back/Forward-reload + root-link-suppress top-level listeners.
+- `room-lifecycle.js` — `boot()`, the join flow, `startApp()`, realtime room-state transitions, the expiration timer, and `teardownRealtimeSession()`.
+- `landing.js` — the landing screen and the contact form.
+- `files-panel.js`, `editor-behavior.js`, `comments-preview.js`, `panels.js`, `header.js`, `tools-and-modals.js`, `export.js`, `command-palette.js` — one feature area each (files, editor typing/formatting/slash-menu/context-menu, comments + Write/Preview/Split mode, side panels, header/chrome, generic panel/modal wiring, export, command palette).
+- `wiring.js` — the single orchestrator (`wireEvents()`) that wires every room-scoped DOM listener exactly once, plus the keyboard-shortcuts glue.
+- `pwa.js` — service-worker registration and install-prompt wiring (side effects only).
+
+`src/app.js` is now a 30-line entry point: wires the file-image resolver and the passcode/encryption auth-gate forms, then calls `boot()`.
+
+Verified mechanically rather than by hand: a scripted word-boundary check confirmed all 143 top-level functions/consts from the original file have exactly one home in the new split (zero missing, zero duplicated); a live-browser check imported all 14 new modules and the real `app.js` entry point with zero resolution errors; two new Playwright checks confirmed the landing screen and contact page boot with zero uncaught errors; the full existing test suite was re-run against the split. No behavior changes — this is a mechanical reorganization, same as Phase 36.
+
+Along the way, discovered (but left unfixed, out of scope for this refactor) that `tests/helpers.js`'s `createRoom()` waits on `window.__syncpadEventsWired === true`, a flag the app never actually sets (true of the original monolith too, not introduced by this split) — masked in this sandbox because `createRoom()` always skips earlier for lack of Supabase network access.
+
 ### Phase 38 — Rebuild `markdown.js` on the shared Lezer parse tree
 
 Branch: `claude/syncpad-review-fixes-180t01`
