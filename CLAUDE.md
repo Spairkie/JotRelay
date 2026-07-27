@@ -37,7 +37,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 
 | File | Responsibility |
 |---|---|
-| `src/app.js` | Client-side routing, event wiring, global state coordination |
+| `src/app.js` | Thin entry point (file-image resolver wiring, passcode/encryption auth-gate forms, starts the router). Routing, the room join flow, and all feature-area event wiring live in `src/app/*.js`; see `src/app.js`'s header comment for the module map. |
 | `src/ui.js` | Barrel re-exporting `src/ui/*.js` — all DOM manipulation: `showConfirm()`, `openTemplatesModal()`, `renderFilesList()`, `renderDevicesList()`, etc. See `src/ui.js`'s header comment for the per-file split (core/dialogs/panels/editor/collab/feature-modals). |
 | `src/sync.js` | Live typing via Supabase Broadcast + durable save to Postgres (1 s debounce) |
 | `src/presence.js` | Device tracking, typing indicators, cursor position broadcasting |
@@ -73,7 +73,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 All DOM writes go through `src/ui.js`. Never manipulate the DOM from `sync.js`, `files.js`, or any other module directly — call or add a function in `ui.js` instead.
 
 ### State Management
-`app.js` keeps its room/session/editor-UI state as properties on a single module-level `state` object (`const state = {...}`, declared near the top of the file) rather than scattered `let`s. Every property that is room-specific **must** be reset to `null` (or an empty structure) when navigating away from a room — see `teardownRealtimeSession()`. Properties that require this treatment include `state.roomId`, `state.encKey`, `state.encSalt`, `state.markdownMode`, `state.showPreview`, `state.expPreset`, `state.expTimer`, `state.searchMatches`, and `state.searchIndex`. (`admin.js`'s dashboard state follows the same pattern via `src/admin/state.js`.)
+The `app/*` modules keep their room/session/editor-UI state as properties on a single shared `state` object (`export const state = {...}` in `src/app/state.js`, imported by reference everywhere — mutate its properties, never reassign the binding) rather than scattered `let`s. Every property that is room-specific **must** be reset to `null` (or an empty structure) when navigating away from a room — see `teardownRealtimeSession()` in `src/app/room-lifecycle.js`. Properties that require this treatment include `state.roomId`, `state.encKey`, `state.encSalt`, `state.markdownMode`, `state.showPreview`, `state.expPreset`, `state.expTimer`, `state.searchMatches`, and `state.searchIndex`. (`admin.js`'s dashboard state follows the same pattern via `src/admin/state.js`.)
 
 ### Escaping User Content
 Any user-supplied string that is interpolated into an HTML template **must** be passed through `escapeHtml()` from `src/utils.js` first. Never trust room names, file names, note bodies, or any other user content without escaping.
@@ -99,7 +99,7 @@ if (!ok) return;
 There is no bundler. Use standard ES module `import`/`export` syntax. Paths must be relative (e.g., `'./utils.js'`). Do not use bare specifiers.
 
 ### BASE Path
-The app is served under `/SyncPad`. This constant is defined in `src/app.js` and `service-worker.js`. Any new route or asset reference must respect this prefix.
+The app is served under `/SyncPad`. This constant is defined in `src/app/state.js` (`BASE`) and `service-worker.js`. Any new route or asset reference must respect this prefix.
 
 ### Supabase Credentials
 Credentials are read from `window.SYNCPAD_CONFIG` which is injected inline in `index.html`. Do not hard-code keys anywhere else.
@@ -123,7 +123,7 @@ Transitions for background-color (0.22 s ease) are applied to `body`, panels, an
 
 - **Read-only share links with passcode/encryption.** A read-only visitor to a passcode-protected or encrypted room still sees the normal authentication screen (passcode/encryption prompt) and must pass it to view the room — the info screen is only shown when the room/share link itself doesn't exist. Passing the gate does not grant edit access on a forced-read-only route (`?mode=read`, `/share/:token`) — those stay read-only regardless.
 
-- **`room_id` alone is a sufficient write credential; `?mode=read` and `/share/:token` are a UI/UX convention, not a server-enforced boundary.** A plain room link (typed, bookmarked, or shared) is directly editable — visiting a URL for a room that doesn't exist yet creates it, same as the landing page's Create Room button (see `joinRoom()`'s not-found fallback in `app.js`). `?mode=read` and `/share/:token` discourage editing in the app's own UI but don't stop a technical visitor from writing directly, since they necessarily learn `room_id` from viewing the room's content. For a genuine, server-enforced "nobody can edit this" guarantee, use the room lock feature (`editing_locked`) — it's enforced by a Postgres trigger regardless of how the write is attempted. See `supabase/migrations/0009_revert_edit_token_write_gating.sql` for the reasoning (this reverted an earlier edit-token requirement that turned out to cost more in lost-access lockouts and deployment fragility than it was worth for a project not meant to hold sensitive data).
+- **`room_id` alone is a sufficient write credential; `?mode=read` and `/share/:token` are a UI/UX convention, not a server-enforced boundary.** A plain room link (typed, bookmarked, or shared) is directly editable — visiting a URL for a room that doesn't exist yet creates it, same as the landing page's Create Room button (see `joinRoom()`'s not-found fallback in `src/app/room-lifecycle.js`). `?mode=read` and `/share/:token` discourage editing in the app's own UI but don't stop a technical visitor from writing directly, since they necessarily learn `room_id` from viewing the room's content. For a genuine, server-enforced "nobody can edit this" guarantee, use the room lock feature (`editing_locked`) — it's enforced by a Postgres trigger regardless of how the write is attempted. See `supabase/migrations/0009_revert_edit_token_write_gating.sql` for the reasoning (this reverted an earlier edit-token requirement that turned out to cost more in lost-access lockouts and deployment fragility than it was worth for a project not meant to hold sensitive data).
 
 - **Admin route uses Supabase Auth.** The admin dashboard authenticates via `signInWithPassword` and relies on the `is_syncpad_admin()` RLS function. Anonymous users must not be able to reach admin data even if they manipulate the client.
 
@@ -137,7 +137,7 @@ Work through this list for every new feature or non-trivial change:
 - [ ] **Escape all user content.** Every user-supplied value rendered into HTML must pass through `escapeHtml()`.
 - [ ] **Use `showConfirm()`, not `window.confirm()`.** Any destructive or confirmation flow uses the async custom dialog. Add `danger: true` for irreversible actions.
 - [ ] **Guard `wireEvents()`.** If your feature calls `wireEvents()` or attaches listeners, ensure they cannot accumulate across navigations.
-- [ ] **Reset state on nav.** If you introduce new room-scoped module variables, add them to the navigation cleanup path in `app.js`.
+- [ ] **Reset state on nav.** If you introduce new room-scoped module variables, add them to the navigation cleanup path in `teardownRealtimeSession()` (`src/app/room-lifecycle.js`).
 - [ ] **Respect permissions.** Gate any write or destructive action behind the relevant flag from `src/permissions.js` (`isReadOnly`, `isOwner`, `isLocked`).
 - [ ] **Respect `BODY_MAX`.** Content written to the editor must not silently exceed the 50,000-character limit defined in `src/templates.js`.
 - [ ] **Evict caches on delete.** If your feature deletes a resource that is cached (e.g., a signed URL), evict the cache entry immediately.

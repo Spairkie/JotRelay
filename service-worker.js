@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'syncpad-v38';
+const CACHE_VERSION = 'syncpad-v39';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -24,6 +24,20 @@ const PRECACHE_ASSETS = [
   `${BASE}/styles/room-tools.css`,
   `${BASE}/styles/admin.css`,
   `${BASE}/src/app.js`,
+  `${BASE}/src/app/state.js`,
+  `${BASE}/src/app/routing.js`,
+  `${BASE}/src/app/room-lifecycle.js`,
+  `${BASE}/src/app/landing.js`,
+  `${BASE}/src/app/files-panel.js`,
+  `${BASE}/src/app/editor-behavior.js`,
+  `${BASE}/src/app/comments-preview.js`,
+  `${BASE}/src/app/panels.js`,
+  `${BASE}/src/app/header.js`,
+  `${BASE}/src/app/tools-and-modals.js`,
+  `${BASE}/src/app/export.js`,
+  `${BASE}/src/app/command-palette.js`,
+  `${BASE}/src/app/wiring.js`,
+  `${BASE}/src/app/pwa.js`,
   `${BASE}/src/ui.js`,
   `${BASE}/src/ui/core.js`,
   `${BASE}/src/ui/dialogs.js`,
@@ -54,6 +68,7 @@ const PRECACHE_ASSETS = [
   `${BASE}/src/supabase.js`,
   `${BASE}/src/utils.js`,
   `${BASE}/src/markdown.js`,
+  `${BASE}/src/markdown-highlight-extension.js`,
   `${BASE}/src/templates.js`,
   `${BASE}/src/permissions.js`,
   `${BASE}/src/theme.js`,
