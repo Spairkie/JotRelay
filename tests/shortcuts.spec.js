@@ -4,7 +4,7 @@
 // is the default mode for new rooms. shortcuts.js used to compute "am I in
 // the editor?" by comparing document.activeElement against a reference to
 // the plain <textarea> captured once at init, so every Ctrl-based shortcut
-// (formatting, Find, cursor chat, etc.) silently no-op'd whenever the live
+// (formatting, Find, add comment, etc.) silently no-op'd whenever the live
 // surface actually had focus. These specifically click into the live
 // surface's contenteditable content before dispatching keys, so they'd have
 // caught that regression.
@@ -29,14 +29,14 @@ test.describe('Keyboard shortcuts inside the CM6 live surface', () => {
     expect(await getEditorContent(page)).toBe('**hello** world');
   });
 
-  test('Ctrl+Shift+/ opens the cursor chat composer when focus is genuinely in the live surface', async ({ page }) => {
+  test('Ctrl+Shift+/ opens the floating comment composer when focus is genuinely in the live surface', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page, 'some text here');
     await setEditorMode(page, 'preview');
 
     await page.locator('.note-live .cm-content').click();
     await page.keyboard.press('Control+Shift+/');
-    await expect(page.locator('.cursor-chat-composer input')).toBeVisible();
+    await expect(page.locator('.comment-floating-composer input')).toBeVisible();
   });
 
   test('Ctrl+F opens Find & Replace when focus is in the live surface', async ({ page }) => {

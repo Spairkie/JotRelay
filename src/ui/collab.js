@@ -2,142 +2,70 @@
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { countWords, formatTimestamp, escapeHtml } from '../utils.js';
 
-// ── Cursor chat (Figma-style ephemeral message near a caret) ──────────────────
-// Bubbles live in #cursor-chat-layer, a full-viewport fixed layer — see
-// style.css. Never persisted; a bubble is just a DOM node with a timer.
-
-const _cursorChatBubbles = new Map(); // device_id -> { el, timer, id }
-let _cursorChatComposerEl = null;
-const CURSOR_CHAT_EMOJI = ['👍', '❤️', '😂', '🎉', '👀'];
+// ── Floating comment composer ───────────────────────────────────────────────
+// A small inline input that opens right at the current selection/caret (the
+// same "Figma cursor-chat" positioning this UI is built from), used by the
+// comment FAB, the Ctrl+Shift+/ shortcut, and the editor context menu's "Add
+// comment" action. Submitting always persists a real anchored comment —
+// there's no separate ephemeral chat path anymore; comments' own realtime
+// subscription (see comments.js/app.js) already shows new ones live to every
+// connected device, without a redundant broadcast channel.
+let _floatingComposerEl = null;
 
 /**
- * Open a small inline input at `{x, y}` (viewport coordinates, e.g. from
- * LiveEditor.coordsAtPos()) for composing a cursor-chat message. Only one
- * composer at a time — opening a new one discards any other in progress.
- * @param {{x:number, y:number}} coords
- * @param {(text: string) => void} onSubmit – called with the trimmed text on Enter; not called on cancel.
+ * @param {{x:number, y:number}} coords - viewport coordinates, e.g. from
+ *   LiveEditor.coordsAtPos() or getCaretViewportCoords().
+ * @param {(text: string) => void} onSubmit - called with the trimmed text on Enter; not called on cancel.
  */
-export function openCursorChatComposer(coords, onSubmit) {
-  closeCursorChatComposer();
-  const layer = document.getElementById('cursor-chat-layer');
+export function openFloatingCommentComposer(coords, onSubmit) {
+  closeFloatingCommentComposer();
+  const layer = document.getElementById('comment-floating-layer');
   if (!layer) return;
 
   const wrap = document.createElement('div');
-  wrap.className = 'cursor-chat-composer';
+  wrap.className = 'comment-floating-composer';
   wrap.style.left = `${coords.x}px`;
   wrap.style.top  = `${coords.y}px`;
 
   const input = document.createElement('input');
   input.type = 'text';
-  input.maxLength = 80;
-  input.placeholder = 'Say something…';
-  input.setAttribute('aria-label', 'Cursor chat message');
+  input.maxLength = 1000;
+  input.placeholder = 'Add a comment…';
+  input.setAttribute('aria-label', 'New comment');
   wrap.appendChild(input);
   layer.appendChild(wrap);
-  _cursorChatComposerEl = wrap;
+  _floatingComposerEl = wrap;
   input.focus();
 
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       const text = input.value.trim();
-      closeCursorChatComposer();
+      closeFloatingCommentComposer();
       if (text) onSubmit?.(text);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      closeCursorChatComposer();
+      closeFloatingCommentComposer();
     }
   });
-  input.addEventListener('blur', () => closeCursorChatComposer());
+  input.addEventListener('blur', () => closeFloatingCommentComposer());
 }
 
-export function closeCursorChatComposer() {
+export function closeFloatingCommentComposer() {
   // Removing a focused input can synchronously fire its own 'blur' handler
   // (which also calls this function) before .remove() returns — null the
   // reference out first so that re-entrant call sees nothing to do, instead
   // of racing to remove the same node twice.
-  const el = _cursorChatComposerEl;
-  _cursorChatComposerEl = null;
+  const el = _floatingComposerEl;
+  _floatingComposerEl = null;
   el?.remove();
 }
 
-/**
- * Show (or replace) an ephemeral cursor-chat bubble from `deviceId`, fading
- * out on its own after ~5s. A second message from the same device before
- * the first fades replaces it and resets the timer, rather than stacking.
- * Hovering the bubble reveals a small emoji quick-react row (any visible
- * bubble — yours or a remote one — can be reacted to, matching cursor
- * chat's own no-permission-gate design since neither writes to the note).
- * @param {{deviceId: string, deviceName: string, text: string, x: number, y: number, id: string}} msg
- * @param {(id: string, emoji: string) => void} [onReact]
- */
-export function showCursorChatBubble({ deviceId, deviceName, text, x, y, id }, onReact) {
-  const layer = document.getElementById('cursor-chat-layer');
-  if (!layer) return;
-
-  const existing = _cursorChatBubbles.get(deviceId);
-  if (existing) { clearTimeout(existing.timer); existing.el.remove(); }
-
-  const el = document.createElement('div');
-  el.className = 'cursor-chat-bubble';
-  el.style.left = `${x}px`;
-  el.style.top  = `${y}px`;
-  el.innerHTML = `
-    <span class="cursor-chat-bubble-name">${escapeHtml(deviceName || 'Someone')}</span>
-    <span class="cursor-chat-bubble-text">${escapeHtml(text)}</span>
-    <div class="cursor-chat-bubble-badges"></div>
-    <div class="cursor-chat-bubble-reacts">
-      ${CURSOR_CHAT_EMOJI.map((em) => `<button type="button" data-emoji="${em}" aria-label="React with ${em}">${em}</button>`).join('')}
-    </div>`;
-  el.querySelectorAll('.cursor-chat-bubble-reacts button').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const emoji = btn.dataset.emoji;
-      addCursorChatReaction(id, emoji); // optimistic local echo — self:false means we never receive our own broadcast back
-      onReact?.(id, emoji);
-    });
-  });
-  layer.appendChild(el);
-
-  const timer = setTimeout(() => {
-    el.classList.add('out');
-    setTimeout(() => { el.remove(); _cursorChatBubbles.delete(deviceId); }, 400);
-  }, 5000);
-  _cursorChatBubbles.set(deviceId, { el, timer, id });
-
-  // The bubble itself is a purely visual, viewport-positioned element — a
-  // screen reader has no way to discover it otherwise, so announce it
-  // through the same live region presence typing/join events use.
-  const region = document.getElementById('presence-live-region');
-  if (region) region.textContent = `${deviceName || 'Someone'} says: ${text}`;
-}
-
-/**
- * Attach a fading emoji badge to whichever currently-visible bubble has
- * `targetId` — a no-op if that bubble already faded out locally (the
- * reaction has nothing left to attach to, and that's fine; it's as ephemeral
- * as the message itself).
- * @param {string} targetId
- * @param {string} emoji
- */
-export function addCursorChatReaction(targetId, emoji) {
-  const entry = [..._cursorChatBubbles.values()].find((b) => b.id === targetId);
-  const badges = entry?.el.querySelector('.cursor-chat-bubble-badges');
-  if (!badges) return;
-  const badge = document.createElement('span');
-  badge.className = 'cursor-chat-reaction-badge';
-  badge.textContent = emoji;
-  badges.appendChild(badge);
-  setTimeout(() => {
-    badge.classList.add('out');
-    setTimeout(() => badge.remove(), 300);
-  }, 2200);
-}
-
-/** Clear every cursor-chat bubble/composer immediately — used on room navigation. */
-export function clearCursorChat() {
-  for (const { el, timer } of _cursorChatBubbles.values()) { clearTimeout(timer); el.remove(); }
-  _cursorChatBubbles.clear();
-  closeCursorChatComposer();
+/** Close the composer and collapse any expanded floating comment bubble
+ *  immediately — used on room navigation. */
+export function clearFloatingComments() {
+  closeFloatingCommentComposer();
+  renderFloatingComments([]);
 }
 
 // ── Remote update notice (4 actions: Apply / Keep mine / Copy remote / Dismiss) ─
@@ -303,29 +231,65 @@ export function renderCommentsList(comments, { onDelete, onJump, canDelete = tru
 }
 
 /**
- * Render small dot markers in the editor's margin, one per comment, so
- * comments are visible while scrolling instead of only discoverable by
- * opening the side panel. `dots` are already positioned (editor-wrap-
- * relative pixel Y) by the caller — app.js owns converting an anchor
- * offset to a Y coordinate, since that requires reaching into whichever
- * surface (textarea or LiveEditor) is currently visible, which this
- * module intentionally doesn't know about.
- * @param {{id: string, y: number, preview: string}[]} dots
- * @param {(id: string) => void} onJump
+ * Render floating comment markers in the editor's margin — one dot per
+ * comment, so comments are visible while scrolling instead of only
+ * discoverable by opening the side panel (this is the merged cursor-chat +
+ * comments feature: comments are the single, persisted, floating, navigable
+ * annotation type). Clicking a dot toggles an expanded bubble at that same
+ * position showing the full comment (author/time/text) plus Prev/Next
+ * navigation and delete, right where the annotation lives in the note
+ * instead of only in the side panel list.
+ *
+ * `dots` are already positioned (editor-wrap-relative pixel Y) by the
+ * caller — app.js owns converting an anchor offset to a Y coordinate, since
+ * that requires reaching into whichever surface (textarea or LiveEditor) is
+ * currently visible, which this module intentionally doesn't know about.
+ *
+ * @param {{id: string, y: number, preview: string, author: string, createdAt: string, text: string|null}[]} dots
+ * @param {object} [opts]
+ * @param {string|null} [opts.activeId] - which comment (if any) is expanded into a bubble
+ * @param {(id: string) => void} [opts.onToggle] - dot clicked
+ * @param {(id: string) => void} [opts.onDelete]
+ * @param {(direction: 1|-1) => void} [opts.onNavigate]
+ * @param {boolean} [opts.canDelete]
  */
-export function renderCommentMargin(dots, onJump) {
+export function renderFloatingComments(dots, { activeId, onToggle, onDelete, onNavigate, canDelete = true } = {}) {
   const layer = document.getElementById('comment-margin-layer');
   if (!layer) return;
   layer.innerHTML = '';
+
   (dots || []).forEach((d) => {
     const dot = document.createElement('button');
     dot.className = 'comment-dot';
+    dot.classList.toggle('active', d.id === activeId);
     dot.style.top = `${d.y}px`;
     dot.type = 'button';
-    dot.title = d.preview ? `Comment: "${d.preview}"` : 'Jump to comment';
-    dot.setAttribute('aria-label', 'Jump to comment');
-    dot.addEventListener('click', () => onJump?.(d.id));
+    dot.title = d.preview ? `Comment: "${d.preview}"` : 'View comment';
+    dot.setAttribute('aria-label', 'View comment');
+    dot.addEventListener('click', () => onToggle?.(d.id));
     layer.appendChild(dot);
   });
+
+  const active = (dots || []).find((d) => d.id === activeId);
+  if (!active) return;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'comment-floating-bubble';
+  bubble.style.top = `${active.y}px`;
+  const bodyHtml = active.text == null
+    ? '<span class="comment-text-locked">🔒 Encrypted — open with the passphrase to view</span>'
+    : escapeHtml(active.text);
+  bubble.innerHTML = `
+    <div class="comment-floating-bubble-meta">${escapeHtml(active.author || 'Someone')} · ${formatTimestamp(active.createdAt)}</div>
+    <div class="comment-floating-bubble-text">${bodyHtml}</div>
+    <div class="comment-floating-bubble-actions">
+      <button type="button" class="comment-nav-btn comment-nav-prev" aria-label="Previous comment">‹</button>
+      <button type="button" class="comment-nav-btn comment-nav-next" aria-label="Next comment">›</button>
+      ${canDelete ? '<button type="button" class="comment-delete-btn" aria-label="Delete comment" title="Delete comment"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>' : ''}
+    </div>`;
+  bubble.querySelector('.comment-nav-prev')?.addEventListener('click', () => onNavigate?.(-1));
+  bubble.querySelector('.comment-nav-next')?.addEventListener('click', () => onNavigate?.(1));
+  bubble.querySelector('.comment-delete-btn')?.addEventListener('click', () => onDelete?.(active.id));
+  layer.appendChild(bubble);
 }
 

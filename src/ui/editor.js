@@ -168,8 +168,8 @@ function _measureCaretPixelY(editor) {
 
 /**
  * Viewport pixel coordinates for a character offset into the Write-mode
- * textarea's value (cursor-chat composer/bubble placement — the Write-mode
- * counterpart to LiveEditor.coordsAtPos()). Reuses the same mirror-div
+ * textarea's value (floating comment composer/bubble placement — the
+ * Write-mode counterpart to LiveEditor.coordsAtPos()). Reuses the same mirror-div
  * measurement as focus/typewriter mode, converted from editor-box-relative
  * to viewport-relative by adding the editor's own on-screen position and
  * subtracting its scroll offset (scrollLeft is always 0 in practice — the

@@ -883,8 +883,8 @@ export function getCaretPos() {
 }
 
 /**
- * Viewport pixel coordinates for a document offset (cursor-chat bubble
- * placement). Returns null when unmounted or the position can't be resolved
+ * Viewport pixel coordinates for a document offset (floating comment
+ * composer/bubble placement). Returns null when unmounted or the position can't be resolved
  * (e.g. a remote peer's offset from a doc that has since changed length).
  */
 export function coordsAtPos(pos) {

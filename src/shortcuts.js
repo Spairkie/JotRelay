@@ -19,7 +19,7 @@
 //   Ctrl/Cmd + `             Inline code
 //   Ctrl/Cmd + Shift + S     Split view
 //   Ctrl/Cmd + Shift + M     Toggle monospace
-//   Ctrl/Cmd + Shift + /     Send a cursor chat message
+//   Ctrl/Cmd + Shift + /     Add a comment at the cursor/selection
 //   Ctrl/Cmd + /             Open shortcuts modal
 //   Alt + Shift + P          Toggle preview
 //   Alt + Shift + S          Open share modal
@@ -51,7 +51,7 @@ let _onOpenShortcuts  = null;
 let _onOpenShare      = null;
 let _onInsertTimestamp = null;
 let _onCopyNote       = null;
-let _onCursorChat     = null;
+let _onAddComment     = null;
 let _onOpenCommandPalette = null;
 let _onApplyFormat    = null;  // (action: 'bold'|'italic'|'link'|'code') => void
 let _isLiveFocused    = null;  // () => boolean — true when the CM6 live surface has real DOM focus
@@ -81,7 +81,7 @@ export function initShortcuts(handlers) {
   _onOpenShare       = handlers.onOpenShare;
   _onInsertTimestamp = handlers.onInsertTimestamp;
   _onCopyNote        = handlers.onCopyNote;
-  _onCursorChat      = handlers.onCursorChat;
+  _onAddComment      = handlers.onAddComment;
   _onOpenCommandPalette = handlers.onOpenCommandPalette;
   _onApplyFormat     = handlers.onApplyFormat;
   _isLiveFocused     = handlers.isLiveFocused;
@@ -172,7 +172,7 @@ function _handleKeyDown(e) {
   if (shift) {
     if (key === 'S' || key === 's') { e.preventDefault(); _onToggleSplit?.();     return; }
     if (key === 'M' || key === 'm') { e.preventDefault(); _onToggleMonospace?.(); return; }
-    if (key === '?' || key === '/') { e.preventDefault(); _onCursorChat?.(); return; }
+    if (key === '?' || key === '/') { e.preventDefault(); _onAddComment?.(); return; }
   }
 
   // ── Markdown formatting (editor only, edit mode only) — routed through

@@ -70,12 +70,12 @@ test.describe('Editor selection context menu', () => {
     await expect(page.locator('#editor-context-menu')).not.toHaveClass(/visible/);
   });
 
-  test('Add comment opens the Comments panel with the selection pre-filled', async ({ page }) => {
+  test('Add comment opens the floating composer at the selection', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page, 'another selection here');
     await rightClickSelection(page, 8, 17); // "selection"
     await page.locator('[data-ctx-action="comment"]').click();
-    await expect(page.locator('#comments-panel')).toHaveClass(/open/);
+    await expect(page.locator('.comment-floating-composer input')).toBeVisible();
   });
 
   test('Escape closes the menu', async ({ page }) => {

@@ -38,6 +38,18 @@ Split the two largest files into per-domain modules (`src/ui/*.js`, `src/admin/*
 - **`ui/core.js` dropped `_footerTimeFormatter`/`_footerClockTimer`** during the split — both were declared at the top of the former monolithic `ui.js` but never carried over, so `initFooterClock()` (called by every room's `wireEvents()`) threw a `ReferenceError` and aborted room startup. Restored both declarations in `ui/core.js`.
 - **`service-worker.js`'s `PRECACHE_ASSETS` still listed only `src/ui.js` and `src/admin.js`**, not any of the new `ui/*.js`/`admin/*.js` files — an offline PWA launch before another online service-worker-controlled load could 503 on any of them, breaking `app.js`'s module graph. Added all 15 new module paths; bumped cache to `syncpad-v38`.
 
+### Phase 37 — Merge cursor chat into Comments
+
+Branch: `claude/syncpad-review-fixes-180t01`
+
+Cursor chat (an ephemeral, viewport-anchored, broadcast-only message near a caret — never persisted, no independent lifetime) and Comments (a persisted, text-range-anchored annotation, side-panel only) were two separate features with overlapping UI (both opened a small floating input near the caret). Merged them into one: Comments is now the single annotation type, addable either from the side panel or from a floating composer opened right at the current selection — the same trigger surface (FAB, `Ctrl/⌘ + Shift + /`, editor context menu's "Add comment") cursor chat used, but submitting now always persists a real anchored comment instead of broadcasting an ephemeral one. Existing comments also gained a floating display: clicking a margin dot expands a bubble with the full text/author, plus Prev/Next navigation between comments (from either the bubble or the side panel header) — cursor chat's floating/ephemeral polish, applied to comments' persistence and cross-device visibility (comments' own realtime `postgres_changes` subscription already shows new ones live, making cursor chat's separate broadcast channel and emoji quick-react redundant — both removed).
+
+- `src/live-broadcast.js`: removed `broadcastCursorChat()`/`broadcastCursorChatReaction()` and the `cursor_chat`/`cursor_chat_reaction` broadcast events.
+- `src/ui/collab.js`: replaced the ephemeral cursor-chat bubble/composer (`showCursorChatBubble`, `addCursorChatReaction`, fade timers, emoji quick-react) with `openFloatingCommentComposer()`/`closeFloatingCommentComposer()` (renamed, now always persists) and `renderFloatingComments()` (margin dots + one expandable bubble with Prev/Next/delete, replacing `renderCommentMargin()`).
+- `src/app.js`: `_openCursorChatComposer()` → `_openFloatingCommentComposer()`, now anchors to the current selection (not just caret) and submits via the existing `_submitComment()` path; added `_toggleCommentBubble()`/`_navigateComment()`/`state.activeCommentId` for the floating bubble's open/collapse and Prev/Next; the editor context menu's "Add comment" now opens the floating composer directly instead of the side panel.
+- `index.html`/CSS: `#btn-cursor-chat-fab` → `#btn-add-comment-fab` (now `data-readonly-hide`, matching other edit-only actions), `#cursor-chat-layer` → `#comment-floating-layer`, Prev/Next buttons added to the Comments panel header.
+- `tests/cursor-chat.spec.js` removed; its coverage folded into `tests/comments.spec.js` (composer, bubble expand/collapse, navigation, delete) and `tests/editor-context-menu.spec.js`/`tests/shortcuts.spec.js` (updated for the new floating-composer behavior).
+
 ### Phase 34 — Pre-user-testing push: scroll sync, default mode, Find, TOC, cross-mode feature parity, device count
 
 Branch: `claude/codebase-review-testing-fjicqa`

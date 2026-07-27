@@ -13,8 +13,8 @@
 //                            list, Version history, Expiration, Theme picker
 //   ui/editor.js          – editor surface: modes, Focus/Typewriter mode,
 //                            scroll sync, TOC, slash menu, upload zone
-//   ui/collab.js          – Cursor chat, Comments, remote-update notice,
-//                            typing indicator
+//   ui/collab.js          – Floating comments (composer + margin dots/bubble),
+//                            Comments panel, remote-update notice, typing indicator
 //   ui/feature-modals.js  – Command palette, Share modal, Templates modal
 //
 // Adding a new UI function: put it in whichever of the above it belongs to

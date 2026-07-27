@@ -70,7 +70,7 @@
 - **Custom templates** — save, rename, delete, export/import as JSON (localStorage-backed, up to 50 000 chars each)
 - **Find & Replace** — case-insensitive search with Prev / Next navigation, Replace, and Replace All
 - **Selection context menu** — right-click (or long-press) selected text for quick formatting (bold/italic/strikethrough/highlight/code/link) or to add a comment, without navigating to the toolbar or Comments panel first
-- **Inline comments** — anchor a comment to a text range from the Comments panel or the selection context menu above; a small dot in the editor's margin marks each comment's anchor line (click to jump back to it), so comments stay visible while scrolling instead of only living in the panel list; requires the optional `supabase/migrations/0003_room_comments.sql` migration
+- **Inline comments** — anchor a comment to a text range from the Comments panel, the selection context menu, or the floating add-comment button (bottom-right of the editor, or `Ctrl/⌘ + Shift + /`) which opens a composer right at your selection/caret; a small dot in the editor's margin marks each comment's anchor line — click to expand it into a floating bubble with the full text and Prev/Next navigation between comments, without needing to open the panel; requires the optional `supabase/migrations/0003_room_comments.sql` migration
 - **Version History** — browse and restore past snapshots of a room's content; requires the optional `supabase/migrations/0004_version_history.sql` migration
 - **Command palette** — `Ctrl/⌘ + K` (or the More menu) opens a searchable list of every app action — modes, panels, sharing, export, themes, and more — filter by typing, navigate with arrow keys, run with Enter
 - **Slash-command quick-insert** — type `/` at the start of a line (Write mode) to open a filterable popup for headings, lists, checklist, links, code blocks, dividers, timestamp, and templates, without leaving the keyboard for the toolbar
@@ -83,7 +83,6 @@
 - **Presence indicator** — see all connected devices with online count
 - **Typing indicator** — shows when another device is actively editing
 - **Cursor / activity line** — approximate editor line broadcast to other devices (throttled)
-- **Cursor chat** — send a short ephemeral message that appears as a fading bubble near your caret for everyone else in the room (floating action button, bottom-right of the editor, or `Ctrl/⌘ + Shift + /`); hover any bubble to quick-react with an emoji
 - **Device rename** — tap your device name to rename it locally
 - **Recent rooms** — the landing page remembers the last 8 rooms visited on this device (local only) for one-click return
 

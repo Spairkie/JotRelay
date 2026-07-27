@@ -17,7 +17,7 @@ import { listComments, addComment, deleteComment, subscribeToComments } from './
 import {
   initBroadcast, destroyBroadcast,
   broadcastSettingsChange, broadcastFilesChange, cancelPendingTypingBroadcast, cancelPendingLiveContentBroadcast,
-  broadcastClear, broadcastViewOnceCleared, broadcastCursorChat, broadcastCursorChatReaction,
+  broadcastClear, broadcastViewOnceCleared,
 } from './live-broadcast.js';
 
 import {
@@ -99,6 +99,9 @@ const state = {
   // setCommentAnchors() silently no-ops while unmounted (e.g. the room loaded
   // straight into Write mode, where nothing is mounted yet to receive them).
   lastComments: [],
+  // Which comment (if any) has its floating bubble expanded — see
+  // _refreshFloatingComments()/_navigateComment().
+  activeCommentId: null,
   slashOpen: false,
   slashStart: null, // editor offset of the triggering '/'
   slashCoords: null, // viewport coords, cached at open (the '/' doesn't move as the query grows)
@@ -1036,24 +1039,6 @@ async function startApp() {
       _refreshPreviewIfActive();
       UI.showToast('This note was view-once and has been cleared from the server.', 'warning', 6000);
     },
-    onRemoteCursorChat: (payload) => {
-      // payload.pos is a plain text offset — mode-agnostic on the wire.
-      // Resolve it to screen coordinates on whichever surface is actually
-      // visible locally, independent of what mode the sender was in.
-      const live = state.markdownMode !== 'write' && LiveEditor.isMounted();
-      const coords = live ? LiveEditor.coordsAtPos(payload.pos) : UI.getCaretViewportCoords(payload.pos);
-      if (!coords) return;
-      UI.showCursorChatBubble({
-        deviceId:   payload.device_id,
-        deviceName: payload.device_name,
-        text:       String(payload.text || '').slice(0, 80),
-        x: coords.x, y: coords.y,
-        id: payload.id,
-      }, (targetId, emoji) => broadcastCursorChatReaction(targetId, emoji));
-    },
-    onRemoteCursorChatReaction: (payload) => {
-      UI.addCursorChatReaction(payload.target_id, payload.emoji);
-    },
   });
 
   initPresence(state.roomId, (devices) => {
@@ -1079,7 +1064,7 @@ async function startApp() {
     );
     // "Follow" mode: jump the local view to the followed device's cursor as
     // it moves. Only meaningful where there's a real caret to scroll to —
-    // the CM6 live surface — same gating as cursor chat.
+    // the CM6 live surface — same gating the floating comment composer uses.
     if (state.followedDeviceId && state.markdownMode !== 'write' && LiveEditor.isMounted()) {
       const followed = devices.find((d) => d.device_id === state.followedDeviceId);
       if (followed && typeof followed.cursor_pos === 'number') {
@@ -1738,7 +1723,7 @@ function _wireShortcuts() {
       UI.showToast('Timestamp inserted.', 'success');
     },
     onCopyNote: () => _copyNoteToClipboard(),
-    onCursorChat: () => _openCursorChatComposer(),
+    onAddComment: () => _openFloatingCommentComposer(),
     onOpenCommandPalette: () => _openCommandPalette(),
     onApplyFormat: (action) => _applyFormatToActiveSurface(action),
     isLiveFocused: () => LiveEditor.isMounted() && LiveEditor.hasFocus(),
@@ -1878,7 +1863,7 @@ function _wireEditorCore() {
     LiveEditor.syncFromText(UI.getEditorValue());
     // Debounced so large documents don't re-render markdown on every keystroke.
     _debouncedRefreshPreview();
-    _debouncedRefreshCommentMargin();
+    _debouncedRefreshFloatingComments();
     _updateSlashMenu();
   });
   editor?.addEventListener('blur', () => { onEditorBlur(); _closeSlashMenu(); });
@@ -2097,11 +2082,11 @@ function _wireEditorToolbarAndLifecycle() {
   // resizing (text re-wraps at a different width, changing the caret's line).
   // Typewriter mode only re-centers on resize, not on scroll — re-centering
   // on every scroll event would fight the user's own manual scrolling.
-  editor?.addEventListener('scroll', () => { UI.refreshFocusMode(); _refreshCommentMargin(); });
+  editor?.addEventListener('scroll', () => { UI.refreshFocusMode(); _refreshFloatingComments(); });
   window.addEventListener('resize', () => {
     UI.refreshFocusMode();
     UI.refreshTypewriterMode();
-    _refreshCommentMargin();
+    _refreshFloatingComments();
   });
 
   // Block paste keystrokes when the editor is locked. The textarea readonly
@@ -2356,7 +2341,7 @@ function _wireEditorContextMenu() {
 
 function _runContextMenuAction(action) {
   switch (action) {
-    case 'comment':    _openCommentsPanel(); return;
+    case 'comment':    _openFloatingCommentComposer(); return;
     case 'cut':        _ctxCut(); return;
     case 'copy':       _ctxCopy(); return;
     case 'copy-plain': _ctxCopyPlain(); return;
@@ -2492,7 +2477,7 @@ function _wireFooterQuickButtons() {
   });
   UI.initFooterClock();
 
-  document.getElementById('btn-cursor-chat-fab')?.addEventListener('click', () => _openCursorChatComposer());
+  document.getElementById('btn-add-comment-fab')?.addEventListener('click', () => _openFloatingCommentComposer());
 
 }
 
@@ -2635,6 +2620,8 @@ function _wireTools() {
   });
   document.getElementById('tool-history')?.addEventListener('click', () => { _openHistoryPanel(); });
   document.getElementById('tool-comments')?.addEventListener('click', () => { _openCommentsPanel(); });
+  document.getElementById('comment-panel-prev')?.addEventListener('click', () => _navigateComment(-1));
+  document.getElementById('comment-panel-next')?.addEventListener('click', () => _navigateComment(1));
 
 }
 
@@ -3578,8 +3565,8 @@ function _applyMarkdownFormat(action, editor) {
 /**
  * Slash-command quick-insert menu (Write mode only — a plain <textarea>
  * gives us caret pixel coordinates via UI.getCaretViewportCoords(), the same
- * measurement cursor chat and comment margin dots already rely on; Live/Split
- * would need the CM6 equivalent wired up separately, left for later).
+ * measurement the floating comment composer and margin dots already rely on;
+ * Live/Split would need the CM6 equivalent wired up separately, left for later).
  */
 function _filterSlashItems(query) {
   const q = query.trim().toLowerCase();
@@ -3695,13 +3682,14 @@ function teardownRealtimeSession() {
   destroyPresence();
   destroyBroadcast();
   destroySync();
-  UI.clearCursorChat();
+  UI.clearFloatingComments();
   // Clear any showing "X is typing…" banner and its auto-hide timer so it
   // can never bleed into the next room's loading screen.
   UI.hideTypingIndicator();
   state.followedDeviceId = null;
   state.lastComments = [];
-  UI.renderCommentMargin([]);
+  state.activeCommentId = null;
+  UI.renderFloatingComments([]);
   _closeSlashMenu();
   // Remove the keydown handler so wireEvents() can install fresh callbacks
   // on the next room join. DOM element listeners (editor, buttons, etc.) are
@@ -3959,14 +3947,56 @@ async function _deleteCommentClick(c) {
   }
 }
 
-function _jumpToComment(c) {
+function _scrollAndSelectComment(c) {
   if (state.markdownMode !== 'write' && LiveEditor.isMounted()) {
     LiveEditor.scrollToPos(c.anchor_from);
   } else {
     const editor = document.getElementById('note-editor');
     if (editor) { editor.focus(); UI.setEditorSelection(c.anchor_from, c.anchor_to); }
   }
+}
+
+/** Jump from the side-panel list: scroll to the anchor, expand its floating
+ *  bubble, and close panels so the note (and the bubble) are visible. */
+function _jumpToComment(c) {
+  _scrollAndSelectComment(c);
+  state.activeCommentId = c.id;
   UI.closeAllPanels();
+  _refreshFloatingComments();
+}
+
+/** Toggle a dot's floating bubble open/closed — used when clicking a margin
+ *  dot directly. Opening also re-selects the anchored text (like the old
+ *  jump-on-click behavior), so a dot click is both "show me this comment"
+ *  and "take me to what it's about"; closing leaves the selection alone. */
+function _toggleCommentBubble(id) {
+  const opening = state.activeCommentId !== id;
+  state.activeCommentId = opening ? id : null;
+  if (opening) {
+    const c = state.lastComments.find((x) => x.id === id);
+    if (c) _scrollAndSelectComment(c);
+  }
+  _refreshFloatingComments();
+}
+
+/** Cycle the expanded comment forward/back through the note's comments in
+ *  anchor order — used by both the floating bubble's and the side panel's
+ *  Prev/Next controls, so "navigate the comments" works the same from
+ *  either entry point (the merged cursor-chat + comments feature's main
+ *  "navigatable" requirement). Does not close panels, so it also works
+ *  while browsing from the side panel. */
+function _navigateComment(direction) {
+  if (!state.lastComments.length) return;
+  const sorted = [...state.lastComments].sort((a, b) => (a.anchor_from ?? 0) - (b.anchor_from ?? 0));
+  const curIdx = sorted.findIndex((c) => c.id === state.activeCommentId);
+  const nextIdx = curIdx === -1
+    ? (direction > 0 ? 0 : sorted.length - 1)
+    : (curIdx + direction + sorted.length) % sorted.length;
+  const next = sorted[nextIdx];
+  if (!next) return;
+  _scrollAndSelectComment(next);
+  state.activeCommentId = next.id;
+  _refreshFloatingComments();
 }
 
 async function _refreshComments() {
@@ -3993,26 +4023,32 @@ async function _refreshComments() {
       canDelete: canEdit(),
     });
     state.lastComments = withPreviews;
+    // The active bubble's comment may have just been deleted (by this
+    // device or another) — nothing left to keep expanded.
+    if (state.activeCommentId && !withPreviews.some((c) => c.id === state.activeCommentId)) {
+      state.activeCommentId = null;
+    }
     LiveEditor.setCommentAnchors(withPreviews.map((c) => ({ id: c.id, from: c.anchor_from, to: c.anchor_to })));
-    _refreshCommentMargin();
+    _refreshFloatingComments();
   } catch {
     // Best-effort — a project that hasn't run supabase/migrations/0003_room_comments.sql
     // yet just never shows any comments. See the subscribeToComments() call site.
   }
 }
 
-// ── Comment margin dots ─────────────────────────────────────────────────────
+// ── Floating comments (margin dots + expandable bubble) ──────────────────────
 // Small markers in the editor's margin at each comment's anchor line, so
-// comments are visible while scrolling instead of only discoverable via the
-// side panel. Reuses the exact same offset-to-pixel machinery cursor chat
-// already needed: UI.getCaretViewportCoords() (mirror-div, Write mode) and
+// comments are visible — and, via the merged cursor-chat UI, addable and
+// viewable — while scrolling instead of only through the side panel.
+// Reuses the exact offset-to-pixel machinery the old cursor-chat composer
+// needed: UI.getCaretViewportCoords() (mirror-div, Write mode) and
 // LiveEditor.coordsAtPos() (CM6, Preview/Split), both viewport-relative —
-// converted here to .editor-wrap-relative since that's what the dots are
-// positioned against (see .comment-margin-layer's CSS).
+// converted here to .editor-wrap-relative since that's what the dots/bubble
+// are positioned against (see .comment-margin-layer's CSS).
 
-function _refreshCommentMargin() {
+function _refreshFloatingComments() {
   const wrap = document.querySelector('.editor-wrap');
-  if (!wrap || !state.lastComments.length) { UI.renderCommentMargin([]); return; }
+  if (!wrap || !state.lastComments.length) { UI.renderFloatingComments([]); return; }
 
   const wrapTop = wrap.getBoundingClientRect().top;
   const live = state.markdownMode !== 'write' && LiveEditor.isMounted();
@@ -4022,16 +4058,23 @@ function _refreshCommentMargin() {
       if (!Number.isFinite(c.anchor_from)) return null;
       const coords = live ? LiveEditor.coordsAtPos(c.anchor_from) : UI.getCaretViewportCoords(c.anchor_from);
       if (!coords) return null;
-      return { id: c.id, y: coords.y - wrapTop, preview: c._anchorPreview || '' };
+      return {
+        id: c.id, y: coords.y - wrapTop, preview: c._anchorPreview || '',
+        author: c.device_name, createdAt: c.created_at, text: c._preview,
+      };
     })
     .filter(Boolean);
 
-  UI.renderCommentMargin(dots, _jumpToCommentById);
-}
-
-function _jumpToCommentById(id) {
-  const c = state.lastComments.find((x) => x.id === id);
-  if (c) _jumpToComment(c);
+  UI.renderFloatingComments(dots, {
+    activeId: state.activeCommentId,
+    onToggle: _toggleCommentBubble,
+    onDelete: (id) => {
+      const c = state.lastComments.find((x) => x.id === id);
+      if (c) _deleteCommentClick(c);
+    },
+    onNavigate: _navigateComment,
+    canDelete: canEdit(),
+  });
 }
 
 // ── Preview helpers ───────────────────────────────────────────────────────────
@@ -4042,11 +4085,11 @@ function _jumpToCommentById(id) {
  * to mount for any reason the old rendered-HTML preview is the fallback.
  */
 function _applyMarkdownMode(mode) {
-  // Cursor-chat bubbles/composer are positioned in viewport coordinates
-  // specific to whichever surface was visible when they opened (the Write
+  // The floating comment composer is positioned in viewport coordinates
+  // specific to whichever surface was visible when it opened (the Write
   // textarea or the CM6 live view) — any mode switch invalidates that
-  // position, so clear before switching rather than float a stale bubble.
-  UI.clearCursorChat();
+  // position, so clear before switching rather than float a stale composer.
+  UI.clearFloatingComments();
   _closeSlashMenu(); // Write-mode-only feature — never valid to keep open across a mode switch
   state.markdownMode = mode;
   state.showPreview  = mode !== 'write';
@@ -4067,7 +4110,7 @@ function _applyMarkdownMode(mode) {
           // CM6 persists across later mode switches (mount() is only called
           // once, guarded above), so this scroll listener only needs wiring
           // here, not on every switch into Preview/Split.
-          container.querySelector('.cm-scroller')?.addEventListener('scroll', () => _refreshCommentMargin());
+          container.querySelector('.cm-scroller')?.addEventListener('scroll', () => _refreshFloatingComments());
         } else {
           LiveEditor.syncFromText(UI.getEditorValue());
           LiveEditor.setReadOnly(!canEdit());
@@ -4095,7 +4138,7 @@ function _applyMarkdownMode(mode) {
     LiveEditor.unwireScrollSync();
   }
 
-  _refreshCommentMargin();
+  _refreshFloatingComments();
 }
 
 // User edits in the live surface flow back through the textarea's normal
@@ -4117,32 +4160,24 @@ function _onLiveCursorActivity(head, anchor) {
   setCursorLine(line, head, anchor);
 }
 
-// Anchors the composer to the current caret on whichever surface is
-// actually visible: the CM6 live surface (Preview/Split) via its own
-// coordsAtPos(), or the plain Write-mode textarea via the mirror-div
-// measurement in ui.js (LiveEditor stays mounted-but-hidden after
-// switching back to Write mode, so isMounted() alone isn't enough — the
-// surface has to actually be the visible one for its coordinates to mean
-// anything).
-function _openCursorChatComposer() {
+// Opens a floating composer right at the current selection (or caret, if
+// nothing is selected) on whichever surface is actually visible: the CM6
+// live surface (Preview/Split) via its own coordsAtPos(), or the plain
+// Write-mode textarea via the mirror-div measurement in ui.js (LiveEditor
+// stays mounted-but-hidden after switching back to Write mode, so
+// isMounted() alone isn't enough — the surface has to actually be the
+// visible one for its coordinates to mean anything). Submitting always
+// persists a real anchored comment via _submitComment() — this is the same
+// entry point the Comments panel composer and context-menu "Add comment"
+// action use, just opened inline instead of in the side panel.
+function _openFloatingCommentComposer() {
+  if (!canEdit()) { UI.showToast(editBlockedReason() || 'Editing is disabled.', 'warning'); return; }
+  const range = _currentSelectionRange();
+  if (!range || !Number.isFinite(range.from) || !Number.isFinite(range.to)) return;
   const live = state.markdownMode !== 'write' && LiveEditor.isMounted();
-  let pos, coords;
-  if (live) {
-    pos = LiveEditor.getCaretPos();
-    coords = pos != null ? LiveEditor.coordsAtPos(pos) : null;
-  } else {
-    const editor = document.getElementById('note-editor');
-    pos = editor ? editor.selectionStart : null;
-    coords = pos != null ? UI.getCaretViewportCoords(pos) : null;
-  }
-  if (pos == null || !coords) return;
-  UI.openCursorChatComposer(coords, (text) => {
-    const id = broadcastCursorChat(text, pos);
-    UI.showCursorChatBubble(
-      { deviceId: getDeviceId(), deviceName: 'You', text, x: coords.x, y: coords.y, id },
-      (targetId, emoji) => broadcastCursorChatReaction(targetId, emoji),
-    );
-  });
+  const coords = live ? LiveEditor.coordsAtPos(range.from) : UI.getCaretViewportCoords(range.from);
+  if (!coords) return;
+  UI.openFloatingCommentComposer(coords, (text) => _submitComment(text, range));
 }
 
 function _refreshPreviewIfActive() {
@@ -4156,7 +4191,7 @@ const _debouncedRefreshPreview = debounce(_refreshPreviewIfActive, 300);
 // Editing text above a comment's anchor shifts its offset downstream, so
 // margin dots need to be recomputed after edits too — debounced for the
 // same reason as preview refresh above.
-const _debouncedRefreshCommentMargin = debounce(_refreshCommentMargin, 300);
+const _debouncedRefreshFloatingComments = debounce(_refreshFloatingComments, 300);
 
 function _wirePreviewClickOnce() {
   if (state.previewObserverWired) return;
