@@ -52,8 +52,7 @@ Use this checklist before publishing a new version or sharing the demo link.
 - [ ] **Export TXT** — downloads a plain-text file
 - [ ] **Export MD** — downloads a Markdown file
 - [ ] **Export HTML** — downloads a rendered HTML page that opens in a browser
-- [ ] **Copy as plain text** — copies to clipboard
-- [ ] **Copy as Markdown** — copies to clipboard
+- [ ] **Copy as plain text** — right-click a selection (or right-click with nothing selected, for the whole note) → "Copy as plain text" strips Markdown syntax before copying
 - [ ] **Monospace toggle** — `Ctrl/⌘+Shift+M` switches font
 - [ ] **Timestamp insert** — footer Time button inserts current date/time
 
@@ -61,18 +60,32 @@ Use this checklist before publishing a new version or sharing the demo link.
 
 ## 4. Keyboard Shortcuts
 
+Every shortcut below must work identically whether focus is in the Write-mode
+textarea or the CM6 live surface (Preview/Split) — historically these only
+worked in Write mode because shortcuts.js only recognized the plain
+`<textarea>` as "the editor"; that was fixed, so this section is also the
+regression check for that fix. Test each one in **both** Write mode and
+Preview mode.
+
 - [ ] `Ctrl/⌘ + S` — force saves (status briefly shows "Saving…")
-- [ ] `Ctrl/⌘ + Shift + P` — toggles Preview mode
+- [ ] `Ctrl/⌘ + F` — opens Find panel, focuses search input
+- [ ] `Ctrl/⌘ + B` — bolds selected text
+- [ ] `Ctrl/⌘ + I` — italicizes selected text
+- [ ] `Ctrl/⌘ + K` — inserts `[link text](url)`
+- [ ] `` Ctrl/⌘ + ` `` — wraps selection in inline code
 - [ ] `Ctrl/⌘ + Shift + S` — toggles Split view
 - [ ] `Ctrl/⌘ + Shift + M` — toggles Monospace
-- [ ] `Ctrl/⌘ + F` — opens Find panel, focuses search input
-- [ ] `Ctrl/⌘ + B` — bolds selected text in Write mode
-- [ ] `Ctrl/⌘ + I` — italicizes selected text in Write mode
-- [ ] `Ctrl/⌘ + K` — inserts `[link text](url)` in Write mode
+- [ ] `Ctrl/⌘ + Shift + /` — opens the cursor chat composer at the caret
 - [ ] `Ctrl/⌘ + /` — opens keyboard shortcuts modal
+- [ ] `Ctrl/⌘ + K` **outside the editor** (e.g. focus on a button) — opens command palette instead of inserting a link
+- [ ] `Alt + Shift + P` — toggles Preview mode
+- [ ] `Alt + Shift + S` — opens the Share modal
+- [ ] `Alt + Shift + T` — inserts a timestamp at the caret
+- [ ] `Alt + Shift + C` — copies the whole note to the clipboard
 - [ ] `Esc` — closes open panel, modal, or More dropdown
 - [ ] `Ctrl/⌘ + B/I/K` in **read-only mode** — does nothing (no text change)
 - [ ] `Ctrl/⌘ + B/I/K` in **locked mode** — does nothing
+- [ ] `Ctrl/⌘ + Shift + T`, `+ C`, `+ P` — do nothing app-specific (these were moved to Alt+Shift to avoid colliding with browser/OS shortcuts — reopen-closed-tab, Inspect Element, Firefox private window)
 
 ---
 
@@ -154,7 +167,7 @@ Use this checklist before publishing a new version or sharing the demo link.
 - [ ] Storage cleanup warning acknowledged: SQL-only room deletion does not remove physical `syncpad-files` objects
 - [ ] Optional `syncpad-cleanup` Edge Function deployed or manual bucket pruning process documented
 - [ ] GitHub Pages is serving from the correct branch and folder
-- [x] `service-worker.js` cache name is intentionally bumped when cached assets change (currently `syncpad-v10`)
+- [ ] `service-worker.js`'s `CACHE_VERSION` is bumped when cached assets change (check the file directly for the current value — it changes almost every release)
 - [ ] Hard refresh (`Ctrl+Shift+R`) loads fresh content, no stale cache issues
 - [ ] `404.html` is deployed and room URL redirect works
 - [ ] Mobile browser tested (iOS Safari, Android Chrome)
@@ -172,6 +185,7 @@ Use this checklist before publishing a new version or sharing the demo link.
 - [ ] `tests/search.spec.js` — Find & Replace tests pass
 - [ ] `tests/settings.spec.js` — settings panel tests pass
 - [ ] `tests/routing.spec.js` — URL routing tests pass
+- [ ] `tests/shortcuts.spec.js` — keyboard shortcuts work in both Write and Live surfaces; renamed Alt+Shift combos pass
 - [ ] `tests/accessibility.spec.js` — ARIA / keyboard tests pass
 - [ ] `tests/utils.spec.js` — unit tests (escapeHtml, formatFileSize, templates) pass
 

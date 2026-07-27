@@ -225,11 +225,11 @@ Operational note: keep the botcheck honeypot enabled and verify report-table DB 
 
 The service worker uses a named cache. To force clients to download fresh assets after cached files change:
 
-1. Bump `CACHE_NAME` in `service-worker.js`
+1. Bump `CACHE_VERSION` in `service-worker.js`
 2. Deploy
 3. On next load, old caches are purged and fresh assets are fetched
 
-Current value at the time of this update: `syncpad-v10`.
+Check `service-worker.js` directly for the current value rather than trusting a number written here — it changes with nearly every release and this doc doesn't get updated in lockstep.
 
 ---
 
