@@ -68,41 +68,59 @@ import { initAdmin } from './admin.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let _room          = null;
-let _roomId        = null;
-let _encKey        = null;   // CryptoKey | null
-let _encSalt       = null;
-let _unsubRoom     = null;
-let _unsubFiles    = null;
-let _unsubComments = null;
-let _expTimer      = null;
-let _onlineCleanup = null;   // v1: teardown fn returned by onOnlineChange()
-let _monospace     = false;
-let _eventsWired   = false;  // v1: guard against double-wiring
-let _consumingViewOnce = false; // v1: short-circuit own view-once clear echo
-let _viewOnceConsumedByThisSession = false; // session-local allowlist for first consumer view
-let _isReadOnly    = false;  // ?mode=read or /share/:token (UI/UX convention, not server-enforced — see joinRoom())
-let _shareToken    = null;
-let _markdownMode  = 'write'; // 'write' | 'preview' | 'split'
-let _showPreview   = false;  // derived: _markdownMode !== 'write'
-let _previewObserverWired = false;
-let _expPreset = '10m';
-// Room-scoped: which remote device_id (if any) the local view auto-scrolls
-// to follow. Reset on room navigation like the other room-scoped state below.
-let _followedDeviceId = null;
-// Raw (not-yet-decrypted-for-display) comments from the last _refreshComments()
-// call — re-applied to the live surface whenever it (re)mounts, since
-// setCommentAnchors() silently no-ops while unmounted (e.g. the room loaded
-// straight into Write mode, where nothing is mounted yet to receive them).
-let _lastComments = [];
+// Room/session/editor-UI state, grouped into one mutable object rather than
+// scattered module-level `let`s — every property below is reset on room
+// navigation except the user-global editor prefs (stripPaste..hidePresence,
+// filesSort), which persist across rooms by design.
+const state = {
+  room: null,
+  roomId: null,
+  encKey: null, // CryptoKey | null
+  encSalt: null,
+  unsubRoom: null,
+  unsubFiles: null,
+  unsubComments: null,
+  expTimer: null,
+  onlineCleanup: null, // v1: teardown fn returned by onOnlineChange()
+  monospace: false,
+  eventsWired: false, // v1: guard against double-wiring
+  consumingViewOnce: false, // v1: short-circuit own view-once clear echo
+  viewOnceConsumedByThisSession: false, // session-local allowlist for first consumer view
+  isReadOnly: false, // ?mode=read or /share/:token (UI/UX convention, not server-enforced — see joinRoom())
+  shareToken: null,
+  markdownMode: 'write', // 'write' | 'preview' | 'split'
+  showPreview: false, // derived: state.markdownMode !== 'write'
+  previewObserverWired: false,
+  expPreset: '10m',
+  // Which remote device_id (if any) the local view auto-scrolls to follow.
+  followedDeviceId: null,
+  // Raw (not-yet-decrypted-for-display) comments from the last _refreshComments()
+  // call — re-applied to the live surface whenever it (re)mounts, since
+  // setCommentAnchors() silently no-ops while unmounted (e.g. the room loaded
+  // straight into Write mode, where nothing is mounted yet to receive them).
+  lastComments: [],
+  slashOpen: false,
+  slashStart: null, // editor offset of the triggering '/'
+  slashCoords: null, // viewport coords, cached at open (the '/' doesn't move as the query grows)
+  slashFiltered: [],
+  slashActiveIndex: 0,
+  searchMatches: [], // [{start,end}]
+  searchIndex: -1,
+  searchTerm: '',
+  caseSensitive: false, // toggled by Aa button in F&R panel; reset on nav
+  stripPaste: false, // set below, once its localStorage key const is in scope
+  smartPunct: false, // set below, once its localStorage key const is in scope
+  focusMode: false, // set below, once its localStorage key const is in scope
+  typewriterMode: false, // set below, once its localStorage key const is in scope
+  hidePresence: false, // set below, once its localStorage key const is in scope
+  filesSelectMode: false,
+  selectedFiles: new Set(), // Set<file.id>
+  filesSort: 'newest', // sort order for the files panel (not room-scoped)
+  paletteFiltered: [],
+  paletteActiveIndex: 0,
+};
 
-// ── Slash-command quick-insert menu state (Write mode only) ───────────────────
-// Reset on room navigation like the other room-scoped state above/below.
-let _slashOpen        = false;
-let _slashStart        = null; // editor offset of the triggering '/'
-let _slashCoords       = null; // viewport coords, cached at open (the '/' doesn't move as the query grows)
-let _slashFiltered     = [];
-let _slashActiveIndex  = 0;
+// ── Slash-command quick-insert menu items (Write mode only) ───────────────────
 
 const SLASH_MENU_ITEMS = [
   { id: 'h1',            label: 'Heading 1',         hint: '#',        keywords: 'h1 heading title' },
@@ -125,26 +143,20 @@ const SLASH_MENU_ITEMS = [
   { id: 'template',      label: 'Insert template',   hint: '',         keywords: 'template' },
 ];
 
-// ── Search state ──────────────────────────────────────────────────────────────
-let _searchMatches    = []; // [{start,end}]
-let _searchIndex      = -1;
-let _searchTerm       = '';
-let _caseSensitive    = false; // toggled by Aa button in F&R panel; reset on nav
-
 // ── Editor preferences (user-global, persisted to localStorage) ───────────────
 const _STRIP_PASTE_KEY = 'syncpad_strip_paste';
-let _stripPaste = localStorage.getItem(_STRIP_PASTE_KEY) === 'true';
+state.stripPaste = localStorage.getItem(_STRIP_PASTE_KEY) === 'true';
 // Off by default — it rewrites what you actually typed, which is a bigger
 // surprise than a purely visual preference, and some notes (code, URLs)
 // need literal straight quotes/hyphens preserved.
 const _SMART_PUNCT_KEY = 'syncpad_smart_punct';
-let _smartPunct = localStorage.getItem(_SMART_PUNCT_KEY) === 'true';
+state.smartPunct = localStorage.getItem(_SMART_PUNCT_KEY) === 'true';
 const _FOCUS_MODE_KEY = 'syncpad_focus_mode';
-let _focusMode = localStorage.getItem(_FOCUS_MODE_KEY) === 'true';
+state.focusMode = localStorage.getItem(_FOCUS_MODE_KEY) === 'true';
 const _TYPEWRITER_MODE_KEY = 'syncpad_typewriter_mode';
-let _typewriterMode = localStorage.getItem(_TYPEWRITER_MODE_KEY) === 'true';
+state.typewriterMode = localStorage.getItem(_TYPEWRITER_MODE_KEY) === 'true';
 const _HIDE_PRESENCE_KEY = 'syncpad_hide_presence';
-let _hidePresence = localStorage.getItem(_HIDE_PRESENCE_KEY) === 'true';
+state.hidePresence = localStorage.getItem(_HIDE_PRESENCE_KEY) === 'true';
 // Which editor mode a room opens into. Defaults to Live (Preview) rather
 // than Source — most reading/reviewing happens rendered, and Write is one
 // segmented-control click away for anyone who wants raw markdown. Once a
@@ -156,12 +168,6 @@ function _resolveInitialEditorMode() {
   const stored = localStorage.getItem(_EDITOR_MODE_KEY);
   return (stored === 'write' || stored === 'preview' || stored === 'split') ? stored : 'preview';
 }
-
-// ── Files state ───────────────────────────────────────────────────────────────
-let _filesSelectMode = false;
-let _selectedFiles   = new Set(); // Set<file.id>
-let _filesSort       = 'newest';  // sort order for the files panel (not room-scoped)
-
 
 const BASE = _normalizeBasePath(window.SYNCPAD_CONFIG?.basePath ?? '/SyncPad');
 const EXPIRATION_TIMER_MAX_DELAY_MS = 2147483647;
@@ -258,7 +264,7 @@ document.addEventListener('click', (e) => {
 // even though the route itself hasn't changed — only the hash has. Reloading
 // there would be actively harmful, not just an unnecessary flicker: a
 // view-once note's only remaining copy after the server clears its content
-// lives in memory (_viewOnceConsumedByThisSession), so a reload at the wrong
+// lives in memory (state.viewOnceConsumedByThisSession), so a reload at the wrong
 // moment permanently loses it. Only reload when the path or query actually
 // changed; a hash-only difference is left to the browser's own default
 // same-page scroll-to-anchor behavior.
@@ -379,7 +385,7 @@ async function boot() {
   UI.showScreen('loading');
 
   // Load locally-stored monospace preference
-  try { _monospace = localStorage.getItem('syncpad_monospace') === '1'; } catch {}
+  try { state.monospace = localStorage.getItem('syncpad_monospace') === '1'; } catch {}
 
   const redirectRoom = sessionStorage.getItem('syncpad_redirect_room');
   if (redirectRoom) {
@@ -390,13 +396,13 @@ async function boot() {
   }
 
   // URL mode (?mode=read)
-  _isReadOnly = getUrlMode() === 'read';
+  state.isReadOnly = getUrlMode() === 'read';
 
   const route = _parseRoute();
 
   if (route.type === 'share') {
-    _isReadOnly = true;
-    _shareToken = route.token;
+    state.isReadOnly = true;
+    state.shareToken = route.token;
     await joinReadOnlyShareRoute(route.token);
     return;
   }
@@ -460,20 +466,20 @@ async function boot() {
 // ── Landing screen ────────────────────────────────────────────────────────────
 
 async function _openShareModal() {
-  if (_isReadOnly) {
+  if (state.isReadOnly) {
     const currentReadOnlyUrl = location.origin + location.pathname + location.search + location.hash;
     UI.populateShareModal({
       editableUrl: '',
       readOnlyUrl: currentReadOnlyUrl,
       readOnlyError: false,
       roomPath: '',
-      roomDisplayTitle: (_room?.room_name || '').trim() || _roomId,
-      hasPasscode: !!_room?.passcode_hash,
-      hasEncryption: !!_room?.encryption_enabled,
+      roomDisplayTitle: (state.room?.room_name || '').trim() || state.roomId,
+      hasPasscode: !!state.room?.passcode_hash,
+      hasEncryption: !!state.room?.encryption_enabled,
       hasReadOnlyLink: !!currentReadOnlyUrl,
-      isEditingLocked: !!_room?.editing_locked,
-      hasViewOnce: !!_room?.view_once,
-      expiresAt: _room?.expires_at || null,
+      isEditingLocked: !!state.room?.editing_locked,
+      hasViewOnce: !!state.room?.view_once,
+      expiresAt: state.room?.expires_at || null,
       showRoomCode: false, // no room-owning identity in a read-only session to generate one from
     });
     UI.openModal('share-modal');
@@ -483,7 +489,7 @@ async function _openShareModal() {
   let readOnlyUrl = '';
   let readOnlyError = false;
   try {
-    const share = await getOrCreateReadOnlyShareLink(_roomId);
+    const share = await getOrCreateReadOnlyShareLink(state.roomId);
     readOnlyUrl = buildReadOnlyUrl(BASE, share?.token || '');
     if (!share?.token) readOnlyError = true;
   } catch {
@@ -493,23 +499,23 @@ async function _openShareModal() {
   let roomCode = '';
   let roomCodeError = false;
   try {
-    roomCode = await getOrCreateRoomCode(_roomId) || '';
+    roomCode = await getOrCreateRoomCode(state.roomId) || '';
     if (!roomCode) roomCodeError = true;
   } catch {
     roomCodeError = true;
   }
   UI.populateShareModal({
-    editableUrl: buildRoomUrl(BASE, _roomId),
+    editableUrl: buildRoomUrl(BASE, state.roomId),
     readOnlyUrl,
     readOnlyError,
-    roomPath: `/${_roomId}` ,
-    roomDisplayTitle: (_room?.room_name || '').trim() || _roomId,
-    hasPasscode: !!_room?.passcode_hash,
-    hasEncryption: !!_room?.encryption_enabled,
+    roomPath: `/${state.roomId}` ,
+    roomDisplayTitle: (state.room?.room_name || '').trim() || state.roomId,
+    hasPasscode: !!state.room?.passcode_hash,
+    hasEncryption: !!state.room?.encryption_enabled,
     hasReadOnlyLink: !!readOnlyUrl,
-    isEditingLocked: !!_room?.editing_locked,
-    hasViewOnce: !!_room?.view_once,
-    expiresAt: _room?.expires_at || null,
+    isEditingLocked: !!state.room?.editing_locked,
+    hasViewOnce: !!state.room?.view_once,
+    expiresAt: state.room?.expires_at || null,
     roomCode,
     roomCodeError,
   });
@@ -670,7 +676,7 @@ function wireContactEvents() {
 }
 
 async function _emptyContentForCurrentEncryption() {
-  return _encKey ? await encryptContent('', _encKey) : '';
+  return state.encKey ? await encryptContent('', state.encKey) : '';
 }
 
 function _showQuarantinedScreen(room) {
@@ -709,7 +715,7 @@ async function joinReadOnlyShareRoute(token) {
 
 async function joinRoom(roomId, { isNewRoom = false } = {}) {
   // Captured BEFORE teardownRealtimeSession(), which (defensively) resets
-  // _isReadOnly to false — read after that would silently lose ?mode=read
+  // state.isReadOnly to false — read after that would silently lose ?mode=read
   // and /share/:token's forced-read-only signal on every single navigation.
   //
   // Forced read-only routes (?mode=read, /share/:token) are a UI/UX
@@ -721,18 +727,18 @@ async function joinRoom(roomId, { isNewRoom = false } = {}) {
   // owner who needs a link that genuinely can't be used to edit should Lock
   // the room first — editing_locked is enforced server-side regardless of
   // how the write is attempted, unlike this route-based flag.
-  const forcedReadOnly = _isReadOnly;
+  const forcedReadOnly = state.isReadOnly;
 
   teardownRealtimeSession();
-  _roomId = roomId;
-  _viewOnceConsumedByThisSession = false;
+  state.roomId = roomId;
+  state.viewOnceConsumedByThisSession = false;
   UI.setLoadingMessage('Loading room…');
 
   try {
     if (isNewRoom) {
       UI.setLoadingMessage('Creating room…');
-      _room = await createRoom(roomId);
-      _isReadOnly = false;
+      state.room = await createRoom(roomId);
+      state.isReadOnly = false;
       history.replaceState(null, '', `${BASE}/${roomId}`);
     } else {
       const room = await loadRoom(roomId);
@@ -758,8 +764,8 @@ async function joinRoom(roomId, { isNewRoom = false } = {}) {
         // (?mode=read, /share/:token) never reaches this branch, so a
         // stale/expired read-only link can't be used to claim a fresh room.
         UI.setLoadingMessage('Creating room…');
-        _room = await createRoom(roomId);
-        _isReadOnly = false;
+        state.room = await createRoom(roomId);
+        state.isReadOnly = false;
         history.replaceState(null, '', `${BASE}/${roomId}`);
       } else if (!room) {
         UI.setInfoScreen({
@@ -769,8 +775,8 @@ async function joinRoom(roomId, { isNewRoom = false } = {}) {
         UI.showScreen('info');
         return;
       } else {
-        _isReadOnly = forcedReadOnly;
-        _room = room;
+        state.isReadOnly = forcedReadOnly;
+        state.room = room;
       }
     }
   } catch (err) {
@@ -788,19 +794,19 @@ async function joinRoom(roomId, { isNewRoom = false } = {}) {
   // quarantine_reason only exist if the optional admin-dashboard migration
   // has been applied; absent columns are simply undefined/falsy here, so
   // this is a no-op for installs that haven't run it.
-  if (_room.quarantined_at) {
-    _showQuarantinedScreen(_room);
+  if (state.room.quarantined_at) {
+    _showQuarantinedScreen(state.room);
     return;
   }
 
-  if (_room.passcode_hash) {
+  if (state.room.passcode_hash) {
     UI.showScreen('passcode');
     const badge = document.getElementById('passcode-room-badge');
     if (badge) badge.textContent = roomId;
     return;
   }
 
-  if (_room.encryption_enabled) {
+  if (state.room.encryption_enabled) {
     UI.showScreen('encryption');
     const badge = document.getElementById('encryption-room-badge');
     if (badge) badge.textContent = roomId;
@@ -822,7 +828,7 @@ async function onPasscodeSubmit() {
   if (btn) btn.disabled = true;
   let ok = false;
   try {
-    ok = await checkPasscode(_room, passcode);
+    ok = await checkPasscode(state.room, passcode);
   } catch {
     if (btn) btn.disabled = false;
     UI.showPasscodeError('Could not verify the passcode. Please reload and try again.');
@@ -832,10 +838,10 @@ async function onPasscodeSubmit() {
 
   if (!ok) { UI.showPasscodeError('Incorrect passcode. Please try again.'); return; }
 
-  if (_room.encryption_enabled) {
+  if (state.room.encryption_enabled) {
     UI.showScreen('encryption');
     const badge = document.getElementById('encryption-room-badge');
-    if (badge) badge.textContent = _roomId;
+    if (badge) badge.textContent = state.roomId;
     return;
   }
   await startApp();
@@ -854,13 +860,13 @@ async function onEncryptionSubmit() {
   if (btn) { btn.disabled = true; btn.textContent = 'Decrypting…'; }
 
   try {
-    const key = await unlockEncryption(passphrase, _room.encryption_salt);
-    if (!_room.content || !looksEncrypted(_room.content)) {
+    const key = await unlockEncryption(passphrase, state.room.encryption_salt);
+    if (!state.room.content || !looksEncrypted(state.room.content)) {
       throw new Error('Encrypted room content is missing or invalid.');
     }
-    await decryptContent(_room.content, key); // verify — throws if wrong passphrase
-    _encKey  = key;
-    _encSalt = _room.encryption_salt;
+    await decryptContent(state.room.content, key); // verify — throws if wrong passphrase
+    state.encKey  = key;
+    state.encSalt = state.room.encryption_salt;
   } catch {
     if (btn) { btn.disabled = false; btn.textContent = origLabel; }
     UI.showEncryptionError('Wrong passphrase. Could not decrypt the note.');
@@ -879,20 +885,20 @@ async function startApp() {
   // Remember this room for PWA "resume last room" (see _isStandalonePwa()).
   // Only for genuine editable visits — not read-only share links or
   // ?mode=read, which are bound to someone else's link rather than "my" room.
-  if (!_isReadOnly) _rememberLastRoom(_roomId);
-  _rememberRecentRoom(_roomId, _room?.room_name);
+  if (!state.isReadOnly) _rememberLastRoom(state.roomId);
+  _rememberRecentRoom(state.roomId, state.room?.room_name);
 
   // ── Expiration check ───────────────────────────────────────────────────────
-  if (_room.expires_at && new Date(_room.expires_at) <= new Date()) {
-    await handleExpiration(_roomId, _room, await _emptyContentForCurrentEncryption());
-    _room = await loadRoom(_roomId);
+  if (state.room.expires_at && new Date(state.room.expires_at) <= new Date()) {
+    await handleExpiration(state.roomId, state.room, await _emptyContentForCurrentEncryption());
+    state.room = await loadRoom(state.roomId);
   }
 
   // ── Decrypt content for display ────────────────────────────────────────────
   // Must happen BEFORE view-once consumption so the viewer actually sees the note.
-  let displayContent = _room.content || '';
-  if (_encKey && displayContent && looksEncrypted(displayContent)) {
-    try { displayContent = await decryptContent(displayContent, _encKey); }
+  let displayContent = state.room.content || '';
+  if (state.encKey && displayContent && looksEncrypted(displayContent)) {
+    try { displayContent = await decryptContent(displayContent, state.encKey); }
     catch { displayContent = ''; }
   }
 
@@ -902,7 +908,7 @@ async function startApp() {
   // view-once — they would be unable to keep editing afterward, and the
   // creator presumably wants real readers to consume it.
   const deviceId  = getDeviceId();
-  const isCreator = _room.created_by_device === deviceId;
+  const isCreator = state.room.created_by_device === deviceId;
 
   // ── Device limit: record this device's join, clearing the room once the
   // configured number of distinct devices has been reached ─────────────────
@@ -910,18 +916,18 @@ async function startApp() {
   // View-once's isCreator exclusion above. Best-effort: a Supabase project
   // that hasn't run supabase/migrations/0005_device_limit.sql yet just has
   // device_limit stay null forever, so this never fires for it.
-  if (_room.device_limit && !isCreator) {
+  if (state.room.device_limit && !isCreator) {
     try {
-      const result = await recordRoomDeviceView(_roomId, deviceId);
-      if (result.expired) _room = await loadRoom(_roomId);
+      const result = await recordRoomDeviceView(state.roomId, deviceId);
+      if (result.expired) state.room = await loadRoom(state.roomId);
     } catch { /* non-fatal — see comment above */ }
   }
 
   const shouldConsumeViewOnce = (
-    _room.view_once &&
+    state.room.view_once &&
     !isCreator &&
-    !_room.viewed &&
-    _room.cleared_reason !== 'view_once'
+    !state.room.viewed &&
+    state.room.cleared_reason !== 'view_once'
   );
 
   // ── Initial permission context ─────────────────────────────────────────────
@@ -930,14 +936,14 @@ async function startApp() {
   // ── Render ─────────────────────────────────────────────────────────────────
   UI.showScreen('app');
   _renderRoomHeader();
-  UI.setEncryptionBadge(!!_room.encryption_enabled);
-  UI.setViewOnceBadge(!!_room.view_once);
-  UI.renderSettingsPanel(_room);
+  UI.setEncryptionBadge(!!state.room.encryption_enabled);
+  UI.setViewOnceBadge(!!state.room.view_once);
+  UI.renderSettingsPanel(state.room);
   UI.setStatus('connected');
-  UI.setMonospace(_monospace);
-  UI.setFocusMode(_focusMode);
-  UI.setTypewriterMode(_typewriterMode);
-  UI.setReadOnlyMode(_isReadOnly);
+  UI.setMonospace(state.monospace);
+  UI.setFocusMode(state.focusMode);
+  UI.setTypewriterMode(state.typewriterMode);
+  UI.setReadOnlyMode(state.isReadOnly);
   // Transient state for the loading screen only — safe before real content
   // exists because Write mode needs no content (Preview/Split mount the
   // live surface against the current editor value, which isn't set yet).
@@ -945,13 +951,13 @@ async function startApp() {
   // place; see _resolveInitialEditorMode() and the setContentNoSave() calls
   // further down.
   UI.setMarkdownMode('write', null);
-  UI.setLockedMode(!!_room.editing_locked);
+  UI.setLockedMode(!!state.room.editing_locked);
   UI.renderThemePicker(THEMES, getSavedTheme(), (id) => applyTheme(id));
 
   initSync({
-    roomId:           _roomId,
-    encryptFn:        _encKey ? (pt) => encryptContent(pt, _encKey) : null,
-    decryptFn:        _encKey ? (ct) => decryptContent(ct, _encKey) : null,
+    roomId:           state.roomId,
+    encryptFn:        state.encKey ? (pt) => encryptContent(pt, state.encKey) : null,
+    decryptFn:        state.encKey ? (ct) => decryptContent(ct, state.encKey) : null,
     getEditorVal:     UI.getEditorValue,
     setEditorVal:     (text) => { UI.setEditorValue(text); LiveEditor.syncFromText(text); UI.updateWordCount(text); _refreshPreviewIfActive(); },
     onStatusChange:   UI.setStatus,
@@ -973,10 +979,10 @@ async function startApp() {
 
   // Set initial content — prefer local draft if newer than DB.
   // Encrypted-room drafts are stored encrypted in localStorage and are only
-  // decrypted after the room passphrase has already unlocked _encKey.
-  const draft = loadDraft(_roomId);
+  // decrypted after the room passphrase has already unlocked state.encKey.
+  const draft = loadDraft(state.roomId);
   const draftText = await _decodeLocalDraft(draft);
-  if (draftText !== null && isDraftNewer(draft, _room.updated_at) && canEdit()) {
+  if (draftText !== null && isDraftNewer(draft, state.room.updated_at) && canEdit()) {
     setContentNoSave(draftText);
     UI.showToast('Restored unsaved local draft.', 'warning', 5000);
   } else {
@@ -991,7 +997,7 @@ async function startApp() {
   const _initialMode = _resolveInitialEditorMode();
   if (_initialMode !== 'write') _applyMarkdownMode(_initialMode);
 
-  initBroadcast(_roomId, {
+  initBroadcast(state.roomId, {
     onRemoteTyping: async (payload) => {
       if (_isEncryptedWithoutKey()) return;
       UI.showTypingIndicator(payload.device_name || 'Someone');
@@ -1005,16 +1011,16 @@ async function startApp() {
     onRemoteSettings: async () => {
       // Another device changed settings — reload and re-render. Do NOT
       // re-broadcast here or it creates an echo loop.
-      const prev = _room;
-      _room = await loadRoom(_roomId);
-      await _handleRoomStateTransition(prev, _room);
+      const prev = state.room;
+      state.room = await loadRoom(state.roomId);
+      await _handleRoomStateTransition(prev, state.room);
     },
     onRemoteFiles: async () => refreshFiles(),
     onRemoteClear: async () => {
       cancelPendingSave();
       cancelPendingTypingBroadcast();
       cancelPendingLiveContentBroadcast();
-      clearDraft(_roomId);
+      clearDraft(state.roomId);
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
@@ -1024,7 +1030,7 @@ async function startApp() {
       cancelPendingSave();
       cancelPendingTypingBroadcast();
       cancelPendingLiveContentBroadcast();
-      clearDraft(_roomId);
+      clearDraft(state.roomId);
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
@@ -1034,7 +1040,7 @@ async function startApp() {
       // payload.pos is a plain text offset — mode-agnostic on the wire.
       // Resolve it to screen coordinates on whichever surface is actually
       // visible locally, independent of what mode the sender was in.
-      const live = _markdownMode !== 'write' && LiveEditor.isMounted();
+      const live = state.markdownMode !== 'write' && LiveEditor.isMounted();
       const coords = live ? LiveEditor.coordsAtPos(payload.pos) : UI.getCaretViewportCoords(payload.pos);
       if (!coords) return;
       UI.showCursorChatBubble({
@@ -1050,19 +1056,19 @@ async function startApp() {
     },
   });
 
-  initPresence(_roomId, (devices) => {
+  initPresence(state.roomId, (devices) => {
     UI.updateDeviceCount(devices.length);
     // A followed device that disconnected (or hid its presence) can't be
     // followed anymore — drop it rather than leaving a dead toggle active.
-    if (_followedDeviceId && !devices.some((d) => d.device_id === _followedDeviceId && !d.isMe)) {
-      _followedDeviceId = null;
+    if (state.followedDeviceId && !devices.some((d) => d.device_id === state.followedDeviceId && !d.isMe)) {
+      state.followedDeviceId = null;
     }
     UI.renderDevicesList(devices, deviceId, (name) => {
       setDeviceName(name);
       updatePresenceDeviceName(getDeviceName());
     }, {
-      followedDeviceId: _followedDeviceId,
-      onToggleFollow: (id) => { _followedDeviceId = _followedDeviceId === id ? null : id; },
+      followedDeviceId: state.followedDeviceId,
+      onToggleFollow: (id) => { state.followedDeviceId = state.followedDeviceId === id ? null : id; },
     });
     // Render remote collaborators' carets/selections in the live surface
     // (no-op when it isn't mounted).
@@ -1074,50 +1080,50 @@ async function startApp() {
     // "Follow" mode: jump the local view to the followed device's cursor as
     // it moves. Only meaningful where there's a real caret to scroll to —
     // the CM6 live surface — same gating as cursor chat.
-    if (_followedDeviceId && _markdownMode !== 'write' && LiveEditor.isMounted()) {
-      const followed = devices.find((d) => d.device_id === _followedDeviceId);
+    if (state.followedDeviceId && state.markdownMode !== 'write' && LiveEditor.isMounted()) {
+      const followed = devices.find((d) => d.device_id === state.followedDeviceId);
       if (followed && typeof followed.cursor_pos === 'number') {
         LiveEditor.scrollToPos(followed.cursor_pos);
       }
     }
-  }, { readOnly: _isReadOnly });
+  }, { readOnly: state.isReadOnly });
   // Re-applied on every room entry — destroyPresence() deliberately leaves
   // this preference alone since it's per-device, not room state (see
   // presence.js), so the fresh channel from initPresence() above always
   // starts back at the default until this runs.
-  setPresenceHidden(_hidePresence);
+  setPresenceHidden(state.hidePresence);
 
-  _unsubRoom = subscribeToRoom(_roomId, async ({ event, room }) => {
+  state.unsubRoom = subscribeToRoom(state.roomId, async ({ event, room }) => {
     if (event === 'DELETE') {
       cancelPendingSave();
       cancelPendingTypingBroadcast();
       cancelPendingLiveContentBroadcast();
-      if (_expTimer) { clearTimeout(_expTimer); _expTimer = null; }
+      if (state.expTimer) { clearTimeout(state.expTimer); state.expTimer = null; }
       UI.setEditorEditable(false);
       UI.showToast('This room no longer exists.', 'error', 6000);
       UI.setStatus('offline');
       return;
     }
-    const prev = _room;
-    _room = room;
+    const prev = state.room;
+    state.room = room;
     await _handleRoomStateTransition(prev, room);
   });
 
-  _unsubFiles = subscribeToFiles(_roomId, () => refreshFiles());
+  state.unsubFiles = subscribeToFiles(state.roomId, () => refreshFiles());
   await refreshFiles();
 
   // Best-effort: a Supabase project that hasn't run
   // supabase/migrations/0003_room_comments.sql yet just never shows any comments —
   // _refreshComments() swallows the failure rather than surfacing an error
   // toast for what is an entirely optional feature.
-  _unsubComments = subscribeToComments(_roomId, () => _refreshComments());
+  state.unsubComments = subscribeToComments(state.roomId, () => _refreshComments());
   await _refreshComments();
 
-  if (_room.expires_at) setupExpirationTimer();
+  if (state.room.expires_at) setupExpirationTimer();
 
   wireEvents();
 
-  _onlineCleanup = onOnlineChange((online) => {
+  state.onlineCleanup = onOnlineChange((online) => {
     if (online) { UI.hideOfflineBanner(); UI.setStatus('connected'); _reconcileAndFlush(); }
     else        { UI.showOfflineBanner();  UI.setStatus('offline'); }
   });
@@ -1126,19 +1132,19 @@ async function startApp() {
   // Preview is now a possible starting mode (see _resolveInitialEditorMode()
   // above), where the plain textarea is hidden — UI.focusEditor() would
   // silently focus an invisible element and leave no visible caret anywhere.
-  if (!isMobile() && !_isReadOnly) _focusActiveEditorSurface();
+  if (!isMobile() && !state.isReadOnly) _focusActiveEditorSurface();
 
   // ── View-once: consume AFTER the note is visible to the user ───────────────
-  // Set _consumingViewOnce so the subscribeToRoom postgres echo of our own
+  // Set state.consumingViewOnce so the subscribeToRoom postgres echo of our own
   // clear doesn't wipe the editor we just rendered.
   if (shouldConsumeViewOnce) {
-    _consumingViewOnce = true;
+    state.consumingViewOnce = true;
     try {
-      const consumed = await consumeViewOnce(_roomId, _room, false, await _emptyContentForCurrentEncryption());
+      const consumed = await consumeViewOnce(state.roomId, state.room, false, await _emptyContentForCurrentEncryption());
       if (consumed) {
-        _room = await loadRoom(_roomId);
-        _viewOnceConsumedByThisSession = true;
-        clearDraft(_roomId);
+        state.room = await loadRoom(state.roomId);
+        state.viewOnceConsumedByThisSession = true;
+        clearDraft(state.roomId);
         _updatePermissionContext();
         broadcastViewOnceCleared();
         UI.showToast(
@@ -1150,9 +1156,9 @@ async function startApp() {
       // Race condition — another device may have consumed it first. Ignore.
     } finally {
       // If the Postgres echo never arrives, do not leave this client in a
-      // permanent self-consumer state. We already reloaded _room above when the
+      // permanent self-consumer state. We already reloaded state.room above when the
       // consume succeeded, so permission state remains correct.
-      _consumingViewOnce = false;
+      state.consumingViewOnce = false;
       _updatePermissionContext();
     }
   }
@@ -1163,17 +1169,17 @@ async function _decodeLocalDraft(draft) {
   if (!draft.encrypted) {
     // Legacy/plain drafts must not be restored into encrypted rooms. Clear them
     // so an older v1 test build cannot leave plaintext localStorage behind.
-    if (_room?.encryption_enabled) { clearDraft(_roomId); return null; }
+    if (state.room?.encryption_enabled) { clearDraft(state.roomId); return null; }
     return draft.content ?? '';
   }
 
-  if (!_encKey) {
+  if (!state.encKey) {
     // Draft is encrypted but we have no key. The most common cause is that
     // encryption was removed from the room after the draft was saved — the
     // ciphertext is now permanently unreadable. Clear it and warn the user so
     // they know work may have been lost.
-    if (!_room?.encryption_enabled) {
-      clearDraft(_roomId);
+    if (!state.room?.encryption_enabled) {
+      clearDraft(state.roomId);
       UI.showToast(
         'A local draft from when this room was encrypted could not be restored (encryption has since been removed). Draft discarded.',
         'warning',
@@ -1182,26 +1188,26 @@ async function _decodeLocalDraft(draft) {
     }
     return null;
   }
-  try { return await decryptContent(draft.content || '', _encKey); }
+  try { return await decryptContent(draft.content || '', state.encKey); }
   catch {
     // Wrong/corrupt local draft ciphertext should not block room loading.
-    clearDraft(_roomId);
+    clearDraft(state.roomId);
     return null;
   }
 }
 
-function _isEncryptedWithoutKey(room = _room) {
-  return !!room?.encryption_enabled && !_encKey;
+function _isEncryptedWithoutKey(room = state.room) {
+  return !!room?.encryption_enabled && !state.encKey;
 }
 
 function _enterEncryptedNoKeyMode(newRoom, { showToast = false } = {}) {
   cancelPendingSave();
   cancelPendingTypingBroadcast();
   cancelPendingLiveContentBroadcast();
-  _encKey = null;
-  _encSalt = newRoom?.encryption_salt || null;
+  state.encKey = null;
+  state.encSalt = newRoom?.encryption_salt || null;
   setEncryption(null, null);
-  clearDraft(_roomId);
+  clearDraft(state.roomId);
   setContentNoSave('');
   UI.updateWordCount('');
   _refreshPreviewIfActive();
@@ -1239,7 +1245,7 @@ async function _handleRoomStateTransition(prev, newRoom) {
   const nowEnc = !!newRoom.encryption_enabled;
   let shouldApplyRemoteContent = prev?.content !== newRoom.content;
 
-  if (nowEnc && !_encKey) {
+  if (nowEnc && !state.encKey) {
     // Encryption is active and this client does not have the key. This is not
     // only a transition guard: every future encrypted Broadcast/DB payload must
     // be ignored so ciphertext can never render in the editor.
@@ -1250,16 +1256,16 @@ async function _handleRoomStateTransition(prev, newRoom) {
     // applying the new room content, because newRoom.content is now plaintext.
     cancelPendingTypingBroadcast();
     cancelPendingLiveContentBroadcast();
-    _encKey = null;
-    _encSalt = null;
+    state.encKey = null;
+    state.encSalt = null;
     setEncryption(null, null);
     UI.showEncryptionLockedBanner(false);
-  } else if (nowEnc && _encKey) {
+  } else if (nowEnc && state.encKey) {
     // Salt/key did not change, but make sure sync.js still has the active fns
     // after any room-state reload or subscription race.
     setEncryption(
-      (pt) => encryptContent(pt, _encKey),
-      (ct) => decryptContent(ct, _encKey),
+      (pt) => encryptContent(pt, state.encKey),
+      (ct) => decryptContent(ct, state.encKey),
     );
   }
 
@@ -1275,17 +1281,17 @@ async function _handleRoomStateTransition(prev, newRoom) {
   }
 
   _renderRoomHeader();
-  UI.renderSettingsPanel(_room);
-  UI.setEncryptionBadge(!!_room.encryption_enabled);
-  UI.setViewOnceBadge(!!_room.view_once);
-  UI.setLockedMode(!!_room.editing_locked);
+  UI.renderSettingsPanel(state.room);
+  UI.setEncryptionBadge(!!state.room.encryption_enabled);
+  UI.setViewOnceBadge(!!state.room.view_once);
+  UI.setLockedMode(!!state.room.editing_locked);
 
   // ── Clear/expired/view-once toasts ─────────────────────────────────────────
   if (newRoom.cleared_reason === 'expired' && prev?.cleared_reason !== 'expired') {
     cancelPendingSave();
     cancelPendingTypingBroadcast();
     cancelPendingLiveContentBroadcast();
-    clearDraft(_roomId);
+    clearDraft(state.roomId);
     setContentNoSave('');
     UI.updateWordCount('');
     UI.hideExpirationBar();
@@ -1294,11 +1300,11 @@ async function _handleRoomStateTransition(prev, newRoom) {
   }
 
   if (newRoom.cleared_reason === 'view_once' && prev?.cleared_reason !== 'view_once') {
-    clearDraft(_roomId);
+    clearDraft(state.roomId);
     // v1: do not clear the local editor if WE were the consumer, but lock it so
     // the consumed note never gets saved back to the server.
-    if (_consumingViewOnce || _viewOnceConsumedByThisSession || isOwnWrite) {
-      _consumingViewOnce = false;
+    if (state.consumingViewOnce || state.viewOnceConsumedByThisSession || isOwnWrite) {
+      state.consumingViewOnce = false;
       _updatePermissionContext();
     } else {
       cancelPendingSave();
@@ -1312,7 +1318,7 @@ async function _handleRoomStateTransition(prev, newRoom) {
   }
 
   if (newRoom.cleared_reason === 'device_limit' && prev?.cleared_reason !== 'device_limit') {
-    clearDraft(_roomId);
+    clearDraft(state.roomId);
     if (isOwnWrite) {
       // This device's own join was the one that hit the limit — it already
       // has the content in hand from startApp() (captured before the
@@ -1338,12 +1344,12 @@ async function _handleRoomStateTransition(prev, newRoom) {
 
 function _updatePermissionContext() {
   setPermissionContext({
-    isReadOnlyUrl:    _isReadOnly,
-    isEditingLocked:  !!_room?.editing_locked,
-    isEncryptedNoKey: !!_room?.encryption_enabled && !_encKey,
-    isEncryptionEnabled: !!_room?.encryption_enabled,
-    isCleared:        !!_room?.cleared_reason,
-    isViewOnceConsumed: (_room?.cleared_reason === 'view_once' && !!_room?.viewed && !_viewOnceConsumedByThisSession),
+    isReadOnlyUrl:    state.isReadOnly,
+    isEditingLocked:  !!state.room?.editing_locked,
+    isEncryptedNoKey: !!state.room?.encryption_enabled && !state.encKey,
+    isEncryptionEnabled: !!state.room?.encryption_enabled,
+    isCleared:        !!state.room?.cleared_reason,
+    isViewOnceConsumed: (state.room?.cleared_reason === 'view_once' && !!state.room?.viewed && !state.viewOnceConsumedByThisSession),
   });
   UI.setEditorEditable(canEdit());
   LiveEditor.setReadOnly(!canEdit()); // keep the live surface's gate in lockstep
@@ -1352,26 +1358,26 @@ function _updatePermissionContext() {
 }
 
 function _updateViewOnceConsumedUI() {
-  const consumed = _room?.view_once && _room?.cleared_reason === 'view_once' && !!_room?.viewed && !_viewOnceConsumedByThisSession;
+  const consumed = state.room?.view_once && state.room?.cleared_reason === 'view_once' && !!state.room?.viewed && !state.viewOnceConsumedByThisSession;
   UI.setViewOnceConsumedPanel({
     visible: !!consumed,
-    readOnly: !!_isReadOnly,
+    readOnly: !!state.isReadOnly,
     onGoHome: _suppressNextResume,
     onStartNew: async () => {
-      if (_isReadOnly) return;
+      if (state.isReadOnly) return;
       try {
         await snapshotBeforeDestructiveChange();
-        await resetViewOnceNote(_roomId, await _emptyContentForCurrentEncryption(), true);
-        clearDraft(_roomId);
-        _room = await loadRoom(_roomId);
-        _viewOnceConsumedByThisSession = false;
+        await resetViewOnceNote(state.roomId, await _emptyContentForCurrentEncryption(), true);
+        clearDraft(state.roomId);
+        state.room = await loadRoom(state.roomId);
+        state.viewOnceConsumedByThisSession = false;
         setContentNoSave('');
         UI.updateWordCount('');
         _refreshPreviewIfActive();
         _updatePermissionContext();
         _renderRoomHeader();
-        UI.renderSettingsPanel(_room);
-        UI.setViewOnceBadge(!!_room.view_once);
+        UI.renderSettingsPanel(state.room);
+        UI.setViewOnceBadge(!!state.room.view_once);
         broadcastSettingsChange();
         broadcastClear();
         UI.showToast('Started a new view-once note.', 'success');
@@ -1385,17 +1391,17 @@ function _updateViewOnceConsumedUI() {
 // ── Expiration timer ──────────────────────────────────────────────────────────
 
 function setupExpirationTimer() {
-  clearTimeout(_expTimer);
-  _expTimer = null;
-  if (!_room?.expires_at) return;
+  clearTimeout(state.expTimer);
+  state.expTimer = null;
+  if (!state.room?.expires_at) return;
   const armExpirationTimer = () => {
-    clearTimeout(_expTimer);
-    _expTimer = null;
-    if (!_room?.expires_at) return;
-    const remaining = new Date(_room.expires_at) - Date.now();
+    clearTimeout(state.expTimer);
+    state.expTimer = null;
+    if (!state.room?.expires_at) return;
+    const remaining = new Date(state.room.expires_at) - Date.now();
     if (remaining <= 0) {
       void (async () => {
-        const didClear = await handleExpiration(_roomId, _room, await _emptyContentForCurrentEncryption());
+        const didClear = await handleExpiration(state.roomId, state.room, await _emptyContentForCurrentEncryption());
         if (didClear) {
           setContentNoSave('');
           UI.updateWordCount('');
@@ -1409,16 +1415,16 @@ function setupExpirationTimer() {
     }
 
     const nextDelay = Math.min(remaining, EXPIRATION_TIMER_MAX_DELAY_MS);
-    _expTimer = setTimeout(() => {
+    state.expTimer = setTimeout(() => {
       armExpirationTimer();
     }, nextDelay);
   };
 
-  UI.showExpirationBar(_room.expires_at, async () => {
+  UI.showExpirationBar(state.room.expires_at, async () => {
     if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Cannot change settings.', 'warning'); return; }
     try {
-      await clearExpiration(_roomId);
-      _room = await loadRoom(_roomId);
+      await clearExpiration(state.roomId);
+      state.room = await loadRoom(state.roomId);
       UI.hideExpirationBar();
       broadcastSettingsChange();
       UI.showToast('Expiration removed.', 'success');
@@ -1431,7 +1437,7 @@ function setupExpirationTimer() {
 // ── File refresh ──────────────────────────────────────────────────────────────
 
 function _updateBulkBar() {
-  const n = _selectedFiles.size;
+  const n = state.selectedFiles.size;
   const countEl  = document.getElementById('files-bulk-count');
   const deleteEl = document.getElementById('files-bulk-delete');
   if (countEl)  countEl.textContent = `${n} selected`;
@@ -1440,7 +1446,7 @@ function _updateBulkBar() {
 
 function _sortFiles(files) {
   const arr = [...files];
-  switch (_filesSort) {
+  switch (state.filesSort) {
     case 'oldest':    return arr.sort((a, b) => new Date(a.uploaded_at) - new Date(b.uploaded_at));
     case 'name-asc':  return arr.sort((a, b) => a.filename.localeCompare(b.filename));
     case 'name-desc': return arr.sort((a, b) => b.filename.localeCompare(a.filename));
@@ -1476,7 +1482,7 @@ async function _uploadAndInsertImages(files) {
   for (let i = 0; i < toUpload.length; i++) {
     if (toUpload.length > 1) UI.setUploadingState(true, `Uploading image ${i + 1} of ${toUpload.length}…`);
     try {
-      const record = await uploadFile(_roomId, toUpload[i]);
+      const record = await uploadFile(state.roomId, toUpload[i]);
       _insertTextAtActiveCursor(`![${record.filename}](syncpad-file:${record.file_path})\n`);
       succeeded++;
     } catch { failed++; }
@@ -1497,7 +1503,7 @@ async function _uploadAndInsertImages(files) {
 async function refreshFiles() {
   let files;
   try {
-    files = _sortFiles(await listFiles(_roomId));
+    files = _sortFiles(await listFiles(state.roomId));
   } catch {
     UI.showToast('Could not load files — check your connection.', 'error');
     return;
@@ -1534,12 +1540,12 @@ async function refreshFiles() {
     },
     {
       canDelete: canDeleteFiles(),
-      canDownload: !_room?.downloads_disabled,
-      selectMode: _filesSelectMode,
-      selectedIds: _selectedFiles,
+      canDownload: !state.room?.downloads_disabled,
+      selectMode: state.filesSelectMode,
+      selectedIds: state.selectedFiles,
       onSelectionChange: (file, checked) => {
-        if (checked) _selectedFiles.add(file.id);
-        else         _selectedFiles.delete(file.id);
+        if (checked) state.selectedFiles.add(file.id);
+        else         state.selectedFiles.delete(file.id);
         _updateBulkBar();
       },
       onPreview: async (file) => {
@@ -1580,21 +1586,21 @@ async function refreshFiles() {
 
 function _renderRoomHeader() {
   UI.setRoomName({
-    roomId: _roomId,
-    roomName: _room?.room_name || '',
-    canEditTitle: canEdit() && !(_room?.view_once && _room?.cleared_reason === 'view_once' && !!_room?.viewed && !_viewOnceConsumedByThisSession),
+    roomId: state.roomId,
+    roomName: state.room?.room_name || '',
+    canEditTitle: canEdit() && !(state.room?.view_once && state.room?.cleared_reason === 'view_once' && !!state.room?.viewed && !state.viewOnceConsumedByThisSession),
   });
 }
 
 function _selectExpirationPreset(preset) {
-  _expPreset = preset;
+  state.expPreset = preset;
   document.querySelectorAll('[data-exp-preset]').forEach((el) => el.classList.toggle('is-active', el.dataset.expPreset === preset));
   document.getElementById('exp-custom-row')?.classList.toggle('hidden', preset !== 'custom');
   _updateExpirationPreview();
 }
 
 function _buildExpirationDuration() {
-  if (_expPreset !== 'custom') return _expPreset;
+  if (state.expPreset !== 'custom') return state.expPreset;
   const value = document.getElementById('exp-custom-value')?.value?.trim();
   const unit = document.getElementById('exp-custom-unit')?.value?.trim();
   if (!value) return { error: 'Please enter a number for custom auto-expire.' };
@@ -1704,10 +1710,10 @@ const _resolveFileImageRefsForExport = async (html) => {
 function _wireShortcuts() {
   initShortcuts({
     onTogglePreview:    () => {
-      _applyMarkdownMode(_markdownMode === 'preview' ? 'write' : 'preview');
+      _applyMarkdownMode(state.markdownMode === 'preview' ? 'write' : 'preview');
     },
     onToggleSplit: () => {
-      _applyMarkdownMode(_markdownMode === 'split' ? 'write' : 'split');
+      _applyMarkdownMode(state.markdownMode === 'split' ? 'write' : 'split');
     },
     onToggleMonospace: () => _toggleMonospace(),
     onOpenSearch: () => {
@@ -1747,8 +1753,6 @@ function _wireShortcuts() {
 // checks, confirm dialogs, toasts) are run by clicking that button rather
 // than re-implementing the guard here — one source of truth per action.
 
-let _paletteFiltered    = [];
-let _paletteActiveIndex = 0;
 
 function _clickById(id) {
   return () => document.getElementById(id)?.click();
@@ -1757,9 +1761,9 @@ function _clickById(id) {
 function _paletteCommands() {
   return [
     { id: 'mode-write',   label: 'Source mode (hide preview)',        group: 'View', run: () => _applyMarkdownMode('write') },
-    { id: 'mode-preview', label: 'Toggle Live preview mode',          group: 'View', shortcut: 'Ctrl Shift P', keywords: ['preview'], run: () => _applyMarkdownMode(_markdownMode === 'preview' ? 'write' : 'preview') },
-    { id: 'mode-split',   label: 'Toggle Split view',                 group: 'View', shortcut: 'Ctrl Shift S', run: () => _applyMarkdownMode(_markdownMode === 'split' ? 'write' : 'split') },
-    { id: 'monospace',    label: _monospace ? 'Turn off monospace font' : 'Turn on monospace font', group: 'View', shortcut: 'Ctrl Shift M', keywords: ['font'], run: () => _toggleMonospace() },
+    { id: 'mode-preview', label: 'Toggle Live preview mode',          group: 'View', shortcut: 'Ctrl Shift P', keywords: ['preview'], run: () => _applyMarkdownMode(state.markdownMode === 'preview' ? 'write' : 'preview') },
+    { id: 'mode-split',   label: 'Toggle Split view',                 group: 'View', shortcut: 'Ctrl Shift S', run: () => _applyMarkdownMode(state.markdownMode === 'split' ? 'write' : 'split') },
+    { id: 'monospace',    label: state.monospace ? 'Turn off monospace font' : 'Turn on monospace font', group: 'View', shortcut: 'Ctrl Shift M', keywords: ['font'], run: () => _toggleMonospace() },
 
     { id: 'panel-tools',    label: 'Open Tools panel',    group: 'Panels', keywords: ['clear', 'import', 'download'], run: () => UI.togglePanel('tools-panel') },
     { id: 'panel-files',    label: 'Open Files panel',    group: 'Panels', keywords: ['attachments', 'upload'], run: () => UI.togglePanel('files-panel') },
@@ -1771,7 +1775,7 @@ function _paletteCommands() {
     { id: 'panel-templates', label: 'Insert a template',   group: 'Panels', run: _clickById('tool-templates') },
 
     { id: 'share',          label: 'Share this room',                 group: 'Room', shortcut: 'Ctrl Shift K', run: _clickById('btn-share') },
-    { id: 'lock',           label: _room?.editing_locked ? 'Unlock editing' : 'Lock editing', group: 'Room', run: _clickById('setting-lock-btn') },
+    { id: 'lock',           label: state.room?.editing_locked ? 'Unlock editing' : 'Lock editing', group: 'Room', run: _clickById('setting-lock-btn') },
     { id: 'clear-note',     label: 'Clear note for everyone…',        group: 'Room', keywords: ['delete', 'empty'], run: _clickById('tool-clear') },
     { id: 'report-room',    label: 'Report this room',                group: 'Room', run: _clickById('btn-report-room') },
 
@@ -1792,19 +1796,19 @@ function _paletteCommands() {
 }
 
 function _renderPaletteResults() {
-  UI.renderCommandPaletteResults(_paletteFiltered, _paletteActiveIndex, _runPaletteCommand);
+  UI.renderCommandPaletteResults(state.paletteFiltered, state.paletteActiveIndex, _runPaletteCommand);
 }
 
 function _runPaletteCommand(id) {
-  const cmd = _paletteFiltered.find((c) => c.id === id);
+  const cmd = state.paletteFiltered.find((c) => c.id === id);
   _closeCommandPalette();
   cmd?.run();
 }
 
 function _openCommandPalette() {
   const input = document.getElementById('command-palette-input');
-  _paletteFiltered = _paletteCommands();
-  _paletteActiveIndex = 0;
+  state.paletteFiltered = _paletteCommands();
+  state.paletteActiveIndex = 0;
   UI.openModal('command-palette-modal');
   if (input) { input.value = ''; input.focus(); }
   _renderPaletteResults();
@@ -1822,22 +1826,22 @@ function _wireCommandPalette() {
 
   const input = document.getElementById('command-palette-input');
   input?.addEventListener('input', () => {
-    _paletteFiltered = filterCommands(_paletteCommands(), input.value);
-    _paletteActiveIndex = 0;
+    state.paletteFiltered = filterCommands(_paletteCommands(), input.value);
+    state.paletteActiveIndex = 0;
     _renderPaletteResults();
   });
   input?.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (_paletteFiltered.length) _paletteActiveIndex = (_paletteActiveIndex + 1) % _paletteFiltered.length;
+      if (state.paletteFiltered.length) state.paletteActiveIndex = (state.paletteActiveIndex + 1) % state.paletteFiltered.length;
       _renderPaletteResults();
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (_paletteFiltered.length) _paletteActiveIndex = (_paletteActiveIndex - 1 + _paletteFiltered.length) % _paletteFiltered.length;
+      if (state.paletteFiltered.length) state.paletteActiveIndex = (state.paletteActiveIndex - 1 + state.paletteFiltered.length) % state.paletteFiltered.length;
       _renderPaletteResults();
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const active = _paletteFiltered[_paletteActiveIndex];
+      const active = state.paletteFiltered[state.paletteActiveIndex];
       if (active) _runPaletteCommand(active.id);
     }
   });
@@ -1951,7 +1955,7 @@ function _wireEditorCore() {
     // dashes, and an ellipsis character, converted as you type. Checked
     // before plain auto-pair below so a "smart" double quote wins over the
     // straight-quote pairing when the preference is on.
-    if (_smartPunct) {
+    if (state.smartPunct) {
       const start = editor.selectionStart;
       const end   = editor.selectionEnd;
       const OPENING_CONTEXT = /[\s([{‘“]/; // whitespace, start of doc, or another opening bracket/quote
@@ -2215,7 +2219,7 @@ function _wireHeader() {
   });
 
   document.getElementById('room-name')?.addEventListener('click', () => {
-    copyToClipboard(buildRoomUrl(BASE, _roomId))
+    copyToClipboard(buildRoomUrl(BASE, state.roomId))
       .then(ok => ok
         ? UI.showToast('Room link copied!', 'success')
         : UI.showToast('Could not copy link.', 'error'));
@@ -2223,7 +2227,7 @@ function _wireHeader() {
 
   document.getElementById('room-title-edit-btn')?.addEventListener('click', () => {
     if (!canEdit()) return;
-    UI.setRoomTitleEditMode(true, (_room?.room_name || '').trim());
+    UI.setRoomTitleEditMode(true, (state.room?.room_name || '').trim());
   });
   document.getElementById('room-title-cancel-btn')?.addEventListener('click', () => UI.setRoomTitleEditMode(false));
   const saveTitle = async () => {
@@ -2232,15 +2236,15 @@ function _wireHeader() {
     const normalized = normalizeRoomDisplayName(input?.value || '');
     // No-op when the name hasn't actually changed — avoids an unnecessary DB
     // write and a misleading "Room title updated." toast on blur without edits.
-    if (normalized === (_room?.room_name || '').trim()) {
+    if (normalized === (state.room?.room_name || '').trim()) {
       UI.setRoomTitleEditMode(false);
       return;
     }
     const saveBtn = document.getElementById('room-title-save-btn');
     if (saveBtn) saveBtn.disabled = true;
     try {
-      await updateRoomDisplayName(_roomId, normalized);
-      _room.room_name = normalized;
+      await updateRoomDisplayName(state.roomId, normalized);
+      state.room.room_name = normalized;
       _renderRoomHeader();
       UI.setRoomTitleEditMode(false);
       UI.showToast('Room title updated.', 'success');
@@ -2425,7 +2429,7 @@ async function _ctxPaste() {
 
 function _ctxSelectAll() {
   const len = UI.getEditorValue().length;
-  const useLive = LiveEditor.isMounted() && (_markdownMode === 'preview' || LiveEditor.hasFocus());
+  const useLive = LiveEditor.isMounted() && (state.markdownMode === 'preview' || LiveEditor.hasFocus());
   if (useLive) {
     LiveEditor.focus();
     LiveEditor.setSelection(0, len);
@@ -2444,7 +2448,7 @@ function _wireSlashMenuDismissal() {
   const menu = document.getElementById('slash-menu');
   if (!menu) return;
   document.addEventListener('click', (e) => {
-    if (_slashOpen && !menu.contains(e.target)) _closeSlashMenu();
+    if (state.slashOpen && !menu.contains(e.target)) _closeSlashMenu();
   });
   window.addEventListener('resize', _closeSlashMenu);
 }
@@ -2543,11 +2547,11 @@ function _wirePanelsAndModals() {
     try {
       if (submitEl) { submitEl.disabled = true; submitEl.textContent = 'Submitting…'; }
       await submitRoomReport({
-        roomId: _roomId,
-        shareToken: _isReadOnly ? _shareToken : null,
+        roomId: state.roomId,
+        shareToken: state.isReadOnly ? state.shareToken : null,
         reason,
         details,
-        mode: _isReadOnly ? 'readonly' : 'editable',
+        mode: state.isReadOnly ? 'readonly' : 'editable',
         pageUrl: location.href,
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
         reporterDeviceId: getDeviceId(),
@@ -2580,7 +2584,7 @@ function _wireTools() {
 
     'tool-download': () => {
       // Export as Markdown (.md). Content is plain text / Markdown.
-      _downloadBlob(UI.getEditorValue(), `${_roomId}.md`, 'text/markdown');
+      _downloadBlob(UI.getEditorValue(), `${state.roomId}.md`, 'text/markdown');
       UI.showToast('Downloaded .md', 'success');
     },
 
@@ -2659,7 +2663,7 @@ function _wireFiles() {
     for (let i = 0; i < toUpload.length; i++) {
       if (toUpload.length > 1) UI.setUploadingState(true, `Uploading ${i + 1} of ${toUpload.length}…`);
       try {
-        await uploadFile(_roomId, toUpload[i]);
+        await uploadFile(state.roomId, toUpload[i]);
         succeeded++;
       } catch { failed++; }
     }
@@ -2681,7 +2685,7 @@ function _wireFiles() {
 function _wireFilesSortOrder() {
   // ── Files — sort order ────────────────────────────────────────────────────
   document.getElementById('files-sort')?.addEventListener('change', (e) => {
-    _filesSort = e.target.value;
+    state.filesSort = e.target.value;
     refreshFiles();
   });
 
@@ -2690,35 +2694,35 @@ function _wireFilesSortOrder() {
 function _wireFilesBulkSelect() {
   // ── Files — bulk select ────────────────────────────────────────────────────
   document.getElementById('files-select-toggle')?.addEventListener('click', () => {
-    _filesSelectMode = !_filesSelectMode;
-    _selectedFiles.clear();
-    document.getElementById('files-select-toggle')?.classList.toggle('active', _filesSelectMode);
-    document.getElementById('files-bulk-bar')?.classList.toggle('hidden', !_filesSelectMode);
+    state.filesSelectMode = !state.filesSelectMode;
+    state.selectedFiles.clear();
+    document.getElementById('files-select-toggle')?.classList.toggle('active', state.filesSelectMode);
+    document.getElementById('files-bulk-bar')?.classList.toggle('hidden', !state.filesSelectMode);
     _updateBulkBar();
     refreshFiles();
   });
   document.getElementById('files-bulk-cancel')?.addEventListener('click', () => {
-    _filesSelectMode = false;
-    _selectedFiles.clear();
+    state.filesSelectMode = false;
+    state.selectedFiles.clear();
     document.getElementById('files-select-toggle')?.classList.remove('active');
     document.getElementById('files-bulk-bar')?.classList.add('hidden');
     refreshFiles();
   });
   document.getElementById('files-bulk-delete')?.addEventListener('click', async () => {
-    if (!_selectedFiles.size) return;
+    if (!state.selectedFiles.size) return;
     if (!canDeleteFiles()) { UI.showToast(editBlockedReason() || 'File deletion is disabled.', 'warning'); return; }
-    const count = _selectedFiles.size;
+    const count = state.selectedFiles.size;
     const ok = await UI.showConfirm(
       `Permanently delete ${count} file${count !== 1 ? 's' : ''}? This cannot be undone.`,
       { confirmLabel: 'Delete', danger: true },
     );
     if (!ok) return;
-    const ids = [..._selectedFiles];
-    _selectedFiles.clear();
+    const ids = [...state.selectedFiles];
+    state.selectedFiles.clear();
     let failed = 0;
     // Load current file list so we have file_path for each id
     let allFiles;
-    try { allFiles = await listFiles(_roomId); }
+    try { allFiles = await listFiles(state.roomId); }
     catch { UI.showToast('Could not load files — check your connection.', 'error'); return; }
     for (const id of ids) {
       const f = allFiles.find(x => x.id === id);
@@ -2740,14 +2744,14 @@ function _wireSettings() {
   // ── Settings ───────────────────────────────────────────────────────────────
   document.getElementById('setting-passcode-btn')?.addEventListener('click', async () => {
     if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }
-    if (_room.passcode_hash) {
+    if (state.room.passcode_hash) {
       if (!await UI.showConfirm('Remove the room passcode?', { confirmLabel: 'Remove', danger: true })) return;
       try {
-        await removePasscode(_roomId);
-        _room = await loadRoom(_roomId);
+        await removePasscode(state.roomId);
+        state.room = await loadRoom(state.roomId);
         _updatePermissionContext();
         _renderRoomHeader();
-        UI.renderSettingsPanel(_room);
+        UI.renderSettingsPanel(state.room);
         broadcastSettingsChange();
         UI.showToast('Passcode removed.', 'success');
       } catch { UI.showToast('Could not remove passcode.', 'error'); }
@@ -2755,11 +2759,11 @@ function _wireSettings() {
       const pc = await UI.showPrompt('Set a new passcode:', { placeholder: 'Passcode…', confirmLabel: 'Set passcode' });
       if (!pc?.trim()) return;
       try {
-        await setPasscode(_roomId, pc);
-        _room = await loadRoom(_roomId);
+        await setPasscode(state.roomId, pc);
+        state.room = await loadRoom(state.roomId);
         _updatePermissionContext();
         _renderRoomHeader();
-        UI.renderSettingsPanel(_room);
+        UI.renderSettingsPanel(state.room);
         broadcastSettingsChange();
         UI.showToast('Passcode set.', 'success');
       } catch { UI.showToast('Could not set passcode.', 'error'); }
@@ -2769,7 +2773,7 @@ function _wireSettings() {
   document.getElementById('setting-enc-btn')?.addEventListener('click', async () => {
     if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }
     const encBtn = document.getElementById('setting-enc-btn');
-    if (_room.encryption_enabled) {
+    if (state.room.encryption_enabled) {
       if (!await UI.showConfirm('Disable encryption? Content will be stored in plaintext.', { confirmLabel: 'Disable', danger: true })) return;
       await flushSave();
       cancelPendingTypingBroadcast();
@@ -2780,21 +2784,21 @@ function _wireSettings() {
       if (encBtn) { encBtn.disabled = true; encBtn.textContent = 'Decrypting…'; }
       try {
         // Pass plaintext (editor value), passphrase, stored salt, and current DB ciphertext
-        await disableEncryption(_roomId, UI.getEditorValue(), pp, _encSalt, _room.content);
-        _encKey = null; _encSalt = null;
+        await disableEncryption(state.roomId, UI.getEditorValue(), pp, state.encSalt, state.room.content);
+        state.encKey = null; state.encSalt = null;
         // v1: tell sync.js the new encrypt/decrypt fns immediately.
         setEncryption(null, null);
-        _room   = await loadRoom(_roomId);
-        clearDraft(_roomId);
+        state.room   = await loadRoom(state.roomId);
+        clearDraft(state.roomId);
         _updatePermissionContext();
         _renderRoomHeader();
-        UI.renderSettingsPanel(_room);
+        UI.renderSettingsPanel(state.room);
         UI.setEncryptionBadge(false);
         UI.showEncryptionLockedBanner(false);
         broadcastSettingsChange();
         UI.showToast('Encryption disabled.', 'success');
       } catch (err) {
-        UI.renderSettingsPanel(_room); // restore button state
+        UI.renderSettingsPanel(state.room); // restore button state
         UI.showToast(err.message || 'Could not disable encryption.', 'error', 4000);
       }
     } else {
@@ -2802,7 +2806,7 @@ function _wireSettings() {
       cancelPendingTypingBroadcast();
       cancelPendingLiveContentBroadcast();
       let existingFiles;
-      try { existingFiles = await listFiles(_roomId); }
+      try { existingFiles = await listFiles(state.roomId); }
       catch { existingFiles = []; } // non-critical — just skip the warning if file list fails
       if (existingFiles.length && !await UI.showConfirm('This room has file attachments. SyncPad v1 encrypts note text only — files are not encrypted. Continue?', { confirmLabel: 'Continue' })) return;
       const pp = await UI.showPrompt('Set an encryption passphrase:', { placeholder: 'Passphrase…', confirmLabel: 'Enable encryption' });
@@ -2810,23 +2814,23 @@ function _wireSettings() {
       // PBKDF2 key derivation takes 1-3 s — indicate progress on the button.
       if (encBtn) { encBtn.disabled = true; encBtn.textContent = 'Encrypting…'; }
       try {
-        const { salt, key } = await enableEncryption(_roomId, UI.getEditorValue(), pp);
-        _encKey = key; _encSalt = salt;
+        const { salt, key } = await enableEncryption(state.roomId, UI.getEditorValue(), pp);
+        state.encKey = key; state.encSalt = salt;
         // v1: switch sync.js to encrypted lane immediately.
         setEncryption(
-          (pt) => encryptContent(pt, _encKey),
-          (ct) => decryptContent(ct, _encKey),
+          (pt) => encryptContent(pt, state.encKey),
+          (ct) => decryptContent(ct, state.encKey),
         );
-        _room   = await loadRoom(_roomId);
-        clearDraft(_roomId);
+        state.room   = await loadRoom(state.roomId);
+        clearDraft(state.roomId);
         _updatePermissionContext();
         _renderRoomHeader();
-        UI.renderSettingsPanel(_room);
+        UI.renderSettingsPanel(state.room);
         UI.setEncryptionBadge(true);
         broadcastSettingsChange();
         UI.showToast('Encryption enabled.', 'success');
       } catch {
-        UI.renderSettingsPanel(_room); // restore button state
+        UI.renderSettingsPanel(state.room); // restore button state
         UI.showToast('Could not enable encryption.', 'error');
       }
     }
@@ -2855,10 +2859,10 @@ function _wireSettings() {
       return;
     }
     try {
-      await setExpiration(_roomId, built);
-      _room = await loadRoom(_roomId);
+      await setExpiration(state.roomId, built);
+      state.room = await loadRoom(state.roomId);
       _renderRoomHeader();
-      UI.renderSettingsPanel(_room);
+      UI.renderSettingsPanel(state.room);
       setupExpirationTimer();
       broadcastSettingsChange();
       UI.showToast('Auto-expire set.', 'success');
@@ -2866,12 +2870,12 @@ function _wireSettings() {
   });
   document.getElementById('setting-exp-remove-btn')?.addEventListener('click', async () => {
     if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }
-    if (!_room.expires_at) { UI.showToast('No auto-expire is currently set.', 'warning'); return; }
+    if (!state.room.expires_at) { UI.showToast('No auto-expire is currently set.', 'warning'); return; }
     try {
-      await clearExpiration(_roomId);
-      _room = await loadRoom(_roomId);
+      await clearExpiration(state.roomId);
+      state.room = await loadRoom(state.roomId);
       _renderRoomHeader();
-      UI.renderSettingsPanel(_room);
+      UI.renderSettingsPanel(state.room);
       UI.hideExpirationBar();
       broadcastSettingsChange();
       UI.showToast('Auto-expire removed.', 'success');
@@ -2882,16 +2886,16 @@ function _wireSettings() {
   document.getElementById('setting-vo-btn')?.addEventListener('click', async () => {
     if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }
     try {
-      if (_room.view_once) {
-        await disableViewOnce(_roomId);
+      if (state.room.view_once) {
+        await disableViewOnce(state.roomId);
         UI.showToast('View-once disabled.', 'success');
       } else {
-        await enableViewOnce(_roomId);
+        await enableViewOnce(state.roomId);
         UI.showToast('View-once enabled. The note clears after the first viewer sees it.', 'success', 5000);
       }
-      _room = await loadRoom(_roomId);
+      state.room = await loadRoom(state.roomId);
       _renderRoomHeader();
-      UI.renderSettingsPanel(_room);
+      UI.renderSettingsPanel(state.room);
       broadcastSettingsChange();
     } catch { UI.showToast('Could not update view-once setting.', 'error'); }
   });
@@ -2899,8 +2903,8 @@ function _wireSettings() {
   document.getElementById('setting-dl-btn')?.addEventListener('click', async () => {
     if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }
     try {
-      if (_room.device_limit) {
-        await clearDeviceLimit(_roomId);
+      if (state.room.device_limit) {
+        await clearDeviceLimit(state.roomId);
         UI.showToast('Device limit removed.', 'success');
       } else {
         const input = document.getElementById('setting-dl-input');
@@ -2909,12 +2913,12 @@ function _wireSettings() {
           UI.showToast('Enter a device limit between 1 and 50.', 'warning');
           return;
         }
-        await setDeviceLimit(_roomId, n);
+        await setDeviceLimit(state.roomId, n);
         UI.showToast(`Device limit set. The note clears once ${n} device${n === 1 ? '' : 's'} have joined.`, 'success', 5000);
       }
-      _room = await loadRoom(_roomId);
+      state.room = await loadRoom(state.roomId);
       _renderRoomHeader();
-      UI.renderSettingsPanel(_room);
+      UI.renderSettingsPanel(state.room);
       broadcastSettingsChange();
     } catch { UI.showToast('Could not update device limit. Has supabase/migrations/0005_device_limit.sql been run?', 'error', 5000); }
   });
@@ -2922,15 +2926,15 @@ function _wireSettings() {
   // Lock-editing toggle
   document.getElementById('setting-lock-btn')?.addEventListener('click', async () => {
     if (!canToggleLock()) { UI.showToast(editBlockedReason() || 'Lock controls are disabled.', 'warning'); return; }
-    const target = !_room.editing_locked;
+    const target = !state.room.editing_locked;
     try {
       if (target) { await flushSave(); cancelPendingTypingBroadcast(); cancelPendingLiveContentBroadcast(); }
-      await setEditingLocked(_roomId, target);
-      _room = await loadRoom(_roomId);
+      await setEditingLocked(state.roomId, target);
+      state.room = await loadRoom(state.roomId);
       _updatePermissionContext();
       _renderRoomHeader();
-      UI.renderSettingsPanel(_room);
-      UI.setLockedMode(!!_room.editing_locked);
+      UI.renderSettingsPanel(state.room);
+      UI.setLockedMode(!!state.room.editing_locked);
       broadcastSettingsChange();
       UI.showToast(target ? 'Editing locked.' : 'Editing unlocked.', 'success');
     } catch { UI.showToast('Could not update editing lock.', 'error'); }
@@ -2948,12 +2952,12 @@ function _wireExportModal() {
 
   document.getElementById('export-txt')?.addEventListener('click', () => {
     if (!_requireContent()) return;
-    _downloadBlob(UI.getEditorValue(), `${_roomId}.txt`, 'text/plain');
+    _downloadBlob(UI.getEditorValue(), `${state.roomId}.txt`, 'text/plain');
     UI.showToast('Downloaded .txt', 'success');
   });
   document.getElementById('export-md')?.addEventListener('click', () => {
     if (!_requireContent()) return;
-    _downloadBlob(UI.getEditorValue(), `${_roomId}.md`, 'text/markdown');
+    _downloadBlob(UI.getEditorValue(), `${state.roomId}.md`, 'text/markdown');
     UI.showToast('Downloaded .md', 'success');
   });
   document.getElementById('export-html')?.addEventListener('click', async () => {
@@ -2963,12 +2967,12 @@ function _wireExportModal() {
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SyncPad – ${escapeHtml(_roomId)}</title>
+<title>SyncPad – ${escapeHtml(state.roomId)}</title>
 <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;color:#1a1a1a;line-height:1.7}
 pre{background:#f5f5f5;padding:1em;border-radius:4px;overflow:auto}code{background:#f5f5f5;padding:2px 4px;border-radius:2px}
 blockquote{border-left:3px solid #ccc;margin:0;padding-left:1em;color:#666}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:6px 10px}</style>
 </head><body>${renderTocHtml(headings)}${resolvedBody}</body></html>`;
-    _downloadBlob(html, `${_roomId}.html`, 'text/html');
+    _downloadBlob(html, `${state.roomId}.html`, 'text/html');
     UI.showToast('Downloaded .html', 'success');
   });
   document.getElementById('export-copy-text')?.addEventListener('click', async () => {
@@ -2995,7 +2999,7 @@ blockquote{border-left:3px solid #ccc;margin:0;padding-left:1em;color:#666}table
     const content = UI.getEditorValue();
     const { html: renderedHtml, headings } = renderMarkdownWithToc(content);
     const resolvedHtml = await _resolveFileImageRefsForExport(renderedHtml);
-    const title = escapeHtml(_room?.room_name?.trim() || _roomId);
+    const title = escapeHtml(state.room?.room_name?.trim() || state.roomId);
     win.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -3070,38 +3074,38 @@ function _wireFindReplacePanel() {
 
   // Enable/disable replace buttons based on edit permission and match count.
   const _syncReplaceButtons = () => {
-    const enabled = canEdit() && _searchMatches.length > 0;
+    const enabled = canEdit() && state.searchMatches.length > 0;
     if (replaceOne) replaceOne.disabled = !enabled;
     if (replaceAll) replaceAll.disabled = !enabled;
   };
 
   const _runSearch = () => {
     const raw = searchInput?.value || '';
-    _searchTerm = _caseSensitive ? raw : raw.toLowerCase();
-    _searchMatches = [];
-    _searchIndex   = -1;
-    if (!_searchTerm || !editor) {
+    state.searchTerm = state.caseSensitive ? raw : raw.toLowerCase();
+    state.searchMatches = [];
+    state.searchIndex   = -1;
+    if (!state.searchTerm || !editor) {
       if (searchCount) searchCount.textContent = '';
       // Collapse any selection left by the previous _jumpToMatch() call so the
       // editor doesn't keep showing a stale highlighted range.
       if (editor) UI.setEditorSelection(editor.selectionEnd, editor.selectionEnd);
-      if (_markdownMode === 'preview' && LiveEditor.isMounted()) {
+      if (state.markdownMode === 'preview' && LiveEditor.isMounted()) {
         const sel = LiveEditor.getSelection();
         LiveEditor.setSelection(sel.to, sel.to);
       }
       _syncReplaceButtons();
       return;
     }
-    const text = _caseSensitive ? editor.value : editor.value.toLowerCase();
+    const text = state.caseSensitive ? editor.value : editor.value.toLowerCase();
     let pos = 0;
     while (true) {
-      const idx = text.indexOf(_searchTerm, pos);
+      const idx = text.indexOf(state.searchTerm, pos);
       if (idx === -1) break;
-      _searchMatches.push({ start: idx, end: idx + _searchTerm.length });
+      state.searchMatches.push({ start: idx, end: idx + state.searchTerm.length });
       pos = idx + 1;
     }
-    if (_searchMatches.length > 0) {
-      _searchIndex = 0;
+    if (state.searchMatches.length > 0) {
+      state.searchIndex = 0;
       _jumpToMatch(0);
     } else if (searchCount) {
       searchCount.textContent = 'No results';
@@ -3110,8 +3114,8 @@ function _wireFindReplacePanel() {
   };
 
   const _jumpToMatch = (idx, { keepFocus = false } = {}) => {
-    if (!editor || !_searchMatches.length) return;
-    const m = _searchMatches[idx];
+    if (!editor || !state.searchMatches.length) return;
+    const m = state.searchMatches[idx];
     if (!m) return;
     // Only steal focus from the editor when the search/replace inputs don't
     // own it — otherwise typing in the search panel scrolls away mid-query.
@@ -3126,13 +3130,13 @@ function _wireFindReplacePanel() {
     // the same selection+scrollIntoView primitive the TOC widget uses, and
     // only fall back to a mode switch when the live surface failed to mount
     // (rare — classic-renderer fallback has no caret to move at all).
-    if (_markdownMode === 'preview' && LiveEditor.isMounted()) {
+    if (state.markdownMode === 'preview' && LiveEditor.isMounted()) {
       LiveEditor.setSelection(m.start, m.end);
       if (!searchPanelFocused && !keepFocus) LiveEditor.focus();
-      if (searchCount) searchCount.textContent = `${idx + 1} / ${_searchMatches.length}`;
+      if (searchCount) searchCount.textContent = `${idx + 1} / ${state.searchMatches.length}`;
       return;
     }
-    if (_markdownMode === 'preview') _applyMarkdownMode('write');
+    if (state.markdownMode === 'preview') _applyMarkdownMode('write');
     if (!searchPanelFocused && !keepFocus) editor.focus();
     UI.setEditorSelection(m.start, m.end);
     // Scroll into view
@@ -3142,7 +3146,7 @@ function _wireFindReplacePanel() {
       const lineH   = parseInt(getComputedStyle(editor).lineHeight) || 20;
       editor.scrollTop = Math.max(0, lineNum * lineH - editor.clientHeight / 2);
     } catch {}
-    if (searchCount) searchCount.textContent = `${idx + 1} / ${_searchMatches.length}`;
+    if (searchCount) searchCount.textContent = `${idx + 1} / ${state.searchMatches.length}`;
   };
 
   searchInput?.addEventListener('input', _runSearch);
@@ -3150,11 +3154,11 @@ function _wireFindReplacePanel() {
   searchInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (!_searchMatches.length) return;
-      _searchIndex = (_searchIndex + 1) % _searchMatches.length;
+      if (!state.searchMatches.length) return;
+      state.searchIndex = (state.searchIndex + 1) % state.searchMatches.length;
       // Enter navigates — focus the editor so the selection highlight is visible.
       editor?.focus();
-      _jumpToMatch(_searchIndex);
+      _jumpToMatch(state.searchIndex);
     }
     if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); replaceInput?.focus(); }
     if (e.key === 'Escape') { UI.closeAllPanels(); _focusActiveEditorSurface(); }
@@ -3166,24 +3170,24 @@ function _wireFindReplacePanel() {
   });
 
   document.getElementById('search-next')?.addEventListener('click', () => {
-    if (!_searchMatches.length) return;
-    _searchIndex = (_searchIndex + 1) % _searchMatches.length;
-    _jumpToMatch(_searchIndex);
+    if (!state.searchMatches.length) return;
+    state.searchIndex = (state.searchIndex + 1) % state.searchMatches.length;
+    _jumpToMatch(state.searchIndex);
     // Return focus to search input so keyboard nav continues naturally.
     searchInput?.focus();
   });
   document.getElementById('search-prev')?.addEventListener('click', () => {
-    if (!_searchMatches.length) return;
-    _searchIndex = (_searchIndex - 1 + _searchMatches.length) % _searchMatches.length;
-    _jumpToMatch(_searchIndex);
+    if (!state.searchMatches.length) return;
+    state.searchIndex = (state.searchIndex - 1 + state.searchMatches.length) % state.searchMatches.length;
+    _jumpToMatch(state.searchIndex);
     searchInput?.focus();
   });
 
   // Replace current match and advance to the next one.
   replaceOne?.addEventListener('click', () => {
     if (!canEdit()) { UI.showToast(editBlockedReason() || 'Editing is disabled.', 'warning'); return; }
-    if (!_searchMatches.length || !editor) return;
-    const m = _searchMatches[Math.max(0, _searchIndex)];
+    if (!state.searchMatches.length || !editor) return;
+    const m = state.searchMatches[Math.max(0, state.searchIndex)];
     if (!m) return;
     const replacement = replaceInput?.value ?? '';
     UI.replaceEditorRange(m.start, m.end, replacement);
@@ -3191,9 +3195,9 @@ function _wireFindReplacePanel() {
     _refreshPreviewIfActive();
     // Re-index so positions reflect the changed content, then advance.
     _runSearch();
-    if (_searchMatches.length > 0) {
-      _searchIndex = Math.min(_searchIndex, _searchMatches.length - 1);
-      _jumpToMatch(_searchIndex, { keepFocus: true });
+    if (state.searchMatches.length > 0) {
+      state.searchIndex = Math.min(state.searchIndex, state.searchMatches.length - 1);
+      _jumpToMatch(state.searchIndex, { keepFocus: true });
     }
     // Keep focus in the replace input so the user can continue replacing.
     replaceInput?.focus();
@@ -3202,14 +3206,14 @@ function _wireFindReplacePanel() {
   // Replace every match at once.
   replaceAll?.addEventListener('click', () => {
     if (!canEdit()) { UI.showToast(editBlockedReason() || 'Editing is disabled.', 'warning'); return; }
-    if (!_searchMatches.length || !_searchTerm || !editor) return;
-    const count = _searchMatches.length;
+    if (!state.searchMatches.length || !state.searchTerm || !editor) return;
+    const count = state.searchMatches.length;
     const replacement = replaceInput?.value ?? '';
     // Escape the raw search term for safe use in RegExp.
     // Use the un-lowercased raw input for the pattern when case-sensitive.
     const rawTerm = searchInput?.value || '';
     const escaped = rawTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const flags   = _caseSensitive ? 'g' : 'gi';
+    const flags   = state.caseSensitive ? 'g' : 'gi';
     // A whole-document, potentially-multi-match transform — not a single
     // contiguous range — so this goes through setEditorValue()'s
     // similar-length cursor-preserve heuristic rather than replaceEditorRange().
@@ -3226,9 +3230,9 @@ function _wireFindReplacePanel() {
   // ── Case-sensitive toggle (Aa button) ─────────────────────────────────────
   const caseBtn = document.getElementById('search-case');
   caseBtn?.addEventListener('click', () => {
-    _caseSensitive = !_caseSensitive;
-    caseBtn.setAttribute('aria-pressed', String(_caseSensitive));
-    caseBtn.classList.toggle('is-active', _caseSensitive);
+    state.caseSensitive = !state.caseSensitive;
+    caseBtn.setAttribute('aria-pressed', String(state.caseSensitive));
+    caseBtn.classList.toggle('is-active', state.caseSensitive);
     _runSearch();
     searchInput?.focus();
   });
@@ -3242,7 +3246,7 @@ function _wirePasteSanitization() {
   // Strip HTML/RTF formatting on paste when the user preference is enabled.
   // We intercept the paste event on the editor and substitute plain-text only.
   editor?.addEventListener('paste', (e) => {
-    if (!_stripPaste) return;
+    if (!state.stripPaste) return;
     // Must not mutate the editor when editing is blocked (read-only, locked,
     // encrypted without a key) — the other paste listener above only calls
     // preventDefault() for the native paste, which does not stop this
@@ -3268,17 +3272,17 @@ function _wireEditorPreferenceToggles() {
   const _updateStripPasteUI = () => {
     const btn = document.getElementById('setting-strip-paste-btn');
     if (!btn) return;
-    btn.textContent = _stripPaste ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(_stripPaste));
+    btn.textContent = state.stripPaste ? 'On' : 'Off';
+    btn.setAttribute('aria-pressed', String(state.stripPaste));
   };
   _updateStripPasteUI();
 
   document.getElementById('setting-strip-paste-btn')?.addEventListener('click', () => {
-    _stripPaste = !_stripPaste;
-    try { localStorage.setItem(_STRIP_PASTE_KEY, String(_stripPaste)); } catch {}
+    state.stripPaste = !state.stripPaste;
+    try { localStorage.setItem(_STRIP_PASTE_KEY, String(state.stripPaste)); } catch {}
     _updateStripPasteUI();
     UI.showToast(
-      _stripPaste ? 'Paste formatting strip: On' : 'Paste formatting strip: Off',
+      state.stripPaste ? 'Paste formatting strip: On' : 'Paste formatting strip: Off',
       'info', 2000
     );
   });
@@ -3287,17 +3291,17 @@ function _wireEditorPreferenceToggles() {
   const _updateSmartPunctUI = () => {
     const btn = document.getElementById('setting-smart-punct-btn');
     if (!btn) return;
-    btn.textContent = _smartPunct ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(_smartPunct));
+    btn.textContent = state.smartPunct ? 'On' : 'Off';
+    btn.setAttribute('aria-pressed', String(state.smartPunct));
   };
   _updateSmartPunctUI();
 
   document.getElementById('setting-smart-punct-btn')?.addEventListener('click', () => {
-    _smartPunct = !_smartPunct;
-    try { localStorage.setItem(_SMART_PUNCT_KEY, String(_smartPunct)); } catch {}
+    state.smartPunct = !state.smartPunct;
+    try { localStorage.setItem(_SMART_PUNCT_KEY, String(state.smartPunct)); } catch {}
     _updateSmartPunctUI();
     UI.showToast(
-      _smartPunct ? 'Smart punctuation: On' : 'Smart punctuation: Off',
+      state.smartPunct ? 'Smart punctuation: On' : 'Smart punctuation: Off',
       'info', 2000
     );
   });
@@ -3306,51 +3310,51 @@ function _wireEditorPreferenceToggles() {
   const _updateFocusModeUI = () => {
     const btn = document.getElementById('setting-focus-mode-btn');
     if (!btn) return;
-    btn.textContent = _focusMode ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(_focusMode));
+    btn.textContent = state.focusMode ? 'On' : 'Off';
+    btn.setAttribute('aria-pressed', String(state.focusMode));
   };
   _updateFocusModeUI();
 
   document.getElementById('setting-focus-mode-btn')?.addEventListener('click', () => {
-    _focusMode = !_focusMode;
-    try { localStorage.setItem(_FOCUS_MODE_KEY, String(_focusMode)); } catch {}
-    UI.setFocusMode(_focusMode);
+    state.focusMode = !state.focusMode;
+    try { localStorage.setItem(_FOCUS_MODE_KEY, String(state.focusMode)); } catch {}
+    UI.setFocusMode(state.focusMode);
     _updateFocusModeUI();
-    UI.showToast(_focusMode ? 'Focus mode: On' : 'Focus mode: Off', 'info', 2000);
+    UI.showToast(state.focusMode ? 'Focus mode: On' : 'Focus mode: Off', 'info', 2000);
   });
 
   // ── Typewriter-mode setting button ───────────────────────────────────────────
   const _updateTypewriterModeUI = () => {
     const btn = document.getElementById('setting-typewriter-mode-btn');
     if (!btn) return;
-    btn.textContent = _typewriterMode ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(_typewriterMode));
+    btn.textContent = state.typewriterMode ? 'On' : 'Off';
+    btn.setAttribute('aria-pressed', String(state.typewriterMode));
   };
   _updateTypewriterModeUI();
 
   document.getElementById('setting-typewriter-mode-btn')?.addEventListener('click', () => {
-    _typewriterMode = !_typewriterMode;
-    try { localStorage.setItem(_TYPEWRITER_MODE_KEY, String(_typewriterMode)); } catch {}
-    UI.setTypewriterMode(_typewriterMode);
+    state.typewriterMode = !state.typewriterMode;
+    try { localStorage.setItem(_TYPEWRITER_MODE_KEY, String(state.typewriterMode)); } catch {}
+    UI.setTypewriterMode(state.typewriterMode);
     _updateTypewriterModeUI();
-    UI.showToast(_typewriterMode ? 'Typewriter mode: On' : 'Typewriter mode: Off', 'info', 2000);
+    UI.showToast(state.typewriterMode ? 'Typewriter mode: On' : 'Typewriter mode: Off', 'info', 2000);
   });
 
   // ── Hide-my-cursor-&-typing setting button ──────────────────────────────────
   const _updateHidePresenceUI = () => {
     const btn = document.getElementById('setting-hide-presence-btn');
     if (!btn) return;
-    btn.textContent = _hidePresence ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(_hidePresence));
+    btn.textContent = state.hidePresence ? 'On' : 'Off';
+    btn.setAttribute('aria-pressed', String(state.hidePresence));
   };
   _updateHidePresenceUI();
 
   document.getElementById('setting-hide-presence-btn')?.addEventListener('click', () => {
-    _hidePresence = !_hidePresence;
-    try { localStorage.setItem(_HIDE_PRESENCE_KEY, String(_hidePresence)); } catch {}
-    setPresenceHidden(_hidePresence);
+    state.hidePresence = !state.hidePresence;
+    try { localStorage.setItem(_HIDE_PRESENCE_KEY, String(state.hidePresence)); } catch {}
+    setPresenceHidden(state.hidePresence);
     _updateHidePresenceUI();
-    UI.showToast(_hidePresence ? 'Cursor & typing hidden from others' : 'Cursor & typing visible to others', 'info', 2000);
+    UI.showToast(state.hidePresence ? 'Cursor & typing hidden from others' : 'Cursor & typing visible to others', 'info', 2000);
   });
 
   // These are simple on/off flips, not navigations — clicking one shouldn't
@@ -3370,8 +3374,8 @@ function wireEvents() {
 
   // All DOM element listeners below are one-time-only. On multi-room navigation
   // shortcuts are re-wired above, but these must not accumulate.
-  if (_eventsWired) return;
-  _eventsWired = true;
+  if (state.eventsWired) return;
+  state.eventsWired = true;
 
   _wireEditorCore();
   _wireEditorToolbarAndLifecycle();
@@ -3403,18 +3407,18 @@ function wireEvents() {
 // (visibly stale until the panel was closed and reopened) and the two paths
 // could silently drift (e.g. a different toast type/duration each).
 function _toggleMonospace() {
-  _monospace = !_monospace;
-  UI.setMonospace(_monospace);
-  try { localStorage.setItem('syncpad_monospace', _monospace ? '1' : '0'); } catch {}
-  UI.showToast(_monospace ? 'Monospace on.' : 'Monospace off.', 'info', 1800);
+  state.monospace = !state.monospace;
+  UI.setMonospace(state.monospace);
+  try { localStorage.setItem('syncpad_monospace', state.monospace ? '1' : '0'); } catch {}
+  UI.showToast(state.monospace ? 'Monospace on.' : 'Monospace off.', 'info', 1800);
   _syncMonospaceSettingUI();
 }
 
 function _syncMonospaceSettingUI() {
   const btn = document.getElementById('setting-monospace-btn');
   if (!btn) return;
-  btn.textContent = _monospace ? 'On' : 'Off';
-  btn.setAttribute('aria-pressed', String(_monospace));
+  btn.textContent = state.monospace ? 'On' : 'Off';
+  btn.setAttribute('aria-pressed', String(state.monospace));
 }
 
 // ── Markdown format helpers ───────────────────────────────────────────────────
@@ -3429,7 +3433,7 @@ function _syncMonospaceSettingUI() {
  * insert, and pasted/dropped-image insert.
  */
 function _insertTextAtActiveCursor(text) {
-  const useLive = LiveEditor.isMounted() && (_markdownMode === 'preview' || LiveEditor.hasFocus());
+  const useLive = LiveEditor.isMounted() && (state.markdownMode === 'preview' || LiveEditor.hasFocus());
   if (useLive) {
     const proxy = LiveEditor.asEditorProxy();
     if (proxy == null) return;
@@ -3451,7 +3455,7 @@ function _insertTextAtActiveCursor(text) {
  * `editor.focus()` regardless of markdown mode.
  */
 function _focusActiveEditorSurface() {
-  if (_markdownMode === 'preview' && LiveEditor.isMounted()) {
+  if (state.markdownMode === 'preview' && LiveEditor.isMounted()) {
     LiveEditor.focus();
   } else {
     document.getElementById('note-editor')?.focus();
@@ -3470,7 +3474,7 @@ function _applyFormatToActiveSurface(action) {
   // Preview mode: the textarea is hidden, so the live surface is the only
   // real target. Split mode: act on whichever pane currently has focus,
   // textarea by default (matches the toolbar's pre-live-surface behaviour).
-  const useLive = LiveEditor.isMounted() && (_markdownMode === 'preview' || LiveEditor.hasFocus());
+  const useLive = LiveEditor.isMounted() && (state.markdownMode === 'preview' || LiveEditor.hasFocus());
   if (useLive) {
     _applyMarkdownFormat(action, LiveEditor.asEditorProxy());
   } else if (editor) {
@@ -3584,34 +3588,34 @@ function _filterSlashItems(query) {
 }
 
 function _closeSlashMenu() {
-  if (!_slashOpen) return;
-  _slashOpen = false;
-  _slashStart = null;
-  _slashCoords = null;
-  _slashFiltered = [];
-  _slashActiveIndex = 0;
+  if (!state.slashOpen) return;
+  state.slashOpen = false;
+  state.slashStart = null;
+  state.slashCoords = null;
+  state.slashFiltered = [];
+  state.slashActiveIndex = 0;
   UI.hideSlashMenu();
 }
 
 function _renderSlashMenu() {
-  UI.showSlashMenu(_slashCoords, _slashFiltered, _slashActiveIndex, _selectSlashItem);
+  UI.showSlashMenu(state.slashCoords, state.slashFiltered, state.slashActiveIndex, _selectSlashItem);
 }
 
 function _openSlashMenuAt(pos) {
   const coords = UI.getCaretViewportCoords(pos);
   if (!coords) return;
-  _slashOpen = true;
-  _slashStart = pos;
-  _slashCoords = coords;
-  _slashFiltered = SLASH_MENU_ITEMS;
-  _slashActiveIndex = 0;
+  state.slashOpen = true;
+  state.slashStart = pos;
+  state.slashCoords = coords;
+  state.slashFiltered = SLASH_MENU_ITEMS;
+  state.slashActiveIndex = 0;
   _renderSlashMenu();
 }
 
 function _selectSlashItem(item) {
   const editor = document.getElementById('note-editor');
-  if (!editor || _slashStart == null || !item) return;
-  const from = _slashStart;
+  if (!editor || state.slashStart == null || !item) return;
+  const from = state.slashStart;
   const to = editor.selectionStart;
   _closeSlashMenu();
   UI.replaceEditorRange(from, to, '');
@@ -3623,19 +3627,19 @@ function _selectSlashItem(item) {
 
 /** Called on every editor input event; only active in Write mode. */
 function _updateSlashMenu() {
-  if (_markdownMode !== 'write') { _closeSlashMenu(); return; }
+  if (state.markdownMode !== 'write') { _closeSlashMenu(); return; }
   const editor = document.getElementById('note-editor');
   if (!editor) { _closeSlashMenu(); return; }
   const pos = editor.selectionStart;
   if (pos !== editor.selectionEnd) { _closeSlashMenu(); return; }
   const val = editor.value;
 
-  if (_slashOpen) {
-    if (pos <= _slashStart || val[_slashStart] !== '/') { _closeSlashMenu(); return; }
-    const query = val.slice(_slashStart + 1, pos);
+  if (state.slashOpen) {
+    if (pos <= state.slashStart || val[state.slashStart] !== '/') { _closeSlashMenu(); return; }
+    const query = val.slice(state.slashStart + 1, pos);
     if (/\s/.test(query)) { _closeSlashMenu(); return; } // whitespace in the query ends the command
-    _slashFiltered = _filterSlashItems(query);
-    _slashActiveIndex = 0;
+    state.slashFiltered = _filterSlashItems(query);
+    state.slashActiveIndex = 0;
     _renderSlashMenu();
     return;
   }
@@ -3650,12 +3654,12 @@ function _updateSlashMenu() {
 
 /** Handle Up/Down/Enter/Tab/Escape while the slash menu is open; returns true if the key was consumed. */
 function _handleSlashMenuKeydown(e) {
-  if (!_slashOpen) return false;
-  if (e.key === 'ArrowDown') { e.preventDefault(); _slashActiveIndex = Math.min(_slashActiveIndex + 1, _slashFiltered.length - 1); _renderSlashMenu(); return true; }
-  if (e.key === 'ArrowUp')   { e.preventDefault(); _slashActiveIndex = Math.max(_slashActiveIndex - 1, 0); _renderSlashMenu(); return true; }
+  if (!state.slashOpen) return false;
+  if (e.key === 'ArrowDown') { e.preventDefault(); state.slashActiveIndex = Math.min(state.slashActiveIndex + 1, state.slashFiltered.length - 1); _renderSlashMenu(); return true; }
+  if (e.key === 'ArrowUp')   { e.preventDefault(); state.slashActiveIndex = Math.max(state.slashActiveIndex - 1, 0); _renderSlashMenu(); return true; }
   if (e.key === 'Enter' || e.key === 'Tab') {
     e.preventDefault();
-    const item = _slashFiltered[_slashActiveIndex];
+    const item = state.slashFiltered[state.slashActiveIndex];
     if (item) _selectSlashItem(item); else _closeSlashMenu();
     return true;
   }
@@ -3674,20 +3678,20 @@ function _handleSlashMenuKeydown(e) {
  * rather than leaving local edits stuck unsaved indefinitely.
  */
 async function _reconcileAndFlush() {
-  if (!_roomId) return;
+  if (!state.roomId) return;
   let fresh = null;
-  try { fresh = await loadRoom(_roomId); } catch { /* fall through to flush below */ }
-  if (fresh) _room = fresh;
+  try { fresh = await loadRoom(state.roomId); } catch { /* fall through to flush below */ }
+  if (fresh) state.room = fresh;
   await reconcileAfterReconnect(fresh);
 }
 
 function teardownRealtimeSession() {
-  try { _unsubRoom?.(); } catch {}
-  try { _unsubFiles?.(); } catch {}
-  try { _unsubComments?.(); } catch {}
-  _unsubRoom = null;
-  _unsubFiles = null;
-  _unsubComments = null;
+  try { state.unsubRoom?.(); } catch {}
+  try { state.unsubFiles?.(); } catch {}
+  try { state.unsubComments?.(); } catch {}
+  state.unsubRoom = null;
+  state.unsubFiles = null;
+  state.unsubComments = null;
   destroyPresence();
   destroyBroadcast();
   destroySync();
@@ -3695,22 +3699,22 @@ function teardownRealtimeSession() {
   // Clear any showing "X is typing…" banner and its auto-hide timer so it
   // can never bleed into the next room's loading screen.
   UI.hideTypingIndicator();
-  _followedDeviceId = null;
-  _lastComments = [];
+  state.followedDeviceId = null;
+  state.lastComments = [];
   UI.renderCommentMargin([]);
   _closeSlashMenu();
   // Remove the keydown handler so wireEvents() can install fresh callbacks
   // on the next room join. DOM element listeners (editor, buttons, etc.) are
-  // protected by the _eventsWired guard and must NOT be reset here — resetting
-  // _eventsWired would cause them to accumulate on multi-room navigation.
+  // protected by the state.eventsWired guard and must NOT be reset here — resetting
+  // state.eventsWired would cause them to accumulate on multi-room navigation.
   destroyShortcuts();
   cancelPendingTypingBroadcast();
   cancelPendingLiveContentBroadcast();
   // Clear stale search state so the next room starts with a clean search panel.
-  _searchMatches = [];
-  _searchIndex   = -1;
-  _searchTerm    = '';
-  _caseSensitive = false;
+  state.searchMatches = [];
+  state.searchIndex   = -1;
+  state.searchTerm    = '';
+  state.caseSensitive = false;
   const _scEl = document.getElementById('search-count');
   if (_scEl) _scEl.textContent = '';
   const _siEl = document.getElementById('search-input');
@@ -3719,28 +3723,28 @@ function teardownRealtimeSession() {
   const _caseEl = document.getElementById('search-case');
   if (_caseEl) { _caseEl.classList.remove('is-active'); _caseEl.setAttribute('aria-pressed', 'false'); }
   // Cancel any pending expiration timer. The callback closes over the
-  // module-level _roomId / _room which will be updated to the NEXT room
+  // module-level state.roomId / state.room which will be updated to the NEXT room
   // before the timer fires — letting a stale timer run risks expiring the
   // wrong room.
-  clearTimeout(_expTimer);
-  _expTimer = null;
+  clearTimeout(state.expTimer);
+  state.expTimer = null;
   // Remove the online/offline listener registered in startApp(). Without this
   // each room navigation accumulates a new listener on window, causing duplicate
   // flushSave calls and stale status updates after re-connecting.
-  _onlineCleanup?.();
-  _onlineCleanup = null;
+  state.onlineCleanup?.();
+  state.onlineCleanup = null;
   // Reset encryption keys so a key from an encrypted room is never used to
   // silently encrypt saves in a subsequent non-encrypted room.
-  _encKey  = null;
-  _encSalt = null;
+  state.encKey  = null;
+  state.encSalt = null;
   // Reset in-memory mode to a safe, content-independent placeholder so the
   // loading screen never shows a stale divider (mode-split, etc.) from the
   // previous room. This is NOT the mode the next room opens into — startApp()
   // applies the user's remembered mode (_resolveInitialEditorMode()) once
   // that room's content is actually loaded, which is what the next room
   // visibly starts in.
-  _markdownMode = 'write';
-  _showPreview  = false;
+  state.markdownMode = 'write';
+  state.showPreview  = false;
   UI.setMarkdownMode('write', null);
   // Tear down the live-preview surface so the next room mounts fresh rather
   // than briefly showing this room's content.
@@ -3748,35 +3752,35 @@ function teardownRealtimeSession() {
   // Reset expiration preset — both the variable AND the settings-panel DOM
   // (preset button highlighting, custom-row visibility) — so a room where
   // "Custom" was selected doesn't leave the panel visually showing Custom
-  // with its inputs open in the next room even though _expPreset is back to
+  // with its inputs open in the next room even though state.expPreset is back to
   // the default.
   _selectExpirationPreset('10m');
   // Exit bulk-select mode so the next room starts with a clean files panel.
-  _filesSelectMode = false;
-  _selectedFiles   = new Set();
+  state.filesSelectMode = false;
+  state.selectedFiles   = new Set();
   document.getElementById('files-bulk-bar')?.classList.add('hidden');
   document.getElementById('files-select-toggle')?.classList.remove('active');
   // Reset view-once consumption guard. If this flag is left true from a previous
   // room, the next room's handleRoomRealtime handler will silently skip a
   // view-once clear event that it should actually surface to the user.
-  _consumingViewOnce = false;
+  state.consumingViewOnce = false;
   // Cancel any queued debounced preview refresh from the previous room so it
   // does not fire in the next room's context and render stale content.
   _debouncedRefreshPreview.cancel?.();
   // Reset the preview-click listener guard so the next room can wire it when
   // the user enters preview mode. Without this, the guard stays true and the
   // listener is never re-wired after the first navigation.
-  _previewObserverWired = false;
+  state.previewObserverWired = false;
   // Reset room object so stale room data never leaks into a subsequent session
-  // (e.g. settings callbacks that fire after teardown read _room for its values).
-  _room   = null;
-  _roomId = null;
+  // (e.g. settings callbacks that fire after teardown read state.room for its values).
+  state.room   = null;
+  state.roomId = null;
   // Defense-in-depth: clear URL-derived flags. Both are re-set from the URL on
   // every room navigation (lines ~191–197) before being read, so there is no
   // functional bug if they linger. Clearing here ensures no stale value is
   // observable in the window between teardown and the next route resolution.
-  _isReadOnly = false;
-  _shareToken = null;
+  state.isReadOnly = false;
+  state.shareToken = null;
   // Reset the scroll-sync guard so it can re-wire on the next split-mode entry.
   UI.resetScrollSync();
   // Reset the presence announcer so the next room's already-connected devices
@@ -3830,13 +3834,13 @@ async function _openHistoryPanel() {
   UI.openPanel('history-panel');
   UI.setHistoryLoading(true);
   try {
-    const revisions = await listRevisions(_roomId);
+    const revisions = await listRevisions(state.roomId);
     const withPreviews = await Promise.all(revisions.map(async (rev) => {
       let preview = rev.content || '';
       if (looksEncrypted(preview)) {
-        if (!_encKey) { preview = null; }
+        if (!state.encKey) { preview = null; }
         else {
-          try { preview = await decryptContent(preview, _encKey); }
+          try { preview = await decryptContent(preview, state.encKey); }
           catch { preview = null; }
         }
       }
@@ -3879,8 +3883,8 @@ async function _restoreRevision(rev) {
 
   let plaintext = rev.content || '';
   if (looksEncrypted(plaintext)) {
-    if (!_encKey) { UI.showToast('Cannot restore an encrypted version without the passphrase.', 'error'); return; }
-    try { plaintext = await decryptContent(plaintext, _encKey); }
+    if (!state.encKey) { UI.showToast('Cannot restore an encrypted version without the passphrase.', 'error'); return; }
+    try { plaintext = await decryptContent(plaintext, state.encKey); }
     catch { UI.showToast('Could not decrypt this version.', 'error'); return; }
   }
 
@@ -3900,7 +3904,7 @@ async function _restoreRevision(rev) {
 /** The selection range a new comment would attach to, in whichever surface
  *  (plain textarea or CM6 live surface) is currently active. */
 function _currentSelectionRange() {
-  if (_markdownMode !== 'write' && LiveEditor.isMounted()) {
+  if (state.markdownMode !== 'write' && LiveEditor.isMounted()) {
     return LiveEditor.getSelection();
   }
   const editor = document.getElementById('note-editor');
@@ -3934,8 +3938,8 @@ async function _openCommentsPanel() {
 async function _submitComment(text, anchor) {
   if (!canEdit()) { UI.showToast(editBlockedReason() || 'Editing is disabled.', 'warning'); return; }
   try {
-    const payloadText = _encKey ? await encryptContent(text, _encKey) : text;
-    await addComment(_roomId, { anchorFrom: anchor.from, anchorTo: anchor.to, text: payloadText });
+    const payloadText = state.encKey ? await encryptContent(text, state.encKey) : text;
+    await addComment(state.roomId, { anchorFrom: anchor.from, anchorTo: anchor.to, text: payloadText });
     await _refreshComments();
     UI.showToast('Comment added.', 'success');
   } catch {
@@ -3956,7 +3960,7 @@ async function _deleteCommentClick(c) {
 }
 
 function _jumpToComment(c) {
-  if (_markdownMode !== 'write' && LiveEditor.isMounted()) {
+  if (state.markdownMode !== 'write' && LiveEditor.isMounted()) {
     LiveEditor.scrollToPos(c.anchor_from);
   } else {
     const editor = document.getElementById('note-editor');
@@ -3967,14 +3971,14 @@ function _jumpToComment(c) {
 
 async function _refreshComments() {
   try {
-    const comments = await listComments(_roomId);
+    const comments = await listComments(state.roomId);
     const currentText = UI.getEditorValue();
     const withPreviews = await Promise.all(comments.map(async (c) => {
       let preview = c.text || '';
       if (looksEncrypted(preview)) {
-        if (!_encKey) { preview = null; }
+        if (!state.encKey) { preview = null; }
         else {
-          try { preview = await decryptContent(preview, _encKey); }
+          try { preview = await decryptContent(preview, state.encKey); }
           catch { preview = null; }
         }
       }
@@ -3988,7 +3992,7 @@ async function _refreshComments() {
       onJump:   _jumpToComment,
       canDelete: canEdit(),
     });
-    _lastComments = withPreviews;
+    state.lastComments = withPreviews;
     LiveEditor.setCommentAnchors(withPreviews.map((c) => ({ id: c.id, from: c.anchor_from, to: c.anchor_to })));
     _refreshCommentMargin();
   } catch {
@@ -4008,12 +4012,12 @@ async function _refreshComments() {
 
 function _refreshCommentMargin() {
   const wrap = document.querySelector('.editor-wrap');
-  if (!wrap || !_lastComments.length) { UI.renderCommentMargin([]); return; }
+  if (!wrap || !state.lastComments.length) { UI.renderCommentMargin([]); return; }
 
   const wrapTop = wrap.getBoundingClientRect().top;
-  const live = _markdownMode !== 'write' && LiveEditor.isMounted();
+  const live = state.markdownMode !== 'write' && LiveEditor.isMounted();
 
-  const dots = _lastComments
+  const dots = state.lastComments
     .map((c) => {
       if (!Number.isFinite(c.anchor_from)) return null;
       const coords = live ? LiveEditor.coordsAtPos(c.anchor_from) : UI.getCaretViewportCoords(c.anchor_from);
@@ -4026,7 +4030,7 @@ function _refreshCommentMargin() {
 }
 
 function _jumpToCommentById(id) {
-  const c = _lastComments.find((x) => x.id === id);
+  const c = state.lastComments.find((x) => x.id === id);
   if (c) _jumpToComment(c);
 }
 
@@ -4044,8 +4048,8 @@ function _applyMarkdownMode(mode) {
   // position, so clear before switching rather than float a stale bubble.
   UI.clearCursorChat();
   _closeSlashMenu(); // Write-mode-only feature — never valid to keep open across a mode switch
-  _markdownMode = mode;
-  _showPreview  = mode !== 'write';
+  state.markdownMode = mode;
+  state.showPreview  = mode !== 'write';
   try { localStorage.setItem(_EDITOR_MODE_KEY, mode); } catch {}
 
   let live = false;
@@ -4075,14 +4079,14 @@ function _applyMarkdownMode(mode) {
         // _refreshComments() itself only runs on room load/realtime events,
         // neither of which necessarily follows a later mode switch.
         if (live) {
-          LiveEditor.setCommentAnchors(_lastComments.map((c) => ({ id: c.id, from: c.anchor_from, to: c.anchor_to })));
+          LiveEditor.setCommentAnchors(state.lastComments.map((c) => ({ id: c.id, from: c.anchor_from, to: c.anchor_to })));
         }
       } catch { live = false; }
     }
   }
 
   UI.setMarkdownMode(mode, () => renderMarkdown(UI.getEditorValue()), { live });
-  if (_showPreview && !live) _wirePreviewClickOnce();
+  if (state.showPreview && !live) _wirePreviewClickOnce();
 
   // Proportional scroll sync only makes sense when both panes are visible.
   if (mode === 'split' && live) {
@@ -4121,7 +4125,7 @@ function _onLiveCursorActivity(head, anchor) {
 // surface has to actually be the visible one for its coordinates to mean
 // anything).
 function _openCursorChatComposer() {
-  const live = _markdownMode !== 'write' && LiveEditor.isMounted();
+  const live = state.markdownMode !== 'write' && LiveEditor.isMounted();
   let pos, coords;
   if (live) {
     pos = LiveEditor.getCaretPos();
@@ -4142,7 +4146,7 @@ function _openCursorChatComposer() {
 }
 
 function _refreshPreviewIfActive() {
-  if (_markdownMode !== 'write') UI.refreshPreview(() => renderMarkdown(UI.getEditorValue()));
+  if (state.markdownMode !== 'write') UI.refreshPreview(() => renderMarkdown(UI.getEditorValue()));
 }
 
 // Debounced variant — used on every keystroke so heavy markdown docs
@@ -4155,8 +4159,8 @@ const _debouncedRefreshPreview = debounce(_refreshPreviewIfActive, 300);
 const _debouncedRefreshCommentMargin = debounce(_refreshCommentMargin, 300);
 
 function _wirePreviewClickOnce() {
-  if (_previewObserverWired) return;
-  _previewObserverWired = true;
+  if (state.previewObserverWired) return;
+  state.previewObserverWired = true;
   document.getElementById('note-preview')?.addEventListener('click', (e) => {
     const cb = e.target;
     if (!(cb instanceof HTMLInputElement) || cb.type !== 'checkbox') return;
@@ -4181,13 +4185,13 @@ function _wirePreviewClickOnce() {
 async function doClearNote() {
   try {
     await snapshotBeforeDestructiveChange();
-    await clearRoomContent(_roomId, 'manual', await _emptyContentForCurrentEncryption());
+    await clearRoomContent(state.roomId, 'manual', await _emptyContentForCurrentEncryption());
     setContentNoSave('');
     UI.updateWordCount('');
     _refreshPreviewIfActive();
     broadcastClear('manual');
     UI.showToast('Note cleared.', 'success');
-    _room = await loadRoom(_roomId);
+    state.room = await loadRoom(state.roomId);
     _updatePermissionContext();
   } catch { UI.showToast('Could not clear the note.', 'error'); }
 }

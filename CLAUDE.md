@@ -73,7 +73,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 All DOM writes go through `src/ui.js`. Never manipulate the DOM from `sync.js`, `files.js`, or any other module directly — call or add a function in `ui.js` instead.
 
 ### State Management
-Room-scoped state lives in module-level variables. Every variable that is room-specific **must** be reset to `null` (or an empty structure) when navigating away from a room. Variables that require this treatment include `_roomId`, `_encKey`, `_encSalt`, `_markdownMode`, `_showPreview`, `_expPreset`, `_expTimer`, `_searchMatches`, and `_searchIndex`.
+`app.js` keeps its room/session/editor-UI state as properties on a single module-level `state` object (`const state = {...}`, declared near the top of the file) rather than scattered `let`s. Every property that is room-specific **must** be reset to `null` (or an empty structure) when navigating away from a room — see `teardownRealtimeSession()`. Properties that require this treatment include `state.roomId`, `state.encKey`, `state.encSalt`, `state.markdownMode`, `state.showPreview`, `state.expPreset`, `state.expTimer`, `state.searchMatches`, and `state.searchIndex`. (`admin.js`'s dashboard state follows the same pattern via `src/admin/state.js`.)
 
 ### Escaping User Content
 Any user-supplied string that is interpolated into an HTML template **must** be passed through `escapeHtml()` from `src/utils.js` first. Never trust room names, file names, note bodies, or any other user content without escaping.
@@ -113,7 +113,7 @@ Transitions for background-color (0.22 s ease) are applied to `body`, panels, an
 
 - **`wireEvents()` accumulates listeners.** If called more than once (e.g., on re-navigation) it registers duplicate listeners. Guard calls with a cleanup flag or ensure it is called exactly once per page lifecycle.
 
-- **Room state must be fully reset on navigation.** When leaving a room, reset `_roomId`, `_encKey`, `_encSalt`, `_markdownMode`, `_showPreview`, `_expPreset`, `_expTimer`, `_searchMatches`, and `_searchIndex` to `null` (or empty). Stale state causes subtle bugs that are hard to reproduce.
+- **Room state must be fully reset on navigation.** When leaving a room, reset `state.roomId`, `state.encKey`, `state.encSalt`, `state.markdownMode`, `state.showPreview`, `state.expPreset`, `state.expTimer`, `state.searchMatches`, and `state.searchIndex` to `null` (or empty). Stale state causes subtle bugs that are hard to reproduce.
 
 - **Signed-URL cache eviction.** `src/files.js` caches signed URLs in a `Map` with a 55-minute TTL. When a file is deleted, call the eviction helper so the stale URL is not served to subsequent requests.
 
