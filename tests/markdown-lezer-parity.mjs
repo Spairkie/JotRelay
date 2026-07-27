@@ -18,8 +18,8 @@
 // divergence below, not a failure.
 
 import assert from 'node:assert/strict';
-import { renderMarkdown, toggleChecklistItem } from '../src/markdown.js';
-import { renderMarkdownLezer } from '../src/markdown-lezer.js';
+import { renderMarkdown, renderMarkdownWithToc, renderTocHtml, markdownToPlainText, toggleChecklistItem } from '../src/markdown.js';
+import { renderMarkdownLezer, renderMarkdownWithTocLezer, renderTocHtmlLezer, markdownToPlainTextLezer } from '../src/markdown-lezer.js';
 
 const KNOWN_DIVERGENCES = new Set(['nested emphasis (markdown.js regex bug, not replicated)']);
 
@@ -188,7 +188,60 @@ check('a plain blockquote (no alert marker) still renders as <blockquote>', () =
 
 console.log(`Suite-derived assertions: ${n - sfail}/${n} passed.`);
 
-const totalFail = fail + sfail;
+// ── Companion API parity: renderMarkdownWithToc / renderTocHtml / markdownToPlainText ──
+
+let apiPass = 0, apiFail = 0;
+const tocCases = [
+  'plain no headings',
+  '# Only heading',
+  '# H1\n\ntext\n\n## H2\n\n### H3',
+  '# Intro\n\n## [API guide](https://example.com)\n\n### **Bold** and `code`',
+  '# Setup\n\n# Setup\n\n# Setup',
+  '> # Quoted heading\n\n# Top heading',
+];
+for (const src of tocCases) {
+  const a = renderMarkdownWithToc(src);
+  const b = renderMarkdownWithTocLezer(src);
+  const htmlMatch = a.html === b.html;
+  const headingsMatch = JSON.stringify(a.headings) === JSON.stringify(b.headings);
+  if (htmlMatch && headingsMatch) { apiPass++; continue; }
+  apiFail++;
+  console.log(`FAIL - renderMarkdownWithToc: ${JSON.stringify(src)}`);
+  if (!htmlMatch) console.log(`  html expected: ${a.html}\n  html actual:   ${b.html}`);
+  if (!headingsMatch) console.log(`  headings expected: ${JSON.stringify(a.headings)}\n  headings actual:   ${JSON.stringify(b.headings)}`);
+}
+
+const tocHtmlCases = [
+  [],
+  [{ level: 1, id: 'one', text: 'One' }],
+  [{ level: 1, id: 'one', text: 'One & <two>' }, { level: 2, id: 'two', text: 'Two' }, { level: 3, id: 'three', text: 'Three' }],
+];
+for (const headings of tocHtmlCases) {
+  const a = renderTocHtml(headings);
+  const b = renderTocHtmlLezer(headings);
+  if (a === b) { apiPass++; continue; }
+  apiFail++;
+  console.log(`FAIL - renderTocHtml: ${JSON.stringify(headings)}\n  expected: ${a}\n  actual:   ${b}`);
+}
+
+const plainTextCases = [
+  '',
+  '# Heading\n\n**bold** and _italic_ and `code`',
+  '- item1\n- item2\n\n> a quote',
+  'A claim.[^1]\n\n[^1]: The footnote.',
+  'line1  \nline2\n\n\n\nfar paragraph',
+];
+for (const src of plainTextCases) {
+  const a = markdownToPlainText(src);
+  const b = markdownToPlainTextLezer(src);
+  if (a === b) { apiPass++; continue; }
+  apiFail++;
+  console.log(`FAIL - markdownToPlainText: ${JSON.stringify(src)}\n  expected: ${JSON.stringify(a)}\n  actual:   ${JSON.stringify(b)}`);
+}
+
+console.log(`Companion API parity: ${apiPass} matched, ${apiFail} unexpected failure(s).`);
+
+const totalFail = fail + sfail + apiFail;
 if (totalFail > 0) {
   console.log(`\n${totalFail} unexpected failure(s) — markdown-lezer.js is not yet a safe swap-in for markdown.js.`);
   process.exit(1);

@@ -62,13 +62,17 @@ const _TOC_MARKER_RE = /^\[toc\]$/i;
 /**
  * Render Markdown to safe HTML via the shared Lezer parse tree.
  * @param {string} src
+ * @param {object} [_parentCtx] internal — lets renderMarkdownWithTocLezer
+ *   pass a ctx with a pre-initialized `headings` array to collect every
+ *   rendered heading into, mirroring markdown.js's own renderMarkdown()
+ *   parameter. Not part of the public API; callers should never pass it.
  * @returns {string} sanitized HTML
  */
-export function renderMarkdownLezer(src) {
+export function renderMarkdownLezer(src, _parentCtx) {
   if (!src) return '';
   const text = String(src).replace(/\r\n?/g, '\n');
   const tree = _parser.parse(text);
-  const ctx = {
+  const ctx = _parentCtx || {
     cbCounter: 0, headingIds: new Set(),
     footnoteDefs: new Map(), footnoteOrder: [],
     linkRefs: new Map(),
@@ -91,7 +95,7 @@ export function renderMarkdownLezer(src) {
   if (filtered.some((node) => _isTocMarkerNode(node, text))) {
     ctx._tocIdQueue = [];
     ctx._tocEntries = _collectHeadingsInOrder(filtered, text).map((h) => {
-      const id = _slugifyHeading(h.plainText, ctx.headingIds);
+      const id = _slugifyHeading(h.rawText, ctx.headingIds);
       ctx._tocIdQueue.push(id);
       return { level: h.level, id, text: h.plainText };
     });
@@ -104,6 +108,61 @@ export function renderMarkdownLezer(src) {
     return `<li id="fn-${id}">${_renderInlineFallback(defText, text, ctx)} <a href="#fnref-${id}" class="footnote-backref" aria-label="Back to content">↩</a></li>`;
   }).join('');
   return `${bodyHtml}\n<section class="footnotes"><hr><ol>${items}</ol></section>`;
+}
+
+/**
+ * Like renderMarkdownLezer(), but also returns the flat list of headings
+ * encountered (including inside blockquotes), with the exact same ids the
+ * rendered HTML's <h1>-<h6> elements carry — matches markdown.js's
+ * renderMarkdownWithToc() exactly (same shape, same ids).
+ * @param {string} src
+ * @returns {{ html: string, headings: Array<{level:number,id:string,text:string}> }}
+ */
+export function renderMarkdownWithTocLezer(src) {
+  const ctx = {
+    cbCounter: 0, headingIds: new Set(), headings: [],
+    footnoteDefs: new Map(), footnoteOrder: [],
+    linkRefs: new Map(),
+  };
+  const html = renderMarkdownLezer(src, ctx);
+  return { html, headings: ctx.headings };
+}
+
+/**
+ * Build a standalone "Contents" nav from a headings list (as returned by
+ * renderMarkdownWithTocLezer). Returns '' for fewer than two headings,
+ * matching the live preview's own threshold for showing a TOC at all.
+ * Byte-identical output to markdown.js's renderTocHtml().
+ * @param {Array<{level:number,id:string,text:string}>} headings
+ * @returns {string} sanitized HTML
+ */
+export function renderTocHtmlLezer(headings) {
+  if (!headings || headings.length < 2) return '';
+  const items = headings.map((h) =>
+    `<li style="margin:0.3em 0;padding-left:${(Math.max(1, h.level) - 1) * 0.9}em"><a href="#${h.id}">${escapeHtml(h.text)}</a></li>`
+  ).join('');
+  return `<nav aria-label="Table of contents" style="border:1px solid #ddd;border-radius:8px;background:#f7f7f7;padding:0.8em 1em;margin:0 0 1.4em;font-size:0.9em">
+<strong>Contents</strong>
+<ul style="list-style:none;margin:0.6em 0 0;padding:0">${items}</ul>
+</nav>`;
+}
+
+/**
+ * Render Markdown down to plain reading text — strip syntax markers rather
+ * than showing them literally. Reuses the real renderer + tag-stripper
+ * rather than a separate regex pass, same reasoning as markdown.js's own
+ * markdownToPlainText(): a second, independent "plain-text" parser would
+ * drift from the real one's edge cases.
+ * @param {string} src
+ * @returns {string}
+ */
+export function markdownToPlainTextLezer(src) {
+  if (!src) return '';
+  const html = renderMarkdownLezer(src);
+  return _stripTags(html)
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 // ── Node helpers ───────────────────────────────────────────────────────────────
@@ -142,7 +201,15 @@ function _collectHeadingsInOrder(blocks, text) {
     const name = node.type.name;
     const level = _headingLevel(name);
     if (level) {
-      out.push({ level, plainText: _stripTags(_renderInlineFallbackRaw(_headingRawInner(node, text))) });
+      const rawText = _headingRawInner(node, text);
+      // Two different strings for two different purposes, matching
+      // markdown.js exactly: the *raw* markdown source slugifies into the
+      // id (so e.g. a heading containing a link keeps the URL's letters in
+      // its id — a markdown.js quirk, but one that must match byte-for-byte
+      // since it's what every real anchor link out there was generated
+      // against), while the *rendered, tag-stripped* text is what's shown
+      // in the TOC's own link label.
+      out.push({ level, rawText, plainText: _stripTags(_renderInlineFallbackRaw(rawText)) });
     } else if (name === 'Blockquote') {
       out.push(..._collectHeadingsInOrder(_children(_dequoteTree(node, text).topNode), _dequoteText(node, text)));
     }
@@ -211,8 +278,9 @@ function _renderInlineFallback(fragmentText, _unusedOuterText, ctx) {
 
 // ── Slugify (identical algorithm to markdown.js's, for id parity) ────────────
 
-function _slugifyHeading(plainText, usedIds) {
-  const base = String(plainText)
+function _slugifyHeading(rawText, usedIds) {
+  const base = String(rawText)
+    .replace(/[*_`~=]/g, '')
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9\s-]/g, '')
@@ -319,8 +387,11 @@ function _renderHeading(node, level, text, ctx) {
   const rawInner = _headingRawInner(node, text);
   const inner = _renderInlineFallback(rawInner, text, ctx);
   const plain = _stripTags(inner);
-  const id = ctx._tocIdQueue ? ctx._tocIdQueue.shift() : _slugifyHeading(plain, ctx.headingIds);
+  const id = ctx._tocIdQueue ? ctx._tocIdQueue.shift() : _slugifyHeading(rawInner, ctx.headingIds);
   ctx.headingIds.add(id);
+  // Populated only when the caller (renderMarkdownWithTocLezer) pre-seeds
+  // ctx.headings — mirrors markdown.js's own optional-chaining push.
+  ctx.headings?.push({ level, id, text: plain });
   return `<h${level} id="${id}">${inner}</h${level}>`;
 }
 
@@ -463,8 +534,19 @@ function _tableAligns(delimNode, text) {
   });
 }
 
+/** Reduce already-rendered, self-controlled inline HTML to plain text —
+ *  strips tags AND unescapes entities (&amp; -> &, etc.), matching
+ *  markdown.js's own _stripHtmlTags() exactly. Only ever called on this
+ *  renderer's own output, so a plain tag-strip + unescape is safe (no
+ *  untrusted HTML reaches this function). */
 function _stripTags(html) {
-  return String(html).replace(/<[^>]*>/g, '');
+  return String(html)
+    .replace(/<[^>]*>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 // ── Inline-level rendering ────────────────────────────────────────────────────
