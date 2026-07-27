@@ -22,6 +22,7 @@ import {
   javascript, python, json, html, css, shell,
 } from '../vendor/codemirror.js';
 import { escapeHtml } from './utils.js';
+import { highlightExtension } from './markdown-highlight-extension.js';
 
 let _view             = null;
 let _onChange         = null;
@@ -97,29 +98,10 @@ function _codeLanguageFor(info) {
 }
 
 // ── ==highlight== extension ──────────────────────────────────────────────────
-//
-// Not part of CommonMark/GFM, so the base markdown language doesn't parse it.
-// Modeled directly on @lezer/markdown's own built-in Strikethrough extension
-// (same "==" delimiter shape as "~~") and fed to markdown()'s `extensions`
-// option — this plain-object shape (defineNodes + parseInline) is the
-// documented public extension mechanism, not an internal API.
-const _highlightDelim = { resolve: 'Highlight', mark: 'HighlightMark' };
-const _highlightExtension = {
-  defineNodes: [
-    { name: 'Highlight', style: { 'Highlight/...': tags.special(tags.content) } },
-    { name: 'HighlightMark', style: tags.processingInstruction },
-  ],
-  parseInline: [{
-    name: 'Highlight',
-    parse(cx, next, pos) {
-      if (next !== 61 /* '=' */ || cx.char(pos + 1) !== 61 || cx.char(pos + 2) === 61) return -1;
-      const before = cx.slice(pos - 1, pos), after = cx.slice(pos + 2, pos + 3);
-      const sBefore = /\s|^$/.test(before), sAfter = /\s|^$/.test(after);
-      return cx.addDelimiter(_highlightDelim, pos, pos + 2, !sAfter, !sBefore);
-    },
-    after: 'Emphasis',
-  }],
-};
+// Shared with markdown-lezer.js (the static renderer's shared-parse-tree
+// counterpart) — see markdown-highlight-extension.js's own header comment
+// for why this must be the exact same extension object shape in both places.
+const _highlightExtension = highlightExtension;
 
 // ── Seamless-preview decorations ─────────────────────────────────────────────
 //
