@@ -95,9 +95,9 @@ export function _wirePanelsAndModals() {
       if (okEl) okEl.classList.remove('hidden');
       UI.showToast('Report submitted. Thank you.', 'success');
       setTimeout(() => UI.closeModal('report-room-modal'), 900);
-    } catch {
+    } catch (err) {
       if (errEl) {
-        errEl.textContent = 'Could not submit report right now. Please try again.';
+        errEl.textContent = err?.code === 'RATE_LIMITED' ? err.message : 'Could not submit report right now. Please try again.';
         errEl.classList.remove('hidden');
       }
       if (submitEl) { submitEl.disabled = false; submitEl.textContent = 'Submit report'; }

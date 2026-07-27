@@ -248,7 +248,7 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
     // Log the raw error so RLS / network failures are diagnosable in DevTools.
     console.error('[SyncPad] joinRoom failed for', roomId, err);
     UI.showLoadingError(
-      'Could not load room — check your connection and try again.',
+      err?.code === 'RATE_LIMITED' ? err.message : 'Could not load room — check your connection and try again.',
       () => joinRoom(roomId, { isNewRoom }),  // retry callback
     );
     return;
@@ -875,7 +875,7 @@ export function setupExpirationTimer() {
       UI.hideExpirationBar();
       broadcastSettingsChange();
       UI.showToast('Expiration removed.', 'success');
-    } catch { UI.showToast('Could not remove auto-expire.', 'error'); }
+    } catch { UI.showToast('Could not remove expiration.', 'error'); }
   });
 
   armExpirationTimer();

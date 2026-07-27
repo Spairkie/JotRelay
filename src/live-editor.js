@@ -23,6 +23,7 @@ import {
 } from '../vendor/codemirror.js';
 import { escapeHtml } from './utils.js';
 import { highlightExtension } from './markdown-highlight-extension.js';
+import { parseTableAlignments } from './markdown-table-utils.js';
 
 let _view             = null;
 let _onChange         = null;
@@ -251,22 +252,12 @@ class _TableWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
-function _tableAlignments(delimiterText) {
-  return delimiterText.split('|').slice(1, -1).map((seg) => {
-    const s = seg.trim();
-    if (s.startsWith(':') && s.endsWith(':')) return 'center';
-    if (s.endsWith(':')) return 'right';
-    if (s.startsWith(':')) return 'left';
-    return '';
-  });
-}
-
 function _buildTableHtml(state, tableNode) {
   const rows = [];
   let alignments = [];
   for (let child = tableNode.firstChild; child; child = child.nextSibling) {
     if (child.name === 'TableDelimiter') {
-      alignments = _tableAlignments(state.doc.sliceString(child.from, child.to));
+      alignments = parseTableAlignments(state.doc.sliceString(child.from, child.to));
     } else if (child.name === 'TableHeader' || child.name === 'TableRow') {
       const cells = [];
       for (let cell = child.firstChild; cell; cell = cell.nextSibling) {

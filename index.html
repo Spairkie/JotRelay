@@ -38,13 +38,28 @@
   <link rel="stylesheet" href="/SyncPad/styles/file-preview.css" />
   <link rel="stylesheet" href="/SyncPad/styles/room-tools.css" />
 
-  <!-- Supabase JS -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <!-- Supabase JS — pinned to an exact version (not the floating @2 tag) so the
+       SRI hash below can never silently stop matching a newer release. Points
+       at the package's own published dist/umd/supabase.js (unminified) rather
+       than jsdelivr's .min.js path: that minified file is not actually shipped
+       in the npm package for any 2.x release — jsdelivr synthesizes it on the
+       fly via its own minifier, which can't be independently reproduced to
+       verify a hash against. See docs/security.md for how these hashes were
+       computed and verified against the npm registry's own tarball shasum. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.9/dist/umd/supabase.js"
+          integrity="sha384-6foGJ1oz/y3anEo0BXRtTgBK1GvpnR0GbJZb0ijG+nBAJ4rYT+VqlD/9e3CSiFIA"
+          crossorigin="anonymous"></script>
   <!-- QR Code -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"
+          integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU"
+          crossorigin="anonymous"></script>
   <!-- Prism.js — syntax highlighting in markdown preview -->
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"
+          integrity="sha384-MXybTpajaBV0AkcBaCPT4KIvo0FzoCiWXgcihYsw4FUkEz0Pv3JGV6tk2G8vJtDc"
+          crossorigin="anonymous" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"
+          integrity="sha384-Uq05+JLko69eOiPr39ta9bh7kld5PKZoU+fF7g0EXTAriEollhZ+DrN8Q/Oi8J2Q"
+          crossorigin="anonymous" defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       if (window.Prism && Prism.plugins && Prism.plugins.autoloader) {

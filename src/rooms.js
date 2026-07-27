@@ -38,6 +38,16 @@ export async function createRoom(roomId) {
   if (error) {
     // Race condition: another client created it first
     if (error.code === '23505') return loadRoom(roomId);
+    // supabase/migrations/0010_anonymous_write_rate_limiting.sql's BEFORE
+    // INSERT trigger raises this specific message under errcode 42501 (the
+    // same generic "insufficient_privilege" code the quarantine/lock
+    // triggers also use) — match on the message, not just the code, so
+    // those aren't misattributed as rate-limit errors.
+    if (error.code === '42501' && /too many rooms created recently/i.test(error.message || '')) {
+      const rateLimitError = new Error(error.message);
+      rateLimitError.code = 'RATE_LIMITED';
+      throw rateLimitError;
+    }
     logSupabaseError('createRoom', error, { room_id: roomId });
     throw error;
   }
@@ -214,6 +224,13 @@ export async function submitRoomReport({ roomId, shareToken = null, reason, deta
 
   const { error } = await sb.from(REPORTS_TABLE).insert(payload);
   if (error) {
+    // See the matching comment in createRoom() — same trigger-message
+    // matching approach, this time for the reports-table limit.
+    if (error.code === '42501' && /too many reports submitted recently/i.test(error.message || '')) {
+      const rateLimitError = new Error(error.message);
+      rateLimitError.code = 'RATE_LIMITED';
+      throw rateLimitError;
+    }
     logSupabaseError('submitRoomReport', error, { room_id: normalizedRoomId, reporter_mode: normalizedMode });
     throw error;
   }
