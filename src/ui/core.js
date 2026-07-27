@@ -110,6 +110,9 @@ export function updateDeviceCount(n) {
   if (el) el.textContent = `${n} connected`;
 }
 
+let _footerClockTimer = null;
+const _footerTimeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+
 export function updateFooterClock() {
   const btn = document.getElementById('btn-insert-ts');
   const timeEl = document.getElementById('footer-current-time');

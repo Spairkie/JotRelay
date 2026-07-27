@@ -28,6 +28,16 @@ An external audit report was checked claim-by-claim against the current codebase
 - **`src/ui.js` is a large (~110 KB) single file mixing many UI concerns.** Confirmed a real maintainability smell, but splitting it is a large, high-blast-radius refactor with no behavior change to show for it — out of scope for a bug-fix pass; recommended as separate follow-up work.
 - **No application-level rate limiting on anonymous room/report creation.** Already documented as a known gap in `docs/security.md`; addressing it (edge function + CAPTCHA, or Supabase-level throttling) is a new feature, not a bug fix.
 
+### Phase 36 — Modularize `ui.js`/`admin.js`, consolidate `app.js` state
+
+Branch: `claude/syncpad-review-fixes-180t01`
+
+Split the two largest files into per-domain modules (`src/ui/*.js`, `src/admin/*.js`), each with a thin barrel/entry point so every existing call site kept working unchanged. Also consolidated `app.js`'s ~40 scattered module-level `let`s into a single `state` object, matching the pattern used for `admin.js`'s dashboard state — preparatory groundwork for a possible future split of `app.js` itself, not attempted here since `wireEvents()`'s many helper closures make that a separate, larger effort.
+
+#### Fixed (found by automated PR review — P1, both in the `ui.js` split above)
+- **`ui/core.js` dropped `_footerTimeFormatter`/`_footerClockTimer`** during the split — both were declared at the top of the former monolithic `ui.js` but never carried over, so `initFooterClock()` (called by every room's `wireEvents()`) threw a `ReferenceError` and aborted room startup. Restored both declarations in `ui/core.js`.
+- **`service-worker.js`'s `PRECACHE_ASSETS` still listed only `src/ui.js` and `src/admin.js`**, not any of the new `ui/*.js`/`admin/*.js` files — an offline PWA launch before another online service-worker-controlled load could 503 on any of them, breaking `app.js`'s module graph. Added all 15 new module paths; bumped cache to `syncpad-v38`.
+
 ### Phase 34 — Pre-user-testing push: scroll sync, default mode, Find, TOC, cross-mode feature parity, device count
 
 Branch: `claude/codebase-review-testing-fjicqa`
