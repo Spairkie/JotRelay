@@ -98,7 +98,7 @@ function _codeLanguageFor(info) {
 }
 
 // ── ==highlight== extension ──────────────────────────────────────────────────
-// Shared with markdown-lezer.js (the static renderer's shared-parse-tree
+// Shared with markdown.js (the static renderer's shared-parse-tree
 // counterpart) — see markdown-highlight-extension.js's own header comment
 // for why this must be the exact same extension object shape in both places.
 const _highlightExtension = highlightExtension;

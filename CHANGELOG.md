@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 38 — Rebuild `markdown.js` on the shared Lezer parse tree
+
+Branch: `claude/syncpad-review-fixes-180t01`
+
+`markdown.js` was a hand-rolled, line-oriented regex renderer maintained independently of the CM6 live editor's own Markdown parser (`@lezer/markdown`), which meant every syntax edge case had to be reasoned about and kept in sync twice. Rebuilt it to parse with the exact same Lezer grammar (including the shared `==highlight==` extension, now factored out into `src/markdown-highlight-extension.js` and imported by both `live-editor.js` and `markdown.js`) and render safe HTML by walking the resulting parse tree instead of scanning regex against raw lines.
+
+Built and proved out as a staged, parallel module (`src/markdown-lezer.js`) first: verified byte-for-byte output parity against the old renderer across ~50 hand-built cases, every assertion in the existing Markdown test suite, and a companion-API check (`renderMarkdownWithToc`, `renderTocHtml`, `markdownToPlainText`, heading-id slugification) — surfacing and fixing 17 distinct tree-walking issues along the way (Lezer's "gap text" between marked-up child nodes needing explicit fill-in, reference-link resolution, GFM alert/table/list edge cases, heading-id slug source, footnote/blockquote checkbox-index alignment). One output is a real, disprovable divergence and stays that way on purpose: nested emphasis like `**bold *and italic* still bold**` now renders correctly per CommonMark, where the old regex-based renderer produced garbled markup — not treated as a bug to replicate.
+
+With parity confirmed, swapped it in: `src/markdown.js`'s content is now the Lezer-based renderer (same exported API, so `app.js`/`file-preview.js` needed no changes), `src/markdown-lezer.js` and its Node-only parity harness (`tests/markdown-lezer-parity.mjs`) were removed now that there's only one implementation to compare against itself. Security posture is unchanged: every raw-HTML-shaped node (`HTMLBlock`/`HTMLTag`/`CommentBlock`/`ProcessingInstructionBlock`) still renders as literal escaped text, never interpreted, and link/image URLs still go through the same scheme allowlist.
+
 ### Phase 35 — Third-party audit verification pass
 
 Branch: `claude/syncpad-review-fixes-180t01`
