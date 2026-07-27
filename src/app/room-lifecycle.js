@@ -875,7 +875,7 @@ export function setupExpirationTimer() {
       UI.hideExpirationBar();
       broadcastSettingsChange();
       UI.showToast('Expiration removed.', 'success');
-    } catch { UI.showToast('Could not remove auto-expire.', 'error'); }
+    } catch { UI.showToast('Could not remove expiration.', 'error'); }
   });
 
   armExpirationTimer();
