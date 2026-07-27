@@ -75,7 +75,7 @@ Preview mode.
 - [ ] `` Ctrl/⌘ + ` `` — wraps selection in inline code
 - [ ] `Ctrl/⌘ + Shift + S` — toggles Split view
 - [ ] `Ctrl/⌘ + Shift + M` — toggles Monospace
-- [ ] `Ctrl/⌘ + Shift + /` — opens the cursor chat composer at the caret
+- [ ] `Ctrl/⌘ + Shift + /` — opens the floating comment composer at the selection/caret
 - [ ] `Ctrl/⌘ + /` — opens keyboard shortcuts modal
 - [ ] `Ctrl/⌘ + K` **outside the editor** (e.g. focus on a button) — opens command palette instead of inserting a link
 - [ ] `Alt + Shift + P` — toggles Preview mode

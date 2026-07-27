@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 38 — Rebuild `markdown.js` on the shared Lezer parse tree
+
+Branch: `claude/syncpad-review-fixes-180t01`
+
+`markdown.js` was a hand-rolled, line-oriented regex renderer maintained independently of the CM6 live editor's own Markdown parser (`@lezer/markdown`), which meant every syntax edge case had to be reasoned about and kept in sync twice. Rebuilt it to parse with the exact same Lezer grammar (including the shared `==highlight==` extension, now factored out into `src/markdown-highlight-extension.js` and imported by both `live-editor.js` and `markdown.js`) and render safe HTML by walking the resulting parse tree instead of scanning regex against raw lines.
+
+Built and proved out as a staged, parallel module (`src/markdown-lezer.js`) first: verified byte-for-byte output parity against the old renderer across ~50 hand-built cases, every assertion in the existing Markdown test suite, and a companion-API check (`renderMarkdownWithToc`, `renderTocHtml`, `markdownToPlainText`, heading-id slugification) — surfacing and fixing 17 distinct tree-walking issues along the way (Lezer's "gap text" between marked-up child nodes needing explicit fill-in, reference-link resolution, GFM alert/table/list edge cases, heading-id slug source, footnote/blockquote checkbox-index alignment). One output is a real, disprovable divergence and stays that way on purpose: nested emphasis like `**bold *and italic* still bold**` now renders correctly per CommonMark, where the old regex-based renderer produced garbled markup — not treated as a bug to replicate.
+
+With parity confirmed, swapped it in: `src/markdown.js`'s content is now the Lezer-based renderer (same exported API, so `app.js`/`file-preview.js` needed no changes), `src/markdown-lezer.js` and its Node-only parity harness (`tests/markdown-lezer-parity.mjs`) were removed now that there's only one implementation to compare against itself. Security posture is unchanged: every raw-HTML-shaped node (`HTMLBlock`/`HTMLTag`/`CommentBlock`/`ProcessingInstructionBlock`) still renders as literal escaped text, never interpreted, and link/image URLs still go through the same scheme allowlist.
+
 ### Phase 35 — Third-party audit verification pass
 
 Branch: `claude/syncpad-review-fixes-180t01`
@@ -27,6 +37,28 @@ An external audit report was checked claim-by-claim against the current codebase
 - **Missing Subresource Integrity (SRI) hashes on CDN `<script>` tags.** Real gap, but this environment's network policy blocks outbound access to `cdn.jsdelivr.net`, so no hash could be computed against the actual pinned file bytes — shipping a guessed/wrong hash would break script loading for every user, which is worse than the status quo. Left for a follow-up pass with CDN access; hashes should be computed with `openssl dgst -sha384` against the exact pinned URLs in `index.html`.
 - **`src/ui.js` is a large (~110 KB) single file mixing many UI concerns.** Confirmed a real maintainability smell, but splitting it is a large, high-blast-radius refactor with no behavior change to show for it — out of scope for a bug-fix pass; recommended as separate follow-up work.
 - **No application-level rate limiting on anonymous room/report creation.** Already documented as a known gap in `docs/security.md`; addressing it (edge function + CAPTCHA, or Supabase-level throttling) is a new feature, not a bug fix.
+
+### Phase 36 — Modularize `ui.js`/`admin.js`, consolidate `app.js` state
+
+Branch: `claude/syncpad-review-fixes-180t01`
+
+Split the two largest files into per-domain modules (`src/ui/*.js`, `src/admin/*.js`), each with a thin barrel/entry point so every existing call site kept working unchanged. Also consolidated `app.js`'s ~40 scattered module-level `let`s into a single `state` object, matching the pattern used for `admin.js`'s dashboard state — preparatory groundwork for a possible future split of `app.js` itself, not attempted here since `wireEvents()`'s many helper closures make that a separate, larger effort.
+
+#### Fixed (found by automated PR review — P1, both in the `ui.js` split above)
+- **`ui/core.js` dropped `_footerTimeFormatter`/`_footerClockTimer`** during the split — both were declared at the top of the former monolithic `ui.js` but never carried over, so `initFooterClock()` (called by every room's `wireEvents()`) threw a `ReferenceError` and aborted room startup. Restored both declarations in `ui/core.js`.
+- **`service-worker.js`'s `PRECACHE_ASSETS` still listed only `src/ui.js` and `src/admin.js`**, not any of the new `ui/*.js`/`admin/*.js` files — an offline PWA launch before another online service-worker-controlled load could 503 on any of them, breaking `app.js`'s module graph. Added all 15 new module paths; bumped cache to `syncpad-v38`.
+
+### Phase 37 — Merge cursor chat into Comments
+
+Branch: `claude/syncpad-review-fixes-180t01`
+
+Cursor chat (an ephemeral, viewport-anchored, broadcast-only message near a caret — never persisted, no independent lifetime) and Comments (a persisted, text-range-anchored annotation, side-panel only) were two separate features with overlapping UI (both opened a small floating input near the caret). Merged them into one: Comments is now the single annotation type, addable either from the side panel or from a floating composer opened right at the current selection — the same trigger surface (FAB, `Ctrl/⌘ + Shift + /`, editor context menu's "Add comment") cursor chat used, but submitting now always persists a real anchored comment instead of broadcasting an ephemeral one. Existing comments also gained a floating display: clicking a margin dot expands a bubble with the full text/author, plus Prev/Next navigation between comments (from either the bubble or the side panel header) — cursor chat's floating/ephemeral polish, applied to comments' persistence and cross-device visibility (comments' own realtime `postgres_changes` subscription already shows new ones live, making cursor chat's separate broadcast channel and emoji quick-react redundant — both removed).
+
+- `src/live-broadcast.js`: removed `broadcastCursorChat()`/`broadcastCursorChatReaction()` and the `cursor_chat`/`cursor_chat_reaction` broadcast events.
+- `src/ui/collab.js`: replaced the ephemeral cursor-chat bubble/composer (`showCursorChatBubble`, `addCursorChatReaction`, fade timers, emoji quick-react) with `openFloatingCommentComposer()`/`closeFloatingCommentComposer()` (renamed, now always persists) and `renderFloatingComments()` (margin dots + one expandable bubble with Prev/Next/delete, replacing `renderCommentMargin()`).
+- `src/app.js`: `_openCursorChatComposer()` → `_openFloatingCommentComposer()`, now anchors to the current selection (not just caret) and submits via the existing `_submitComment()` path; added `_toggleCommentBubble()`/`_navigateComment()`/`state.activeCommentId` for the floating bubble's open/collapse and Prev/Next; the editor context menu's "Add comment" now opens the floating composer directly instead of the side panel.
+- `index.html`/CSS: `#btn-cursor-chat-fab` → `#btn-add-comment-fab` (now `data-readonly-hide`, matching other edit-only actions), `#cursor-chat-layer` → `#comment-floating-layer`, Prev/Next buttons added to the Comments panel header.
+- `tests/cursor-chat.spec.js` removed; its coverage folded into `tests/comments.spec.js` (composer, bubble expand/collapse, navigation, delete) and `tests/editor-context-menu.spec.js`/`tests/shortcuts.spec.js` (updated for the new floating-composer behavior).
 
 ### Phase 34 — Pre-user-testing push: scroll sync, default mode, Find, TOC, cross-mode feature parity, device count
 

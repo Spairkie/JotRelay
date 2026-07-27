@@ -38,7 +38,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 | File | Responsibility |
 |---|---|
 | `src/app.js` | Client-side routing, event wiring, global state coordination |
-| `src/ui.js` | All DOM manipulation — `showConfirm()`, `openTemplatesModal()`, `renderFilesList()`, `renderDevicesList()`, etc. |
+| `src/ui.js` | Barrel re-exporting `src/ui/*.js` — all DOM manipulation: `showConfirm()`, `openTemplatesModal()`, `renderFilesList()`, `renderDevicesList()`, etc. See `src/ui.js`'s header comment for the per-file split (core/dialogs/panels/editor/collab/feature-modals). |
 | `src/sync.js` | Live typing via Supabase Broadcast + durable save to Postgres (1 s debounce) |
 | `src/presence.js` | Device tracking, typing indicators, cursor position broadcasting |
 | `src/live-broadcast.js` | Low-level Supabase Broadcast event wiring |
@@ -51,7 +51,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 | `src/templates.js` | 13 built-in templates + localStorage custom templates; `BODY_MAX = 50000` |
 | `src/theme.js` | CSS variable theme system — 7 themes, toggled via `data-theme` on `<html>` |
 | `src/shortcuts.js` | Keyboard shortcut handler |
-| `src/admin.js` | Admin dashboard — Supabase Auth (`signInWithPassword`), RLS via `is_syncpad_admin()` |
+| `src/admin.js` | Admin dashboard entry point (auth-state routing only) — Supabase Auth (`signInWithPassword`), RLS via `is_syncpad_admin()`. Dashboard shell + tabs live in `src/admin/*.js`; see `src/admin.js`'s header comment for the module map. |
 | `src/utils.js` | `escapeHtml()`, `formatFileSize()`, `countWords()` |
 | `src/icons.js` | SVG icon strings |
 | `src/supabase.js` | Supabase client initialisation |
@@ -73,7 +73,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 All DOM writes go through `src/ui.js`. Never manipulate the DOM from `sync.js`, `files.js`, or any other module directly — call or add a function in `ui.js` instead.
 
 ### State Management
-Room-scoped state lives in module-level variables. Every variable that is room-specific **must** be reset to `null` (or an empty structure) when navigating away from a room. Variables that require this treatment include `_roomId`, `_encKey`, `_encSalt`, `_markdownMode`, `_showPreview`, `_expPreset`, `_expTimer`, `_searchMatches`, and `_searchIndex`.
+`app.js` keeps its room/session/editor-UI state as properties on a single module-level `state` object (`const state = {...}`, declared near the top of the file) rather than scattered `let`s. Every property that is room-specific **must** be reset to `null` (or an empty structure) when navigating away from a room — see `teardownRealtimeSession()`. Properties that require this treatment include `state.roomId`, `state.encKey`, `state.encSalt`, `state.markdownMode`, `state.showPreview`, `state.expPreset`, `state.expTimer`, `state.searchMatches`, and `state.searchIndex`. (`admin.js`'s dashboard state follows the same pattern via `src/admin/state.js`.)
 
 ### Escaping User Content
 Any user-supplied string that is interpolated into an HTML template **must** be passed through `escapeHtml()` from `src/utils.js` first. Never trust room names, file names, note bodies, or any other user content without escaping.
@@ -113,7 +113,7 @@ Transitions for background-color (0.22 s ease) are applied to `body`, panels, an
 
 - **`wireEvents()` accumulates listeners.** If called more than once (e.g., on re-navigation) it registers duplicate listeners. Guard calls with a cleanup flag or ensure it is called exactly once per page lifecycle.
 
-- **Room state must be fully reset on navigation.** When leaving a room, reset `_roomId`, `_encKey`, `_encSalt`, `_markdownMode`, `_showPreview`, `_expPreset`, `_expTimer`, `_searchMatches`, and `_searchIndex` to `null` (or empty). Stale state causes subtle bugs that are hard to reproduce.
+- **Room state must be fully reset on navigation.** When leaving a room, reset `state.roomId`, `state.encKey`, `state.encSalt`, `state.markdownMode`, `state.showPreview`, `state.expPreset`, `state.expTimer`, `state.searchMatches`, and `state.searchIndex` to `null` (or empty). Stale state causes subtle bugs that are hard to reproduce.
 
 - **Signed-URL cache eviction.** `src/files.js` caches signed URLs in a `Map` with a 55-minute TTL. When a file is deleted, call the eviction helper so the stale URL is not served to subsequent requests.
 

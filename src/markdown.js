@@ -1,5 +1,9 @@
 // SyncPad – markdown.js
-// Minimal Markdown → HTML renderer. NO external library.
+// Markdown → HTML renderer, built over the shared Lezer parse tree (the same
+// `@lezer/markdown` grammar CodeMirror's live editor already parses with —
+// see markdown-highlight-extension.js for the one grammar extension shared
+// by both). No hand-rolled block/inline regex passes; the tree does the
+// parsing, this module just walks it into safe HTML.
 //
 // Supports (targets GFM — GitHub Flavored Markdown — as the reference
 // flavor; see the feature-audit note at the bottom of this comment):
@@ -30,120 +34,89 @@
 //   - hard line breaks (two trailing spaces)
 //
 // XSS strategy: every raw string segment is HTML-escaped FIRST, then a small
-// set of safe markup is reintroduced. No raw HTML pass-through. Link and
-// image URLs are validated against a scheme allowlist (http/https/mailto for
-// links, http/https only for images — never data:/javascript:).
+// set of safe markup is reintroduced. No raw HTML pass-through — the
+// grammar's own HTMLBlock/HTMLTag/CommentBlock/ProcessingInstructionBlock
+// nodes are always rendered as literal escaped text, never interpreted. Link
+// and image URLs are validated against a scheme allowlist (http/https/mailto
+// for links, http/https only for images — never data:/javascript:).
 //
 // Deliberately NOT supported (see docs/markdown-feature-audit.md for the
 // full flavor comparison and rationale): raw HTML, definition lists,
 // subscript/superscript, emoji shortcodes, underline, centered/colored text,
 // comments, videos, custom heading-id syntax, and 4-space-indented code
-// blocks (ambiguous against this renderer's indent-based list nesting).
+// blocks (rendered as plain paragraph text — ambiguous against this
+// renderer's indent-based list nesting, matches this renderer's original
+// hand-rolled behavior byte-for-byte).
+//
+// Implementation notes for future maintainers: Lezer's parse tree only
+// creates nodes for *marked-up* spans — plain text between/around them has
+// no node of its own ("gap text"). Rendering inline content correctly means
+// walking children AND filling those gaps with escaped literal text, not
+// just recursing into children (see _renderInlineChildren). A handful of
+// constructs the grammar doesn't model at all — footnotes, [TOC], GitHub
+// alerts — are recovered via small pre/post passes around the tree walk
+// rather than grammar extensions, keeping the parser itself standard.
 
+import { markdown, markdownLanguage } from '../vendor/codemirror.js';
+import { highlightExtension } from './markdown-highlight-extension.js';
 import { escapeHtml } from './utils.js';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-/** Matches GFM horizontal rule lines: ---, ***, ___ (with optional spaces). */
-const HR_RE = /^(?:-[ \t]*){3,}$|^(?:\*[ \t]*){3,}$|^(?:_[ \t]*){3,}$/;
+const _parser = markdown({ base: markdownLanguage, extensions: [highlightExtension] }).language.parser;
 
-/** One leading glyph per GitHub-style alert kind — see the 'blockquote' case below. */
 const _ALERT_ICONS = {
   note: 'ℹ️ ', tip: '💡 ', important: '❗ ', warning: '⚠️ ', caution: '🛑 ',
 };
-
-// ── Public API ───────────────────────────────────────────────────────────────
+const _ALERT_LABEL = {
+  note: 'Note', tip: 'Tip', important: 'Important', warning: 'Warning', caution: 'Caution',
+};
+const _FOOTNOTE_DEF_RE = /^\[\^([A-Za-z0-9_-]+)\]:[ \t]?(.*)$/;
+const _TOC_MARKER_RE = /^\[toc\]$/i;
 
 /**
  * Render Markdown to safe HTML.
  * @param {string} src
- * @param {object} [_parentCtx] internal — lets blockquote's recursive call
- *   share this document's checkbox counter and heading-id registry instead
- *   of starting fresh. Not part of the public API; callers should never pass
- *   it — pass a plain ctx (e.g. from renderMarkdownWithToc) if you need to
- *   read state back out after rendering, that's still "top-level" as far as
- *   [TOC]/footnotes are concerned. Only renderMarkdown's own blockquote case
- *   marks its child ctx with _isRecursiveCall, which is the actual signal
- *   used below to skip top-level-only passes.
+ * @param {object} [_parentCtx] internal — lets renderMarkdownWithToc pass a
+ *   ctx with a pre-initialized `headings` array to collect every rendered
+ *   heading into. Not part of the public API; callers should never pass it.
  * @returns {string} sanitized HTML
  */
 export function renderMarkdown(src, _parentCtx) {
   if (!src) return '';
+  const text = String(src).replace(/\r\n?/g, '\n');
+  const tree = _parser.parse(text);
   const ctx = _parentCtx || {
     cbCounter: 0, headingIds: new Set(),
     footnoteDefs: new Map(), footnoteOrder: [],
     linkRefs: new Map(),
   };
-  const isTopLevel = !ctx._isRecursiveCall;
-  let blocks = _splitBlocks(String(src));
-  // A [TOC] marker anywhere in the document renders the *whole* document's
-  // headings, including ones that appear after it — so the full heading list
-  // must be known before the per-block render loop reaches it. Only done once,
-  // at the top-level call (not from blockquote's recursive renderMarkdown),
-  // and only when a [TOC] block actually exists, to avoid the extra pass
-  // otherwise. The ids computed here are then handed out to the *real*
-  // heading blocks as the main loop reaches them (via ctx._tocIdQueue) so
-  // both passes agree — recomputing independently could disagree on
-  // duplicate-heading suffixes (-1, -2, …).
-  if (isTopLevel && !ctx._tocEntries && blocks.some((b) => b.type === 'toc')) {
-    const idSet = new Set();
+  _collectFootnoteDefs(text, ctx);
+  _collectLinkRefs(tree, text, ctx);
+
+  const topBlocks = _children(tree.topNode);
+  // Footnote-definition lines ([^id]: text) parse as ordinary Paragraphs to
+  // the grammar — pulled out of the block stream since they're rendered
+  // once, together, in the references section instead.
+  const filtered = topBlocks.filter((node) => !_isFootnoteDefNode(node, text) && node.type.name !== 'LinkReference');
+
+  // A [TOC] marker anywhere among the top-level blocks renders the *whole*
+  // document's headings, including ones after it — so every heading's id
+  // must be pre-computed before the main render pass reaches any of them.
+  if (filtered.some((node) => _isTocMarkerNode(node, text))) {
     ctx._tocIdQueue = [];
-    ctx._tocEntries = _collectHeadingTexts(blocks).map((h) => {
-      const id = _slugifyHeading(h.text, idSet);
+    ctx._tocEntries = _collectHeadingsInOrder(filtered, text).map((h) => {
+      const id = _slugifyHeading(h.rawText, ctx.headingIds);
       ctx._tocIdQueue.push(id);
-      return { level: h.level, id, text: _stripHtmlTags(_renderInline(h.text, ctx)) };
+      return { level: h.level, id, text: h.plainText };
     });
   }
-  // Footnote definitions ([^id]: text) render only in the references section
-  // at the very end of the top-level document, never inline at their source
-  // position — pull them out of the normal block stream and into a lookup
-  // map. Only collected at the top level (not inside a blockquote); a
-  // definition written inside a blockquote is treated as ordinary text,
-  // which matches how most lightweight Markdown footnote implementations
-  // handle it and keeps this from needing a second recursive collection pass.
-  if (isTopLevel && ctx.footnoteDefs) {
-    blocks = blocks.filter((b) => {
-      if (b.type !== 'footnoteDef') return true;
-      if (!ctx.footnoteDefs.has(b.id)) ctx.footnoteDefs.set(b.id, b.text);
-      return false;
-    });
-  }
-  // Reference-link definitions ([label]: url "title") never render at their
-  // own source position — pulled into a lookup map the same way footnote
-  // defs are, resolved by [text][label]/[text][] elsewhere in the document.
-  // Key/url/title are escapeHtml()'d here (raw source, pre-escape) so a
-  // lookup against the already-escaped label text inside _renderInline (the
-  // whole document is escaped as one string before any inline rule runs)
-  // compares like-for-like instead of raw vs. escaped.
-  if (isTopLevel && ctx.linkRefs) {
-    blocks = blocks.filter((b) => {
-      if (b.type !== 'linkRefDef') return true;
-      const key = escapeHtml(b.id.trim().toLowerCase());
-      if (!ctx.linkRefs.has(key)) {
-        ctx.linkRefs.set(key, { url: escapeHtml(b.url), title: b.title != null ? escapeHtml(b.title) : null });
-      }
-      return false;
-    });
-  }
-  const bodyHtml = blocks.map((b) => _renderBlock(b, ctx)).join('\n');
-  if (!isTopLevel || !ctx.footnoteOrder?.length) return bodyHtml;
+
+  const bodyHtml = filtered.map((node) => _renderNode(node, text, ctx)).join('\n');
+  if (!ctx.footnoteOrder.length) return bodyHtml;
   const items = ctx.footnoteOrder.map((id) => {
     const defText = ctx.footnoteDefs.get(id) || '';
-    return `<li id="fn-${id}">${_renderInline(defText, ctx)} <a href="#fnref-${id}" class="footnote-backref" aria-label="Back to content">↩</a></li>`;
+    return `<li id="fn-${id}">${_renderInlineFallback(defText, text, ctx)} <a href="#fnref-${id}" class="footnote-backref" aria-label="Back to content">↩</a></li>`;
   }).join('');
   return `${bodyHtml}\n<section class="footnotes"><hr><ol>${items}</ol></section>`;
-}
-
-/** Flatten heading text (in document order) out of a block list, recursing into
- *  blockquotes so [TOC] picks up blockquoted headings too. Used only to
- *  pre-compute the full heading list for the [TOC] block, ahead of the main
- *  per-block render pass. */
-function _collectHeadingTexts(blocks) {
-  const out = [];
-  for (const b of blocks) {
-    if (b.type === 'heading') out.push({ level: b.level, text: b.text });
-    else if (b.type === 'blockquote') out.push(..._collectHeadingTexts(_splitBlocks(b.text)));
-  }
-  return out;
 }
 
 /**
@@ -200,7 +173,7 @@ export function renderTocHtml(headings) {
 export function markdownToPlainText(src) {
   if (!src) return '';
   const html = renderMarkdown(src);
-  return _stripHtmlTags(html)
+  return _stripTags(html)
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -228,150 +201,114 @@ export function toggleChecklistItem(src, index, checked) {
   });
 }
 
-// ── Block splitting ──────────────────────────────────────────────────────────
+// ── Node helpers ───────────────────────────────────────────────────────────────
 
-function _splitBlocks(src) {
-  const lines = src.replace(/\r\n?/g, '\n').split('\n');
-  const blocks = [];
-  let i = 0;
+function _children(node) {
+  const out = [];
+  let child = node.firstChild;
+  while (child) { out.push(child); child = child.nextSibling; }
+  return out;
+}
 
-  while (i < lines.length) {
-    const line = lines[i];
+// ── Footnotes / TOC / reference-links (grammar has no concept of these) ──────
 
-    // Fenced code block
-    const fence = line.match(/^```(\w*)\s*$/);
-    if (fence) {
-      const lang = fence[1] || '';
-      const body = [];
-      i++;
-      while (i < lines.length && !/^```\s*$/.test(lines[i])) {
-        body.push(lines[i]); i++;
-      }
-      if (i < lines.length) i++; // skip closing fence
-      blocks.push({ type: 'code', lang, body: body.join('\n') });
-      continue;
-    }
+function _isFootnoteDefNode(node, text) {
+  return node.type.name === 'Paragraph' && _FOOTNOTE_DEF_RE.test(text.slice(node.from, node.to));
+}
 
-    // Horizontal rule — 3+ dashes, asterisks, or underscores, nothing else
-    // Must be checked before headings/lists to avoid mis-parsing "---"
-    if (HR_RE.test(line.trim())) {
-      blocks.push({ type: 'hr' });
-      i++; continue;
-    }
+function _isTocMarkerNode(node, text) {
+  return node.type.name === 'Paragraph' && _TOC_MARKER_RE.test(text.slice(node.from, node.to).trim());
+}
 
-    // Heading
-    const h = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
-    if (h) {
-      blocks.push({ type: 'heading', level: h[1].length, text: h[2] });
-      i++; continue;
-    }
-
-    // Typora-style inline table-of-contents marker — a line containing only "[TOC]"
-    if (/^\[toc\]$/i.test(line.trim())) {
-      blocks.push({ type: 'toc' });
-      i++; continue;
-    }
-
-    // Blockquote — collect consecutive > lines, strip the > prefix
-    if (/^>/.test(line)) {
-      const bqLines = [];
-      while (i < lines.length && /^>/.test(lines[i])) {
-        bqLines.push(lines[i].replace(/^>\s?/, ''));
-        i++;
-      }
-      blocks.push({ type: 'blockquote', text: bqLines.join('\n') });
-      continue;
-    }
-
-    // GFM table — first row starts with |, second row is the separator
-    if (
-      /^\|/.test(line) &&
-      i + 1 < lines.length &&
-      /^\|[-|:\s]+\|/.test(lines[i + 1])
-    ) {
-      const tableLines = [];
-      while (i < lines.length && /^\|/.test(lines[i])) {
-        tableLines.push(lines[i]); i++;
-      }
-      // First row = headers, second row = separator (alignment), rest = body rows
-      const parseRow = (row) =>
-        row.split('|').slice(1, -1).map((c) => c.trim());
-      const [headerRow, sepRow, ...bodyLines] = tableLines;
-      // GFM column alignment: :--- left, ---: right, :---: center, --- none.
-      const aligns = parseRow(sepRow).map((cell) => {
-        const left = cell.startsWith(':'), right = cell.endsWith(':');
-        if (left && right) return 'center';
-        if (right) return 'right';
-        if (left) return 'left';
-        return null;
-      });
-      blocks.push({
-        type:    'table',
-        headers: parseRow(headerRow),
-        aligns,
-        rows:    bodyLines.map(parseRow),
-      });
-      continue;
-    }
-
-    // Footnote definition — [^id]: text. Pulled out of normal flow entirely;
-    // rendered once, together, in a references section at the end of the
-    // document (see renderMarkdown's footnote pre-pass).
-    const fn = line.match(/^\[\^([A-Za-z0-9_-]+)\]:[ \t]?(.*)$/);
-    if (fn) {
-      blocks.push({ type: 'footnoteDef', id: fn[1], text: fn[2] });
-      i++; continue;
-    }
-
-    // Reference-link definition — [label]: url "title". Checked after the
-    // footnote-definition case above (whose id always starts with ^, so the
-    // two patterns never overlap) so a footnote def is never mis-read as a
-    // reference def. Pulled out of normal flow the same way footnote defs
-    // are, resolved by [text][label]/[text][] elsewhere in the document (see
-    // renderMarkdown's reference-link pre-pass). Single-line only — matches
-    // this renderer's existing footnote-definition scope decision; covers
-    // the overwhelming majority of real-world usage. A definition that's
-    // never referenced simply vanishes, which doubles as support for the
-    // common "[comment]: <> (text)" invisible-comment convention.
-    const ref = line.match(/^\[([^\]]+)\]:[ \t]*(\S+)(?:[ \t]+(?:"([^"]*)"|'([^']*)'|\(([^)]*)\)))?[ \t]*$/);
-    if (ref) {
-      blocks.push({ type: 'linkRefDef', id: ref[1], url: ref[2], title: ref[3] ?? ref[4] ?? ref[5] ?? null });
-      i++; continue;
-    }
-
-    // List (unordered, ordered, or checklist)
-    if (/^[ \t]*(?:[-*+]|\d+\.)[ \t]+/.test(line)) {
-      const items = [];
-      const ordered = /^[ \t]*\d+\.[ \t]+/.test(line);
-      while (i < lines.length && /^[ \t]*(?:[-*+]|\d+\.)[ \t]+/.test(lines[i])) {
-        items.push(lines[i]); i++;
-      }
-      blocks.push({ type: 'list', ordered, items });
-      continue;
-    }
-
-    // Blank line
-    if (/^\s*$/.test(line)) { i++; continue; }
-
-    // Paragraph (collect contiguous non-blank, non-special lines)
-    const para = [line];
-    i++;
-    while (
-      i < lines.length &&
-      !/^\s*$/.test(lines[i]) &&
-      !/^```/.test(lines[i]) &&
-      !/^#{1,6}\s+/.test(lines[i]) &&
-      !/^>/.test(lines[i]) &&
-      !/^\|/.test(lines[i]) &&
-      !HR_RE.test(lines[i].trim()) &&
-      !/^[ \t]*(?:[-*+]|\d+\.)[ \t]+/.test(lines[i])
-    ) {
-      para.push(lines[i]); i++;
-    }
-    blocks.push({ type: 'paragraph', text: para.join('\n') });
+function _collectFootnoteDefs(text, ctx) {
+  for (const line of text.split('\n')) {
+    const m = _FOOTNOTE_DEF_RE.exec(line);
+    if (m && !ctx.footnoteDefs.has(m[1])) ctx.footnoteDefs.set(m[1], m[2]);
   }
+}
 
-  return blocks;
+/** Flatten heading text (in document order) out of a block list, recursing
+ *  into blockquotes so [TOC] picks up blockquoted headings too. Used only to
+ *  pre-compute the full heading list for the [TOC] block, ahead of the main
+ *  per-block render pass. */
+function _collectHeadingsInOrder(blocks, text) {
+  const out = [];
+  for (const node of blocks) {
+    const name = node.type.name;
+    const level = _headingLevel(name);
+    if (level) {
+      const rawText = _headingRawInner(node, text);
+      // Two different strings for two different purposes: the *raw* markdown
+      // source slugifies into the id (so e.g. a heading containing a link
+      // keeps the URL's letters in its id — a quirk, but one that must stay
+      // stable since it's what every real anchor link out there was
+      // generated against), while the *rendered, tag-stripped* text is what's
+      // shown in the TOC's own link label.
+      out.push({ level, rawText, plainText: _stripTags(_renderInlineFallbackRaw(rawText)) });
+    } else if (name === 'Blockquote') {
+      out.push(..._collectHeadingsInOrder(_children(_dequoteTree(node, text).topNode), _dequoteText(node, text)));
+    }
+  }
+  return out;
+}
+
+// Re-parses just to extract plain text for the TOC entry list — a minimal,
+// context-free inline render (no ctx needed: TOC entry text never contains
+// footnote refs/reference links in practice, and even then only the
+// already-rendered HTML gets tag-stripped here).
+function _renderInlineFallbackRaw(fragmentText) {
+  return _renderInlineFallback(fragmentText, fragmentText, { footnoteDefs: new Map(), footnoteOrder: [], linkRefs: new Map(), headingIds: new Set(), cbCounter: 0 });
+}
+
+function _headingLevel(nodeName) {
+  const m = /^ATXHeading([1-6])$/.exec(nodeName);
+  return m ? Number(m[1]) : 0;
+}
+
+// ── Reference-link definitions ────────────────────────────────────────────────
+
+function _collectLinkRefs(tree, text, ctx) {
+  for (const node of _children(tree.topNode)) {
+    if (node.type.name !== 'LinkReference') continue;
+    const labelNode = node.getChild('LinkLabel');
+    const urlNode = node.getChild('URL');
+    const titleNode = node.getChild('LinkTitle');
+    if (!labelNode || !urlNode) continue;
+    const key = _linkLabelKey(text.slice(labelNode.from, labelNode.to));
+    if (!ctx.linkRefs.has(key)) {
+      ctx.linkRefs.set(key, {
+        url: text.slice(urlNode.from, urlNode.to),
+        title: titleNode ? _stripQuotes(text.slice(titleNode.from, titleNode.to)) : null,
+      });
+    }
+  }
+}
+
+/** LinkLabel node text includes its own brackets ("[label]") — normalize to
+ *  a lowercase/trimmed key. */
+function _linkLabelKey(labelNodeText) {
+  return labelNodeText.replace(/^\[|\]$/g, '').trim().toLowerCase();
+}
+
+/** Re-parse an isolated text fragment (table cell, footnote definition,
+ *  heading content, task-item content, …) and render its inline content —
+ *  used wherever a field's exact bounds are extracted as a raw substring
+ *  rather than walked as tree children, so it never picks up sibling gap
+ *  text. Reuses the *same* ctx (footnote/link-ref maps, heading-id set,
+ *  checkbox counter) so state stays consistent with the surrounding
+ *  document. */
+function _renderInlineFallback(fragmentText, _unusedOuterText, ctx) {
+  const tree = _parser.parse(fragmentText);
+  const blocks = _children(tree.topNode);
+  let out = '';
+  for (const node of blocks) {
+    if (node.type.name === 'Paragraph') {
+      out += _renderInlineChildren(node, fragmentText, ctx);
+    } else {
+      out += _renderNode(node, fragmentText, ctx).replace(/^<p>|<\/p>$/g, '');
+    }
+  }
+  return out;
 }
 
 // ── Heading anchors ──────────────────────────────────────────────────────────
@@ -385,8 +322,8 @@ function _splitBlocks(src) {
  * text collides with an already-generated suffix — e.g. "foo", "foo-1",
  * "foo" — still gets a unique id instead of colliding with the real "foo-1".
  */
-function _slugifyHeading(text, usedIds) {
-  const base = String(text)
+function _slugifyHeading(rawText, usedIds) {
+  const base = String(rawText)
     .replace(/[*_`~=]/g, '')
     .toLowerCase()
     .trim()
@@ -400,14 +337,254 @@ function _slugifyHeading(text, usedIds) {
   return id;
 }
 
-/**
- * Reduce already-rendered, self-controlled inline HTML to plain text —
- * the same result a browser's `element.textContent` would give the live
- * preview's DOM-based table of contents, for export paths that have no DOM
- * to read from. Only ever called on this renderer's own output, so a plain
- * tag-strip is safe (no untrusted HTML reaches this function).
- */
-function _stripHtmlTags(html) {
+/** The trimmed raw span between an ATX heading's opening "#"s and its
+ *  optional closing "##" sequence — can't be gap-filled generically since
+ *  that would include the closing hashes and surrounding whitespace. */
+function _headingRawInner(node, text) {
+  const marks = _children(node).filter((c) => c.type.name === 'HeaderMark');
+  const start = marks[0]?.to ?? node.from;
+  const closingMark = marks.length > 1 ? marks[marks.length - 1] : null;
+  const end = closingMark && closingMark.from > start ? closingMark.from : node.to;
+  return text.slice(start, end).trim();
+}
+
+// ── Blockquote dequoting ──────────────────────────────────────────────────────
+
+/** Strip one leading "> " (or ">") from each line of a Blockquote node's raw
+ *  source, then re-parse the result as fresh top-level blocks — simpler and
+ *  more robust than trying to skip specific already-parsed child nodes, and
+ *  lets GitHub-alert detection work against the exact same "first content
+ *  line" shape a plain regex expects. */
+function _dequoteText(node, text) {
+  return text.slice(node.from, node.to).split('\n').map((l) => l.replace(/^>[ \t]?/, '')).join('\n');
+}
+function _dequoteTree(node, text) {
+  return _parser.parse(_dequoteText(node, text));
+}
+
+// ── Block-level rendering ─────────────────────────────────────────────────────
+
+function _renderNode(node, text, ctx) {
+  const name = node.type.name;
+  const level = _headingLevel(name);
+  if (level) return _renderHeading(node, level, text, ctx);
+
+  switch (name) {
+    case 'Paragraph': {
+      if (_isTocMarkerNode(node, text)) return _renderTocNav(ctx);
+      return `<p>${_renderInlineChildren(node, text, ctx)}</p>`;
+    }
+
+    case 'FencedCode': {
+      const infoNode = node.getChild('CodeInfo');
+      const lang = infoNode ? text.slice(infoNode.from, infoNode.to).trim() : '';
+      const textNode = node.getChild('CodeText');
+      const body = textNode ? text.slice(textNode.from, textNode.to) : '';
+      return `<pre><code${lang ? ` class="language-${escapeHtml(lang)}" data-lang="${escapeHtml(lang)}"` : ''}>${escapeHtml(body)}</code></pre>`;
+    }
+
+    // Deliberately NOT rendered as code — this renderer doesn't support
+    // 4-space-indented code blocks (ambiguous against indent-based list
+    // nesting). The node's own span excludes the first line's leading
+    // indentation (that's what triggered CodeBlock in the first place) even
+    // though it keeps every subsequent line's — reconstruct the true
+    // original text from the start of the line so indentation is preserved
+    // exactly as plain paragraph text.
+    case 'CodeBlock': {
+      const lineStart = text.lastIndexOf('\n', node.from - 1) + 1;
+      return `<p>${escapeHtml(text.slice(lineStart, node.to))}</p>`;
+    }
+
+    case 'BulletList': case 'OrderedList': {
+      const { total, checked } = _countTasks(node, text);
+      const listHtml = _renderListLevel(node, text, ctx);
+      return total > 0 ? `<div class="md-checklist-progress">${checked}/${total} done</div>\n${listHtml}` : listHtml;
+    }
+
+    case 'Blockquote':
+      return _renderBlockquote(node, text, ctx);
+
+    case 'HorizontalRule':
+      return '<hr>';
+
+    case 'Table':
+      return _renderTable(node, text, ctx);
+
+    // Raw HTML — never interpreted, always its literal escaped source text.
+    case 'HTMLBlock':
+      return `<p>${escapeHtml(text.slice(node.from, node.to))}</p>`;
+
+    case 'LinkReference':
+      // Reference-link *definitions* never render at their own source
+      // position — consumed by _collectLinkRefs().
+      return '';
+
+    default:
+      // Unhandled block type (shouldn't normally be reached for the
+      // supported feature set) — render its literal text, escaped, rather
+      // than silently dropping content.
+      return `<p>${escapeHtml(text.slice(node.from, node.to))}</p>`;
+  }
+}
+
+function _renderHeading(node, level, text, ctx) {
+  const rawInner = _headingRawInner(node, text);
+  const inner = _renderInlineFallback(rawInner, text, ctx);
+  const plain = _stripTags(inner);
+  const id = ctx._tocIdQueue ? ctx._tocIdQueue.shift() : _slugifyHeading(rawInner, ctx.headingIds);
+  ctx.headingIds.add(id);
+  // Populated only when the caller (renderMarkdownWithToc) pre-seeds
+  // ctx.headings.
+  ctx.headings?.push({ level, id, text: plain });
+  return `<h${level} id="${id}">${inner}</h${level}>`;
+}
+
+function _renderTocNav(ctx) {
+  const entries = ctx._tocEntries || [];
+  if (entries.length < 2) return '';
+  const items = entries.map((h) =>
+    `<li class="note-toc-item note-toc-h${h.level}"><a href="#${h.id}">${escapeHtml(h.text)}</a></li>`
+  ).join('');
+  return `<nav class="md-inline-toc" aria-label="Table of contents"><strong>Contents</strong><ul>${items}</ul></nav>`;
+}
+
+function _renderBlockquote(node, text, ctx) {
+  const dequoted = _dequoteText(node, text);
+  // GitHub-style alerts: a blockquote whose first line is exactly "[!NOTE]"
+  // (or TIP/IMPORTANT/WARNING/CAUTION) renders as a labeled callout instead
+  // of a plain blockquote — GFM's own admonition syntax, needs no raw HTML.
+  const alertMatch = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*\n?/i.exec(dequoted);
+  if (alertMatch) {
+    const kind = alertMatch[1].toLowerCase();
+    const rest = dequoted.slice(alertMatch[0].length);
+    return `<div class="md-alert md-alert-${kind}"><p class="md-alert-title">${_ALERT_ICONS[kind]}${_ALERT_LABEL[kind]}</p>${_renderFragmentBlocks(rest, ctx)}</div>`;
+  }
+  return `<blockquote>${_renderFragmentBlocks(dequoted, ctx)}</blockquote>`;
+}
+
+function _renderFragmentBlocks(fragmentText, ctx) {
+  // A *fresh* cbCounter, not the parent's. toggleChecklistItem()'s
+  // source-line scan only recognizes a checklist marker at the very start of
+  // the line, so it never counts a blockquoted item; sharing the counter
+  // here would silently misalign the index of every checkbox rendered after
+  // the first blockquoted checklist in the document.
+  const childCtx = { ...ctx, cbCounter: 0 };
+  const tree = _parser.parse(fragmentText);
+  const blocks = _children(tree.topNode).filter((n) => !_isFootnoteDefNode(n, fragmentText) && n.type.name !== 'LinkReference');
+  return blocks.map((n) => _renderNode(n, fragmentText, childCtx)).join('\n');
+}
+
+// ── Lists ──────────────────────────────────────────────────────────────────────
+// Rendered tight (no <p> wrapper around a single-paragraph item's content) —
+// this renderer has no concept of "loose" lists at all, so a nested
+// sub-paragraph is always unwrapped. The checklist progress count is
+// computed once over the *whole* subtree (nested items included) and shown
+// only above the outermost list — _renderListLevel itself never emits a
+// progress div, only its _renderNode('BulletList'/'OrderedList') caller
+// does, so a nested sub-list doesn't get its own.
+
+function _countTasks(node, text) {
+  let total = 0, checked = 0;
+  const walk = (n) => {
+    let child = n.firstChild;
+    while (child) {
+      if (child.type.name === 'Task') {
+        total++;
+        const marker = child.getChild('TaskMarker');
+        if (marker && /\[[xX]\]/.test(text.slice(marker.from, marker.to))) checked++;
+      }
+      walk(child);
+      child = child.nextSibling;
+    }
+  };
+  walk(node);
+  return { total, checked };
+}
+
+function _renderListLevel(node, text, ctx) {
+  const ordered = node.type.name === 'OrderedList';
+  let html = '';
+  for (const item of _children(node)) {
+    if (item.type.name !== 'ListItem') continue;
+    html += _renderListItem(item, text, ctx);
+  }
+  const tag = ordered ? 'ol' : 'ul';
+  return `<${tag}>\n${html}</${tag}>`;
+}
+
+function _renderListItem(item, text, ctx) {
+  let itemHtml = '';
+  let isTask = false;
+  for (const sub of _children(item)) {
+    const name = sub.type.name;
+    if (name === 'ListMark') continue;
+    if (name === 'Task') {
+      isTask = true;
+      const marker = sub.getChild('TaskMarker');
+      const isChecked = !!marker && /\[[xX]\]/.test(text.slice(marker.from, marker.to));
+      const idx = ctx.cbCounter++;
+      const contentStart = marker ? marker.to : sub.from;
+      const rawContent = text.slice(contentStart, sub.to).replace(/^[ \t]+/, '');
+      const taskInline = _renderInlineFallback(rawContent, text, ctx);
+      itemHtml += `<label><input type="checkbox" data-cb-index="${idx}"${isChecked ? ' checked' : ''} />${taskInline}</label>`;
+    } else if (name === 'Paragraph') {
+      // Tight list — unwrap: inline content directly, no <p>.
+      itemHtml += _renderInlineChildren(sub, text, ctx);
+    } else if (name === 'BulletList' || name === 'OrderedList') {
+      itemHtml += `\n${_renderListLevel(sub, text, ctx)}`;
+    } else {
+      itemHtml += _renderNode(sub, text, ctx);
+    }
+  }
+  return `<li${isTask ? ' class="md-task"' : ''}>${itemHtml}</li>\n`;
+}
+
+// ── Tables ─────────────────────────────────────────────────────────────────────
+
+function _renderTable(node, text, ctx) {
+  let headers = [], aligns = [], rows = [];
+  for (const child of _children(node)) {
+    const name = child.type.name;
+    if (name === 'TableHeader') headers = _tableCellTexts(child, text);
+    else if (name === 'TableDelimiter') aligns = _tableAligns(child, text);
+    else if (name === 'TableRow') rows.push(_tableCellTexts(child, text));
+  }
+  const alignAttr = (i) => aligns[i] ? ` style="text-align:${aligns[i]}"` : '';
+  const thead = `<thead><tr>${headers.map((h, i) => `<th${alignAttr(i)}>${_renderInlineFallback(h, text, ctx)}</th>`).join('')}</tr></thead>`;
+  const tbody = rows.length
+    ? `<tbody>${rows.map((row) => `<tr>${row.map((c, i) => `<td${alignAttr(i)}>${_renderInlineFallback(c, text, ctx)}</td>`).join('')}</tr>`).join('')}</tbody>`
+    : '';
+  return `<table>${thead}${tbody}</table>`;
+}
+
+function _tableCellTexts(rowNode, text) {
+  return _children(rowNode)
+    .filter((c) => c.type.name === 'TableCell')
+    .map((c) => text.slice(c.from, c.to).trim());
+}
+
+/** The alignment-row TableDelimiter is a single node spanning the whole
+ *  "|:---|:---:|---:|---|" line — parsed the same way a hand-rolled
+ *  parseRow()/alignment check would parse that line, rather than relying on
+ *  any particular internal child structure. */
+function _tableAligns(delimNode, text) {
+  const raw = text.slice(delimNode.from, delimNode.to);
+  return raw.split('|').slice(1, -1).map((cell) => {
+    cell = cell.trim();
+    const left = cell.startsWith(':'), right = cell.endsWith(':');
+    if (left && right) return 'center';
+    if (right) return 'right';
+    if (left) return 'left';
+    return null;
+  });
+}
+
+/** Reduce already-rendered, self-controlled inline HTML to plain text —
+ *  strips tags AND unescapes entities (&amp; -> &, etc.) so heading/TOC/
+ *  plain-text output containing "&" etc. doesn't double-encode. Only ever
+ *  called on this renderer's own output, so a plain tag-strip + unescape is
+ *  safe (no untrusted HTML reaches this function). */
+function _stripTags(html) {
   return String(html)
     .replace(/<[^>]*>/g, '')
     .replace(/&amp;/g, '&')
@@ -417,354 +594,164 @@ function _stripHtmlTags(html) {
     .replace(/&#39;/g, "'");
 }
 
-// ── Block renderers ──────────────────────────────────────────────────────────
+// ── Inline-level rendering ────────────────────────────────────────────────────
 
-function _renderBlock(block, ctx) {
-  switch (block.type) {
-    case 'heading': {
-      // When a [TOC] block pre-computed the full heading list, reuse its ids
-      // in order instead of slugifying again — see renderMarkdown().
-      const id = ctx._tocIdQueue ? ctx._tocIdQueue.shift() : _slugifyHeading(block.text, ctx.headingIds);
-      ctx.headingIds.add(id);
-      const inlineHtml = _renderInline(block.text, ctx);
-      // The live preview's TOC reads the rendered heading's textContent, so
-      // a heading like "## [API guide](url)" shows just "API guide" there.
-      // The export path (renderMarkdownWithToc) has no DOM to read from, so
-      // derive the same plain text by stripping tags from the same rendered
-      // HTML instead of lightly stripping the raw markdown source — which
-      // would otherwise leave link/image syntax showing literally.
-      ctx.headings?.push({ level: block.level, id, text: _stripHtmlTags(inlineHtml) });
-      return `<h${block.level} id="${id}">${inlineHtml}</h${block.level}>`;
-    }
-
-    case 'code':
-      return `<pre><code${block.lang ? ` class="language-${escapeHtml(block.lang)}" data-lang="${escapeHtml(block.lang)}"` : ''}>${escapeHtml(block.body)}</code></pre>`;
-
-    case 'list':
-      return _renderListTree(block.items, ctx);
-
-    case 'blockquote': {
-      // Recursively render the quoted content so nested headings/lists work.
-      // Shares the heading-id registry (and the headings accumulator used
-      // for the table-of-contents feature) — reusing the same Set/Array
-      // reference — so heading anchors stay unique across the whole
-      // document. Deliberately gives a *fresh* cbCounter instead of sharing
-      // it: this renderer assigns every checkbox a sequential index, but
-      // toggleChecklistItem()'s source-line scan only recognizes a checklist
-      // marker at the very start of the line, so it never counts a
-      // blockquoted item. Sharing the counter would silently misalign the
-      // index of every checkbox rendered after the first blockquoted
-      // checklist in the document — breaking far more checkboxes than just
-      // the blockquoted ones.
-      const childCtx = {
-        cbCounter: 0, headingIds: ctx.headingIds, headings: ctx.headings, _tocIdQueue: ctx._tocIdQueue,
-        footnoteDefs: ctx.footnoteDefs, footnoteOrder: ctx.footnoteOrder,
-        linkRefs: ctx.linkRefs,
-        _isRecursiveCall: true,
-      };
-      // GitHub-style alerts: a blockquote whose first line is exactly
-      // "[!NOTE]" (or TIP/IMPORTANT/WARNING/CAUTION) renders as a labeled
-      // callout instead of a plain blockquote — GFM's own admonition syntax,
-      // needs no raw HTML.
-      const alert = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*\n?/.exec(block.text);
-      if (alert) {
-        const kind  = alert[1].toLowerCase();
-        const label = alert[1][0] + alert[1].slice(1).toLowerCase();
-        const rest  = block.text.slice(alert[0].length);
-        return `<div class="md-alert md-alert-${kind}"><p class="md-alert-title">${_ALERT_ICONS[kind]}${label}</p>${renderMarkdown(rest, childCtx)}</div>`;
-      }
-      return `<blockquote>${renderMarkdown(block.text, childCtx)}</blockquote>`;
-    }
-
-    case 'hr':
-      return `<hr>`;
-
-    // Only reachable inside a blockquote (top-level definitions are already
-    // filtered out by renderMarkdown before this switch ever sees them) —
-    // render the literal source back out rather than silently dropping it.
-    case 'footnoteDef':
-      return `<p>${_renderInline(`[^${block.id}]: ${block.text}`, ctx)}</p>`;
-
-    case 'toc': {
-      const entries = ctx._tocEntries || [];
-      if (entries.length < 2) return '';
-      const items = entries.map((h) =>
-        `<li class="note-toc-item note-toc-h${h.level}"><a href="#${h.id}">${escapeHtml(h.text)}</a></li>`
-      ).join('');
-      return `<nav class="md-inline-toc" aria-label="Table of contents"><strong>Contents</strong><ul>${items}</ul></nav>`;
-    }
-
-    case 'table': {
-      // aligns entries come only from our own parseRow()/left-right check in
-      // _splitBlocks — never user text — so inlining them into a style
-      // attribute here carries no injection risk.
-      const aligns = block.aligns || [];
-      const alignAttr = (i) => aligns[i] ? ` style="text-align:${aligns[i]}"` : '';
-      const thead = `<thead><tr>${block.headers
-        .map((h, i) => `<th${alignAttr(i)}>${_renderInline(h, ctx)}</th>`)
-        .join('')}</tr></thead>`;
-      const tbody = block.rows.length
-        ? `<tbody>${block.rows
-            .map((row) => `<tr>${row.map((c, i) => `<td${alignAttr(i)}>${_renderInline(c, ctx)}</td>`).join('')}</tr>`)
-            .join('\n')}</tbody>`
-        : '';
-      return `<table>${thead}${tbody}</table>`;
-    }
-
-    case 'paragraph':
-      return `<p>${_renderInline(block.text, ctx)}</p>`;
+/**
+ * Render a node's inline content: Lezer's markdown grammar only creates
+ * child nodes for *marked-up* spans — plain text between/around them has no
+ * node of its own at all. Any newline within the gap text is a CommonMark
+ * soft break — rendered as a space.
+ */
+function _renderInlineChildren(node, text, ctx, skipTypes = []) {
+  const children = _children(node);
+  if (!children.length) return _escapeInline(text.slice(node.from, node.to));
+  let html = '';
+  let pos = node.from;
+  for (const child of children) {
+    if (child.from > pos) html += _escapeInline(text.slice(pos, child.from));
+    if (!skipTypes.includes(child.type.name)) html += _renderInlineNode(child, text, ctx);
+    pos = child.to;
   }
-  return '';
+  if (pos < node.to) html += _escapeInline(text.slice(pos, node.to));
+  return html;
+}
+
+function _escapeInline(raw) {
+  return escapeHtml(raw).replace(/\n/g, ' ');
+}
+
+const _MARK_TYPES = new Set([
+  'EmphasisMark', 'CodeMark', 'StrikethroughMark', 'HighlightMark',
+  'LinkMark', 'HeaderMark', 'QuoteMark', 'ListMark',
+]);
+
+function _renderInlineNode(node, text, ctx) {
+  const name = node.type.name;
+  if (_MARK_TYPES.has(name)) return '';
+
+  switch (name) {
+    case 'Emphasis':
+      return `<em>${_renderInlineChildren(node, text, ctx, ['EmphasisMark'])}</em>`;
+    case 'StrongEmphasis':
+      return `<strong>${_renderInlineChildren(node, text, ctx, ['EmphasisMark'])}</strong>`;
+    case 'Strikethrough':
+      return `<del>${_renderInlineChildren(node, text, ctx, ['StrikethroughMark'])}</del>`;
+    case 'Highlight':
+      return `<mark>${_renderInlineChildren(node, text, ctx, ['HighlightMark'])}</mark>`;
+    case 'InlineCode': {
+      const codeText = text.slice(node.from + 1, node.to - 1);
+      return `<code>${escapeHtml(codeText)}</code>`;
+    }
+    case 'HardBreak':
+      // Ends with a space after <br>, not a literal newline — matches the
+      // final "every remaining newline becomes a space" inline-render step.
+      return '<br> ';
+    case 'Escape':
+      return escapeHtml(text.slice(node.from + 1, node.to));
+    case 'URL':
+      return `<a href="${escapeHtml(text.slice(node.from, node.to))}" target="_blank" rel="noopener noreferrer">${escapeHtml(text.slice(node.from, node.to))}</a>`;
+    case 'Autolink': {
+      const urlNode = node.getChild('URL');
+      const url = urlNode ? text.slice(urlNode.from, urlNode.to) : '';
+      const isEmail = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(url) && !/^[a-z]+:/i.test(url);
+      const href = isEmail ? `mailto:${url}` : url;
+      return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
+    }
+    case 'Link':
+      return _renderLink(node, text, ctx);
+    case 'Image':
+      return _renderImage(node, text, ctx);
+    // Raw HTML — never interpreted.
+    case 'HTMLTag': case 'CommentBlock': case 'ProcessingInstructionBlock':
+      return escapeHtml(text.slice(node.from, node.to));
+
+    default: {
+      const children = _children(node);
+      if (children.length) return _renderInlineChildren(node, text, ctx);
+      return escapeHtml(text.slice(node.from, node.to));
+    }
+  }
+}
+
+function _renderLink(node, text, ctx) {
+  const labelNode = node.getChild('LinkLabel');
+  if (labelNode) {
+    // Reference-style [text][label] / [text][] — the grammar gives us only
+    // the raw label text; resolve it against ctx.linkRefs (built by
+    // _collectLinkRefs()). Extract the visible "text" as the bounded span
+    // between the opening "[" and the LinkLabel's own "[label]" (this can't
+    // be gap-filled over the whole node — the gap between the marks IS the
+    // visible text but LinkLabel itself must be excluded from it).
+    const marks = _children(node).filter((c) => c.type.name === 'LinkMark');
+    const textStart = marks[0]?.to ?? node.from;
+    const textEnd = marks.length > 1 ? marks[1].from : labelNode.from;
+    const rawLabel = text.slice(textStart, textEnd);
+    const visibleLabel = _renderInlineFallback(rawLabel, text, ctx);
+    const rawLabelKey = _linkLabelKey(text.slice(labelNode.from, labelNode.to));
+    // A collapsed reference "[text][]" has an empty LinkLabel — the implied
+    // label is the visible text itself, per CommonMark.
+    const key = rawLabelKey || rawLabel.trim().toLowerCase();
+    const ref = ctx.linkRefs.get(key);
+    if (ref) {
+      const titleAttr = ref.title != null ? ` title="${escapeHtml(ref.title)}"` : '';
+      return `<a href="${escapeHtml(ref.url)}"${titleAttr} target="_blank" rel="noopener noreferrer">${visibleLabel}</a>`;
+    }
+    return _renderUnresolvedShortcut(node, text, ctx);
+  }
+  const urlNode = node.getChild('URL');
+  if (!urlNode) return _renderUnresolvedShortcut(node, text, ctx);
+  const url = text.slice(urlNode.from, urlNode.to);
+  if (!/^(?:https?:|mailto:)/i.test(url)) return escapeHtml(text.slice(node.from, node.to));
+  const titleNode = node.getChild('LinkTitle');
+  const titleAttr = titleNode ? ` title="${escapeHtml(_stripQuotes(text.slice(titleNode.from, titleNode.to)))}"` : '';
+  const marks = _children(node).filter((c) => c.type.name === 'LinkMark');
+  const labelStart = marks[0]?.to ?? node.from;
+  const labelEnd = marks.length > 1 ? marks[1].from : (urlNode.from);
+  const rawLabel = text.slice(labelStart, labelEnd);
+  const label = _renderInlineFallback(rawLabel, text, ctx);
+  return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener noreferrer">${label}</a>`;
 }
 
 /**
- * Build nested <ul>/<ol> HTML from a flat array of raw list-item lines (each
- * still carrying its original leading whitespace). A run of lines indented
- * further than the item above them becomes that item's nested sub-list —
- * any consistent indent step (2 spaces, 4 spaces, or a tab) works, since
- * levels are compared relatively rather than against a fixed column width.
+ * A Link node the grammar couldn't resolve at all (no URL, no matching
+ * LinkLabel definition) — covers [TOC]/footnote-reference/"any other
+ * unmatched [text]" cases, all handled here as a single fallthrough (render
+ * as literal text, except footnote refs which get a real reference if their
+ * id has a matching definition).
  */
-function _renderListTree(rawLines, ctx) {
-  const items = rawLines.map((raw) => ({
-    indent:  raw.match(/^[ \t]*/)[0].replace(/\t/g, '    ').length,
-    ordered: /^[ \t]*\d+\.[ \t]+/.test(raw),
-    content: raw.replace(/^[ \t]*(?:[-*+]|\d+\.)[ \t]+/, ''),
-  }));
-  const listHtml = _buildListLevel(items, 0, items.length, ctx);
-
-  // Progress badge ("3/5 done") above the list when it's a checklist —
-  // counts every checkbox in the block, nested sub-items included.
-  let total = 0, checked = 0;
-  for (const it of items) {
-    const m = it.content.match(/^\[( |x|X)\][ \t]+/);
-    if (m) { total++; if (m[1].toLowerCase() === 'x') checked++; }
+function _renderUnresolvedShortcut(node, text, ctx) {
+  const raw = text.slice(node.from, node.to);
+  const fnMatch = /^\[\^([A-Za-z0-9_-]+)\]$/.exec(raw);
+  if (fnMatch && ctx.footnoteDefs.has(fnMatch[1])) {
+    const id = fnMatch[1];
+    let n = ctx.footnoteOrder.indexOf(id);
+    const isFirstRef = n === -1;
+    if (isFirstRef) { ctx.footnoteOrder.push(id); n = ctx.footnoteOrder.length - 1; }
+    const anchor = isFirstRef ? ` id="fnref-${id}"` : '';
+    return `<sup${anchor}><a href="#fn-${id}">${n + 1}</a></sup>`;
   }
-  if (total > 0) {
-    return `<div class="md-checklist-progress">${checked}/${total} done</div>\n${listHtml}`;
-  }
-  return listHtml;
+  return escapeHtml(raw);
 }
 
-/** Renders items[start, end) that share a base indent as one <ul>/<ol>. */
-function _buildListLevel(items, start, end, ctx) {
-  if (start >= end) return '';
-  const baseIndent = items[start].indent;
-  const tag = items[start].ordered ? 'ol' : 'ul';
-  let html = '';
-  let i = start;
-  while (i < end && items[i].indent <= baseIndent) {
-    const item = items[i];
-    // Consume the run of more-indented lines that follow as this item's
-    // nested sub-list.
-    let j = i + 1;
-    while (j < end && items[j].indent > baseIndent) j++;
-    const isTask   = /^\[( |x|X)\][ \t]+/.test(item.content);
-    const inner    = _renderListItemContent(item.content, ctx);
-    const children = j > i + 1 ? `\n${_buildListLevel(items, i + 1, j, ctx)}` : '';
-    html += `<li${isTask ? ' class="md-task"' : ''}>${inner}${children}</li>\n`;
-    i = j;
+function _renderImage(node, text, ctx) {
+  const urlNode = node.getChild('URL');
+  const url = urlNode ? text.slice(urlNode.from, urlNode.to) : '';
+  const marks = _children(node).filter((c) => c.type.name === 'LinkMark');
+  const altStart = marks[0]?.to ?? node.from;
+  const altEnd = marks.length > 1 ? marks[1].from : (urlNode ? urlNode.from : node.to);
+  const altPlain = text.slice(altStart, altEnd);
+  const titleNode = node.getChild('LinkTitle');
+  const titleAttr = titleNode ? ` title="${escapeHtml(_stripQuotes(text.slice(titleNode.from, titleNode.to)))}"` : '';
+  if (/^https?:/i.test(url)) {
+    return `<img src="${escapeHtml(url)}" alt="${escapeHtml(altPlain)}"${titleAttr} loading="lazy">`;
   }
-  return `<${tag}>\n${html}</${tag}>`;
+  const fileMatch = /^syncpad-file:(.+)$/i.exec(url);
+  if (fileMatch) {
+    return `<img data-syncpad-file="${escapeHtml(fileMatch[1])}" alt="${escapeHtml(altPlain)}"${titleAttr} loading="lazy">`;
+  }
+  return escapeHtml(text.slice(node.from, node.to));
 }
 
-function _renderListItemContent(strippedContent, ctx) {
-  // Checklist item?
-  const cb = strippedContent.match(/^\[( |x|X)\][ \t]+(.*)$/);
-  if (cb) {
-    const checked = cb[1].toLowerCase() === 'x';
-    const text    = cb[2];
-    const idx     = ctx.cbCounter++;
-    return `<label><input type="checkbox" data-cb-index="${idx}"${checked ? ' checked' : ''} />${_renderInline(text, ctx)}</label>`;
-  }
-  return _renderInline(strippedContent, ctx);
-}
-
-// ── Inline renderer ──────────────────────────────────────────────────────────
-
-function _renderInline(raw, ctx) {
-  // 1. Extract code spans (their contents are not touched by other inline rules)
-  const codeSlots = [];
-  let text = String(raw).replace(/`([^`\n]+?)`/g, (_, code) => {
-    codeSlots.push(escapeHtml(code));
-    return `${codeSlots.length - 1}`;
-  });
-
-  // 1.5. Backslash-escaped punctuation — runs after code-span extraction (so
-  // real code-span content, already tucked away in codeSlots, is immune to
-  // it — matching CommonMark: "backslash escapes do not work... in code
-  // spans"), but before everything else, so e.g. \* renders a literal
-  // asterisk instead of ever being considered for emphasis.
-  const escSlots = [];
-  text = text.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\]^_`{|}~])/g, (_, ch) => {
-    escSlots.push(escapeHtml(ch));
-    return `X${escSlots.length - 1}`;
-  });
-
-  // 2. Escape everything else
-  text = escapeHtml(text);
-
-  // 3. Images — http/https, plus the syncpad-file: pseudo-scheme used for
-  // images pasted/dropped straight into the editor (never data:/javascript:).
-  // Rendered into an opaque placeholder rather than the final <img> markup,
-  // so ** or _ characters in the alt text or URL are never touched by the
-  // emphasis/link rules that run afterward (mirrors the code-span and
-  // autolink protection below) — otherwise e.g. a URL containing "a*b*.png"
-  // would have its src corrupted with a literal <em> tag.
-  //
-  // syncpad-file: exists because the files bucket is private — a real signed
-  // URL expires in ~1h, so one can’t just be embedded as a permanent `src`.
-  // ![alt](syncpad-file:<file_path>) instead renders with no `src` at all
-  // (a data-syncpad-file attribute holding the path), left for the caller to
-  // resolve to a live signed URL asynchronously (see ui.js's image resolver).
-  const imgSlots = [];
-  // Optional "title" (double- or single-quoted) after the URL, standard
-  // CommonMark image syntax — matched as &quot;/&#39; since step 2 already
-  // escaped the whole string, not as raw quote characters.
-  text = text.replace(/!\[([^\]\n]*)\]\(([^)\s]+?)(?:\s+(?:&quot;(.*?)&quot;|&#39;(.*?)&#39;))?\)/g, (full, alt, url, dTitle, sTitle) => {
-    const title = dTitle ?? sTitle;
-    const titleAttr = title != null ? ` title="${title}"` : '';
-    if (/^https?:/i.test(url)) {
-      imgSlots.push(`<img src="${url}" alt="${alt}"${titleAttr} loading="lazy">`);
-      return `I${imgSlots.length - 1}`;
-    }
-    const fileMatch = /^syncpad-file:(.+)$/i.exec(url);
-    if (fileMatch) {
-      imgSlots.push(`<img data-syncpad-file="${fileMatch[1]}" alt="${alt}"${titleAttr} loading="lazy">`);
-      return `I${imgSlots.length - 1}`;
-    }
-    return full;
-  });
-
-  // 4. Bold, italic, strikethrough (non-greedy).
-  // Word-boundary guards (negative lookbehind/ahead on [a-zA-Z0-9]) prevent
-  // underscore-based markers from matching inside identifiers like snake_case.
-  // Asterisk/tilde markers are left without boundary guards.
-  text = text.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
-  text = text.replace(/(?<![a-zA-Z0-9])__([^_\n]+?)__(?![a-zA-Z0-9])/g, '<strong>$1</strong>');
-  text = text.replace(/\*([^*\n]+?)\*/g,     '<em>$1</em>');
-  text = text.replace(/(?<![a-zA-Z0-9])_([^_\n]+?)_(?![a-zA-Z0-9])/g,   '<em>$1</em>');
-  text = text.replace(/~~([^~\n]+?)~~/g,     '<del>$1</del>');
-  text = text.replace(/==([^=\n]+?)==/g,     '<mark>$1</mark>');
-
-  // 4.5. Footnote references — [^id], only for an id with a real matching
-  // [^id]: definition (collected by renderMarkdown before the render loop
-  // reaches any inline text); an unmatched [^id] is left as plain literal
-  // text rather than linking to nothing. Numbered by first-appearance order
-  // across the whole document, tracked on ctx so a footnote referenced twice
-  // reuses the same number and both refs still land on separate backrefs.
-  if (ctx?.footnoteDefs?.size) {
-    text = text.replace(/\[\^([A-Za-z0-9_-]+)\]/g, (full, id) => {
-      if (!ctx.footnoteDefs.has(id)) return full;
-      let n = ctx.footnoteOrder.indexOf(id);
-      const isFirstRef = n === -1;
-      if (isFirstRef) { ctx.footnoteOrder.push(id); n = ctx.footnoteOrder.length - 1; }
-      const num = n + 1;
-      // Only the first reference to a given id gets the fnref-id anchor —
-      // the footnotes section's "back to content" link targets that one,
-      // same as most footnote implementations do for a multiply-referenced note.
-      const anchor = isFirstRef ? ` id="fnref-${id}"` : '';
-      return `<sup${anchor}><a href="#fn-${id}">${num}</a></sup>`;
-    });
-  }
-
-  // 4.7. Reference-style links — [text][id] and the collapsed [text][].
-  // Only for an id with a real matching [id]: url definition (collected by
-  // renderMarkdown before the render loop reaches any inline text, same
-  // pre-pass shape as footnotes above); an unmatched reference is left as
-  // plain literal text. Deliberately does NOT support the CommonMark
-  // "shortcut reference" form (bare [text] with no second bracket) — that
-  // would make any bracketed text that happens to share a defined label's
-  // name silently turn into a link, which is a worse false-positive risk
-  // than requiring the explicit (if collapsed) second `[]`.
-  if (ctx?.linkRefs?.size) {
-    text = text.replace(/\[([^\]\n]+)\]\[([^\]\n]*)\]/g, (full, label, idRaw) => {
-      const key = (idRaw || label).trim().toLowerCase();
-      const ref = ctx.linkRefs.get(key);
-      if (!ref) return full;
-      const titleAttr = ref.title != null ? ` title="${ref.title}"` : '';
-      return `<a href="${ref.url}"${titleAttr} target="_blank" rel="noopener noreferrer">${label}</a>`;
-    });
-  }
-
-  // 5. Links — http/https/mailto only. Optional "title" (double- or
-  // single-quoted) after the URL, standard CommonMark link syntax — matched
-  // as &quot;/&#39; since step 2 already escaped the whole string, not as
-  // raw quote characters.
-  // NOTE: `url` here comes from step-2-escaped text, so special chars like &
-  // are already encoded as &amp;. Do NOT call escapeHtml() again — that would
-  // produce double-encoded hrefs like &amp;amp; for URLs with query params.
-  text = text.replace(/\[([^\]\n]+)\]\(([^)\s]+?)(?:\s+(?:&quot;(.*?)&quot;|&#39;(.*?)&#39;))?\)/g, (full, label, url, dTitle, sTitle) => {
-    if (!/^(?:https?:|mailto:)/i.test(url)) return full;
-    const title = dTitle ?? sTitle;
-    const titleAttr = title != null ? ` title="${title}"` : '';
-    return `<a href="${url}"${titleAttr} target="_blank" rel="noopener noreferrer">${label}</a>`;
-  });
-
-  // 5.5. Angle-bracket autolinks — <https://url>, <mailto:...>, and bare
-  // email autolinks <user@host> — CommonMark's explicit autolink syntax.
-  // Matched as &lt;...&gt; since step 2 already escaped the raw < / >.
-  // Runs before the anchorSlots-hiding step below so these newly-created
-  // <a> tags are protected from the bare-URL autolinker the same way
-  // Markdown-link-syntax anchors already are.
-  text = text.replace(/&lt;(https?:\/\/[^\s&<>]+|mailto:[^\s&<>]+)&gt;/gi, (full, url) =>
-    `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
-  text = text.replace(/&lt;([^\s&<>@]+@[^\s&<>]+\.[^\s&<>]+)&gt;/g, (full, addr) =>
-    `<a href="mailto:${addr}" target="_blank" rel="noopener noreferrer">${addr}</a>`);
-
-  // 6. Autolink bare http(s) URLs. The "pre" capture requires the URL to
-  // start at the beginning of the string, after whitespace, or after '(' —
-  // this naturally excludes matches inside an href="…"/src="…" attribute
-  // (always preceded by '"' there) without extra lookaheads. Existing
-  // <a>...</a> elements are additionally hidden as opaque placeholders first
-  // so a URL used as a link's own visible text (e.g. from a Markdown link
-  // whose label is itself a URL) is never re-wrapped in a second, invalid
-  // nested anchor.
-  const anchorSlots = [];
-  text = text.replace(/<a\b[^>]*>[\s\S]*?<\/a>/g, (m) => {
-    anchorSlots.push(m);
-    return `L${anchorSlots.length - 1}`;
-  });
-  text = text.replace(/(^|[\s(])(https?:\/\/[^\s<>"']+)/g, (full, pre, rawUrl) => {
-    // Trim trailing punctuation that's more likely sentence punctuation than
-    // part of the URL (e.g. "See https://x.com." shouldn't swallow the
-    // period). Walk backwards one character at a time rather than matching
-    // the whole trailing run at once, so a ')' immediately followed by more
-    // punctuation (e.g. the "." in ".../Function_(mathematics).") is still
-    // evaluated on its own merits — trimmed only when it's unmatched by an
-    // earlier '(' in the URL, never when it legitimately closes one.
-    let end = rawUrl.length;
-    while (end > 0) {
-      const ch = rawUrl[end - 1];
-      if (ch === ')') {
-        const upTo   = rawUrl.slice(0, end);
-        const opens  = (upTo.match(/\(/g) || []).length;
-        const closes = (upTo.match(/\)/g) || []).length;
-        if (closes <= opens) break; // matched by an earlier '(' — keep it, stop trimming
-        end--;
-        continue;
-      }
-      if (/[.,!?;:'"\]]/.test(ch)) { end--; continue; }
-      break;
-    }
-    const url   = rawUrl.slice(0, end);
-    const trail = rawUrl.slice(end);
-    if (!url) return full;
-    return `${pre}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>${trail}`;
-  });
-  text = text.replace(/L(\d+)/g, (_, n) => anchorSlots[Number(n)]);
-
-  // 7. Hard line breaks
-  text = text.replace(/ {2,}\n/g, '<br>\n');
-  text = text.replace(/\n/g, ' ');
-
-  // 8. Restore images
-  text = text.replace(/I(\d+)/g, (_, n) => imgSlots[Number(n)]);
-
-  // 9. Restore code spans
-  text = text.replace(/(\d+)/g, (_, n) => `<code>${codeSlots[Number(n)]}</code>`);
-
-  // 10. Restore backslash-escaped characters
-  text = text.replace(/X(\d+)/g, (_, n) => escSlots[Number(n)]);
-
-  return text;
+function _stripQuotes(s) {
+  return s.replace(/^["']|["']$/g, '');
 }

@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'syncpad-v37';
+const CACHE_VERSION = 'syncpad-v38';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -25,6 +25,12 @@ const PRECACHE_ASSETS = [
   `${BASE}/styles/admin.css`,
   `${BASE}/src/app.js`,
   `${BASE}/src/ui.js`,
+  `${BASE}/src/ui/core.js`,
+  `${BASE}/src/ui/dialogs.js`,
+  `${BASE}/src/ui/panels.js`,
+  `${BASE}/src/ui/editor.js`,
+  `${BASE}/src/ui/collab.js`,
+  `${BASE}/src/ui/feature-modals.js`,
   `${BASE}/src/sync.js`,
   `${BASE}/src/rooms.js`,
   `${BASE}/src/live-broadcast.js`,
@@ -34,6 +40,16 @@ const PRECACHE_ASSETS = [
   `${BASE}/src/settings.js`,
   `${BASE}/src/encryption.js`,
   `${BASE}/src/admin.js`,
+  `${BASE}/src/admin/state.js`,
+  `${BASE}/src/admin/shared.js`,
+  `${BASE}/src/admin/stats.js`,
+  `${BASE}/src/admin/room-drawer.js`,
+  `${BASE}/src/admin/rooms-tab.js`,
+  `${BASE}/src/admin/reports-tab.js`,
+  `${BASE}/src/admin/files-tab.js`,
+  `${BASE}/src/admin/audit-tab.js`,
+  `${BASE}/src/admin/cleanup-tab.js`,
+  `${BASE}/src/admin/dashboard-shell.js`,
   `${BASE}/src/offline.js`,
   `${BASE}/src/supabase.js`,
   `${BASE}/src/utils.js`,
