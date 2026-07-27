@@ -161,7 +161,7 @@ SyncPad is a personal/demo project. The following are known weaknesses that shou
 
 **Anon key is public.** The Supabase anon key is embedded in the frontend bundle and is not secret. Anyone who reads the page source has the anon key and can call the Supabase REST API directly. This bypasses the passcode check and read-only links specifically (see above) — it does not bypass room lock or, if applied, room quarantine, both of which are independently enforced server-side regardless of how the request is made (see Supabase RLS Summary above).
 
-**Room IDs are short random strings, and knowing one is enough to edit it.** `room_id` + the anon key is sufficient to read *and write* a room — there is no separate credential a room's creator holds that other visitors don't. If the character space and length of room IDs are known, an attacker with enough requests can enumerate rooms and edit whatever they find. There is no rate limiting described in this document — evaluate Supabase's built-in rate limiting and consider whether it is sufficient. Lock a room (`editing_locked`) for any content you don't want a lucky guesser to be able to change.
+**Room IDs are short random strings, and knowing one is enough to edit it.** `room_id` + the anon key is sufficient to read *and write* a room — there is no separate credential a room's creator holds that other visitors don't. If the character space and length of room IDs are known, an attacker with enough requests can enumerate rooms and edit whatever they find. `0010_anonymous_write_rate_limiting.sql` (if applied) limits how fast a single device/IP can *create new* rooms or submit reports — it does not limit reads, edits, or lookups against already-existing room IDs, so it does not address enumeration-of-existing-rooms on its own. Evaluate Supabase's built-in rate limiting for that broader case. Lock a room (`editing_locked`) for any content you don't want a lucky guesser to be able to change.
 
 **Passcode hashes are accessible.** The PBKDF2 hash of a room passcode is stored in `syncpad_rooms` and is readable to anyone with the anon key. The passcode itself is not stored, but offline brute-force against a weak passcode is possible.
 
@@ -185,7 +185,7 @@ If SyncPad is ever deployed for broader use, the following items should be addre
 
 **Storage bucket review.** Confirm the `syncpad-files` bucket has no public access enabled. Review the storage policies to ensure that file SELECT and INSERT are tied to room membership in a way that RLS enforces, not just frontend logic.
 
-**Rate limiting.** Evaluate Supabase's built-in rate limiting for the REST API and RPC endpoints. Consider adding application-level rate limiting for room creation and share link resolution to reduce the viability of room ID enumeration.
+**Rate limiting.** `supabase/migrations/0010_anonymous_write_rate_limiting.sql` adds a per-device/per-IP rolling-window limit on new room creation (30/15min per device, 60/15min per IP) and report submission (10/15min per device, 20/15min per IP) — apply it if you haven't. It does not cover share-link resolution, room lookups, or edits to existing rooms; evaluate Supabase's built-in rate limiting for the REST API and RPC endpoints to reduce the viability of room ID enumeration more broadly.
 
 **Room ID entropy.** If room IDs are short, consider increasing their length or character space to raise the cost of brute-force enumeration.
 

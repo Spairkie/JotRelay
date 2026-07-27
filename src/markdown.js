@@ -59,6 +59,7 @@
 
 import { markdown, markdownLanguage } from '../vendor/codemirror.js';
 import { highlightExtension } from './markdown-highlight-extension.js';
+import { parseTableAlignments } from './markdown-table-utils.js';
 import { escapeHtml } from './utils.js';
 
 const _parser = markdown({ base: markdownLanguage, extensions: [highlightExtension] }).language.parser;
@@ -564,19 +565,11 @@ function _tableCellTexts(rowNode, text) {
 }
 
 /** The alignment-row TableDelimiter is a single node spanning the whole
- *  "|:---|:---:|---:|---|" line — parsed the same way a hand-rolled
- *  parseRow()/alignment check would parse that line, rather than relying on
- *  any particular internal child structure. */
+ *  "|:---|:---:|---:|---|" line — sliced out and handed to the shared
+ *  parser (also used by live-editor.js's own table widget) rather than
+ *  relying on any particular internal child structure. */
 function _tableAligns(delimNode, text) {
-  const raw = text.slice(delimNode.from, delimNode.to);
-  return raw.split('|').slice(1, -1).map((cell) => {
-    cell = cell.trim();
-    const left = cell.startsWith(':'), right = cell.endsWith(':');
-    if (left && right) return 'center';
-    if (right) return 'right';
-    if (left) return 'left';
-    return null;
-  });
+  return parseTableAlignments(text.slice(delimNode.from, delimNode.to));
 }
 
 /** Reduce already-rendered, self-controlled inline HTML to plain text —

@@ -93,4 +93,9 @@ export function wireEvents() {
   _wireCommandPalette();
   _wireEditorContextMenu();
   _wireSlashMenuDismissal();
+
+  // Test-synchronization hook only — tests/helpers.js's createRoom() waits on
+  // this so a test's first interaction with the room never races the one-time
+  // DOM wiring above. Not read by any app code.
+  window.__syncpadEventsWired = true;
 }
