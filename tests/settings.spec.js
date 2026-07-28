@@ -6,6 +6,7 @@ import { test, expect } from '@playwright/test';
 import { createRoom, openPanel, openMoreMenu, waitForToast } from './helpers.js';
 
 async function openSettingsPanel(page) {
+  if (await page.locator('#settings-panel.open').isVisible().catch(() => false)) return;
   await openMoreMenu(page);
   await page.locator('#btn-settings').click();
   await page.waitForSelector('#settings-panel.open', { timeout: 5000 });
@@ -270,8 +271,8 @@ test.describe('Lock editing', () => {
     await lockBtn.click();
     await page.waitForTimeout(1000);
 
-    // Re-open settings panel (closes on lock) and unlock
-    await openSettingsPanel(page);
+    // The settings panel stays open across the lock toggle (see
+    // setting-lock-btn's handler in src/app/panels.js) — just click Unlock.
     await page.locator('#setting-lock-btn').click();
     await page.waitForTimeout(1000);
 

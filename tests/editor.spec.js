@@ -3,11 +3,12 @@
 // split/preview mode, export actions.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, openMoreMenu, openPanel, setEditorMode, waitForToast } from './helpers.js';
+import { createRoom, openMoreMenu, openPanel, setEditorMode, waitForToast, ensureWriteMode } from './helpers.js';
 
 test.describe('Editor', () => {
   test('displays the text area and accepts input', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await expect(editor).toBeVisible();
     await editor.fill('Hello SyncPad!');
@@ -16,6 +17,7 @@ test.describe('Editor', () => {
 
   test('word count updates as user types', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const wc = page.locator('#word-count');
     await page.locator('#note-editor').fill('one two three');
     await expect(wc).toContainText('3 word');
@@ -23,6 +25,7 @@ test.describe('Editor', () => {
 
   test('word count shows 0 words on empty editor', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await editor.fill('');
     const wc = page.locator('#word-count');
@@ -31,6 +34,7 @@ test.describe('Editor', () => {
 
   test('preview mode hides the textarea and shows the editable live surface', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('# Preview heading');
     await setEditorMode(page, 'preview');
     await expect(page.locator('#note-editor')).toBeHidden();
@@ -42,6 +46,7 @@ test.describe('Editor', () => {
 
   test('split mode shows both the textarea and the live surface', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('**bold** text');
     await setEditorMode(page, 'split');
     await expect(page.locator('#note-editor')).toBeVisible();
@@ -51,6 +56,7 @@ test.describe('Editor', () => {
 
   test('returning to write mode hides the live surface', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await setEditorMode(page, 'preview');
     await expect(page.locator('#note-live')).toBeVisible();
     await setEditorMode(page, 'write');
@@ -60,6 +66,7 @@ test.describe('Editor', () => {
 
   test('edits made in the live surface flow back to the textarea', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('start');
     await setEditorMode(page, 'preview');
     const cm = page.locator('#note-live .cm-content');
@@ -75,6 +82,7 @@ test.describe('Editor', () => {
 
   test('edits made in the textarea appear in the live surface (split mode)', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await setEditorMode(page, 'split');
     const editor = page.locator('#note-editor');
     await editor.click();
@@ -84,6 +92,7 @@ test.describe('Editor', () => {
 
   test('live surface hides syntax markers away from the caret and reveals them on entry', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('# Title\n\n**bold** middle\n\ntail line');
     await setEditorMode(page, 'preview');
     const content = page.locator('#note-live .cm-content');
@@ -111,6 +120,7 @@ test.describe('Editor', () => {
 
   test('formatting toolbar acts on the live surface in preview mode', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('hello world');
     await setEditorMode(page, 'preview');
     const content = page.locator('#note-live .cm-content');
@@ -132,6 +142,7 @@ test.describe('Editor', () => {
 
   test('the markdown toolbar is visible in preview mode (live surface active)', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await setEditorMode(page, 'preview');
     await expect(page.locator('#note-live')).toBeVisible();
     await expect(page.locator('#md-toolbar')).toBeVisible();
@@ -139,6 +150,7 @@ test.describe('Editor', () => {
 
   test('images render inline in the live surface instead of folding to alt text', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('![a pic](https://example.com/pic.png)\n\ntail');
     await setEditorMode(page, 'preview');
     const content = page.locator('#note-live .cm-content');
@@ -154,6 +166,7 @@ test.describe('Editor', () => {
 
   test('split mode scroll-syncs the textarea and the live surface', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const longDoc = Array.from({ length: 150 }, (_, i) => `Line ${i}`).join('\n');
     await page.locator('#note-editor').fill(longDoc);
     await setEditorMode(page, 'split');
@@ -170,6 +183,7 @@ test.describe('Editor', () => {
 
   test('export modal opens when export button clicked', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('export me');
     // #btn-export lives inside #more-dropdown; open it via #btn-more first.
     await openMoreMenu(page);
@@ -179,6 +193,7 @@ test.describe('Editor', () => {
 
   test('export modal shows warning toast on empty note', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     // Clear editor
     await page.locator('#note-editor').fill('');
     // #btn-export lives inside #more-dropdown; open it via #btn-more first.
@@ -193,6 +208,7 @@ test.describe('Editor', () => {
 test.describe('Editor auto-pair', () => {
   test('typing an opening bracket/paren/quote/backtick inserts the matching closer', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await editor.fill('');
     await editor.focus();
@@ -207,6 +223,7 @@ test.describe('Editor auto-pair', () => {
 
   test('typing a closer right after an auto-inserted one skips over instead of duplicating', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await editor.fill('');
     await editor.focus();
@@ -218,6 +235,7 @@ test.describe('Editor auto-pair', () => {
 
   test('typing an opener while text is selected wraps the selection', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await editor.fill('hello');
     await editor.focus();
@@ -228,6 +246,7 @@ test.describe('Editor auto-pair', () => {
 
   test('backspace inside an empty auto-inserted pair removes both characters', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await editor.fill('');
     await editor.focus();
@@ -238,6 +257,7 @@ test.describe('Editor auto-pair', () => {
 
   test('does not interfere with normal typing of unmatched closing characters', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await editor.fill('');
     await editor.focus();
@@ -256,6 +276,7 @@ test.describe('Smart punctuation (opt-in)', () => {
 
   test('is off by default — quotes stay straight (plain auto-pair still applies) and hyphens stay literal', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await editor.fill('');
     await editor.focus();
@@ -267,6 +288,7 @@ test.describe('Smart punctuation (opt-in)', () => {
 
   test('converts straight double quotes to curly quotes around a word', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await enableSmartPunct(page);
     const editor = page.locator('#note-editor');
     await editor.fill('');
@@ -279,6 +301,7 @@ test.describe('Smart punctuation (opt-in)', () => {
 
   test('a contraction apostrophe becomes the closing curly form, not an opening quote', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await enableSmartPunct(page);
     const editor = page.locator('#note-editor');
     await editor.fill('don');
@@ -291,6 +314,7 @@ test.describe('Smart punctuation (opt-in)', () => {
 
   test('two hyphens become an en dash, three become an em dash', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await enableSmartPunct(page);
     const editor = page.locator('#note-editor');
 
@@ -305,6 +329,7 @@ test.describe('Smart punctuation (opt-in)', () => {
 
   test('a lone hyphen (e.g. a hyphenated word) is left alone', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await enableSmartPunct(page);
     const editor = page.locator('#note-editor');
     await editor.fill('well'); await page.keyboard.press('End');
@@ -315,6 +340,7 @@ test.describe('Smart punctuation (opt-in)', () => {
 
   test('three periods become an ellipsis character', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await enableSmartPunct(page);
     const editor = page.locator('#note-editor');
     await editor.fill('wait'); await page.keyboard.press('End');
@@ -324,6 +350,7 @@ test.describe('Smart punctuation (opt-in)', () => {
 
   test('the preference persists across a page reload', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await enableSmartPunct(page);
     await page.reload();
     await openPanel(page, 'settings');
@@ -334,12 +361,14 @@ test.describe('Smart punctuation (opt-in)', () => {
 test.describe('Focus mode (opt-in)', () => {
   test('is off by default and the editor has no mask applied', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await expect(editor).not.toHaveClass(/focus-mode/);
   });
 
   test('toggling the setting applies and removes the focus-mode class', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await openPanel(page, 'settings');
     const btn = page.locator('#setting-focus-mode-btn');
     const editor = page.locator('#note-editor');
@@ -355,6 +384,7 @@ test.describe('Focus mode (opt-in)', () => {
 
   test('clicking a settings toggle does not steal the editor caret/selection', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await editor.fill('Hello world');
 
@@ -372,13 +402,14 @@ test.describe('Focus mode (opt-in)', () => {
 
   test('the dimmed band follows the caret as it moves through the document', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     const lines = Array.from({ length: 15 }, (_, i) => `Line number ${i}`);
     await editor.fill(lines.join('\n'));
 
     await openPanel(page, 'settings');
     await page.locator('#setting-focus-mode-btn').click();
-    await page.locator('.panel-close').first().click(); // close settings, back to the editor
+    await page.keyboard.press('Escape'); // close settings, back to the editor (.panel-close can be scrolled out of the viewport by a long document — Escape is equivalent and viewport-independent)
 
     await editor.focus();
     await page.keyboard.press('Control+Home'); // caret at the very start
@@ -396,6 +427,7 @@ test.describe('Focus mode (opt-in)', () => {
 
   test('the preference persists across a page reload', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await openPanel(page, 'settings');
     await page.locator('#setting-focus-mode-btn').click();
     await page.reload();
@@ -408,12 +440,14 @@ test.describe('Focus mode (opt-in)', () => {
 test.describe('Typewriter mode (opt-in)', () => {
   test('is off by default and the editor has no typewriter class', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await expect(editor).not.toHaveClass(/typewriter-mode/);
   });
 
   test('toggling the setting applies and removes the typewriter-mode class', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await openPanel(page, 'settings');
     const btn = page.locator('#setting-typewriter-mode-btn');
     const editor = page.locator('#note-editor');
@@ -429,13 +463,14 @@ test.describe('Typewriter mode (opt-in)', () => {
 
   test('scrolls to keep the caret line centered as it moves through a long document', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     const lines = Array.from({ length: 60 }, (_, i) => `Line number ${i}`);
     await editor.fill(lines.join('\n'));
 
     await openPanel(page, 'settings');
     await page.locator('#setting-typewriter-mode-btn').click();
-    await page.locator('.panel-close').first().click(); // close settings, back to the editor
+    await page.keyboard.press('Escape'); // close settings, back to the editor (.panel-close can be scrolled out of the viewport by a long document — Escape is equivalent and viewport-independent)
 
     await editor.focus();
     await page.keyboard.press('Control+Home'); // caret at the very start
@@ -451,6 +486,7 @@ test.describe('Typewriter mode (opt-in)', () => {
 
   test('the preference persists across a page reload', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await openPanel(page, 'settings');
     await page.locator('#setting-typewriter-mode-btn').click();
     await page.reload();
@@ -463,12 +499,14 @@ test.describe('Typewriter mode (opt-in)', () => {
 test.describe('Hide my cursor & typing (opt-in)', () => {
   test('is off by default', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await openPanel(page, 'presence');
     await expect(page.locator('#setting-hide-presence-btn')).toHaveAttribute('aria-pressed', 'false');
   });
 
   test('toggling flips the button state', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await openPanel(page, 'presence');
     const btn = page.locator('#setting-hide-presence-btn');
 
@@ -483,6 +521,7 @@ test.describe('Hide my cursor & typing (opt-in)', () => {
 
   test('the preference persists across a page reload', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await openPanel(page, 'presence');
     await page.locator('#setting-hide-presence-btn').click();
     await page.reload();

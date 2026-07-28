@@ -44,10 +44,27 @@ export async function createRoom(page) {
 }
 
 /**
+ * Ensure the Write (Source) mode textarea is the active, visible surface.
+ * Fresh rooms now default to Live/Preview mode (see
+ * _resolveInitialEditorMode() in src/app/state.js) where #note-editor is
+ * hidden — every direct interaction with it must switch modes first, or
+ * Playwright's actionability checks (which require visibility) hang until
+ * timeout. No-ops if Write mode is already active.
+ */
+export async function ensureWriteMode(page) {
+  const editor = page.locator('#note-editor');
+  if (await editor.evaluate((el) => el.classList.contains('hidden')).catch(() => false)) {
+    await page.locator('.md-seg-btn[data-mode="write"]').click();
+    await expect(editor).toBeVisible();
+  }
+}
+
+/**
  * Type text into the note editor.
  * Clears any existing content first.
  */
 export async function typeInEditor(page, text, { clear = true } = {}) {
+  await ensureWriteMode(page);
   const editor = page.locator('#note-editor');
   await editor.click();
   if (clear) await editor.fill('');
@@ -153,6 +170,22 @@ export async function closePanels(page) {
 export function roomIdFromUrl(url) {
   const match = url.match(/\/SyncPad\/([^/?#]+)/);
   return match?.[1] ?? '';
+}
+
+/**
+ * Fill and confirm the app's custom in-app prompt dialog (UI.showPrompt() —
+ * see src/ui/dialogs.js's #sp-prompt-modal). The app does not use the
+ * browser's native window.prompt(), so `page.once('dialog', ...)` never
+ * fires for it — that only intercepts real browser dialogs. Call this right
+ * after triggering an action that opens the prompt (e.g. clicking
+ * #setting-passcode-btn).
+ * @param {import('@playwright/test').Page} page
+ * @param {string} value
+ */
+export async function fillPromptDialog(page, value) {
+  await page.waitForSelector('#sp-prompt-modal.visible', { timeout: 5000 });
+  await page.locator('#sp-prompt-input').fill(value);
+  await page.locator('#sp-prompt-ok').click();
 }
 
 /**

@@ -10,7 +10,7 @@
 // caught that regression.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, typeInEditor, setEditorMode, getEditorContent } from './helpers.js';
+import { createRoom, typeInEditor, setEditorMode, getEditorContent, ensureWriteMode } from './helpers.js';
 
 test.describe('Keyboard shortcuts inside the CM6 live surface', () => {
   test('Ctrl+B bolds the selection when focus is in the live surface, not the Write textarea', async ({ page }) => {
@@ -61,6 +61,7 @@ test.describe('Renamed Alt+Shift shortcuts (moved off browser-claimed Ctrl/Cmd+S
 
   test('Alt+Shift+T inserts a timestamp in the Write textarea', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await page.locator('#note-editor').click();
     await page.keyboard.press('Alt+Shift+t');
     const value = await getEditorContent(page);
@@ -80,6 +81,7 @@ test.describe('Renamed Alt+Shift shortcuts (moved off browser-claimed Ctrl/Cmd+S
 
   test('Alt+Shift+S opens the share modal', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await page.locator('#note-editor').click();
     await page.keyboard.press('Alt+Shift+s');
     await expect(page.locator('#share-modal')).toHaveClass(/visible/);

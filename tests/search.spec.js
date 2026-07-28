@@ -2,7 +2,7 @@
 // Find & Replace panel: open, search, navigation, replace, focus preservation.
 
 import { test, expect } from '@playwright/test';
-import { createRoom } from './helpers.js';
+import { createRoom, typeInEditor } from './helpers.js';
 
 async function openSearchPanel(page) {
   // Open the search panel via keyboard shortcut or button
@@ -26,7 +26,7 @@ test.describe('Find & Replace panel', () => {
 
   test('shows match count for found term', async ({ page }) => {
     await createRoom(page);
-    await page.locator('#note-editor').fill('apple banana apple cherry apple');
+    await typeInEditor(page, 'apple banana apple cherry apple');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('apple');
     const count = page.locator('#search-count');
@@ -35,7 +35,7 @@ test.describe('Find & Replace panel', () => {
 
   test('shows "No results" when term not found', async ({ page }) => {
     await createRoom(page);
-    await page.locator('#note-editor').fill('hello world');
+    await typeInEditor(page, 'hello world');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('xyz_not_found');
     await expect(page.locator('#search-count')).toContainText('No results');
@@ -43,7 +43,7 @@ test.describe('Find & Replace panel', () => {
 
   test('Next / Prev buttons cycle through matches', async ({ page }) => {
     await createRoom(page);
-    await page.locator('#note-editor').fill('cat dog cat bird cat');
+    await typeInEditor(page, 'cat dog cat bird cat');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('cat');
     await expect(page.locator('#search-count')).toContainText('1 / 3');
@@ -64,7 +64,7 @@ test.describe('Find & Replace panel', () => {
 
   test('Enter in search input advances to next match', async ({ page }) => {
     await createRoom(page);
-    await page.locator('#note-editor').fill('x y x y x');
+    await typeInEditor(page, 'x y x y x');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('x');
     await expect(page.locator('#search-count')).toContainText('1 / 3');
@@ -74,7 +74,7 @@ test.describe('Find & Replace panel', () => {
 
   test('search input stays focused after Next click', async ({ page }) => {
     await createRoom(page);
-    await page.locator('#note-editor').fill('go go go');
+    await typeInEditor(page, 'go go go');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('go');
     await page.locator('#search-next').click();
@@ -84,7 +84,7 @@ test.describe('Find & Replace panel', () => {
 
   test('Replace replaces current match and keeps replace input focused', async ({ page }) => {
     await createRoom(page);
-    await page.locator('#note-editor').fill('foo bar foo');
+    await typeInEditor(page, 'foo bar foo');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('foo');
     await page.locator('#replace-input').fill('baz');
@@ -97,7 +97,7 @@ test.describe('Find & Replace panel', () => {
 
   test('Replace All replaces all matches and focuses search input', async ({ page }) => {
     await createRoom(page);
-    await page.locator('#note-editor').fill('foo foo foo');
+    await typeInEditor(page, 'foo foo foo');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('foo');
     await page.locator('#replace-input').fill('bar');
@@ -112,6 +112,10 @@ test.describe('Find & Replace panel', () => {
     await createRoom(page);
     await openSearchPanel(page);
     await page.locator('#search-input').focus();
+    // panels.js wires a dedicated keydown handler on #search-input that
+    // preventDefaults Tab and focuses #replace-input directly — a deliberate
+    // single-hop shortcut, not the browser's native tab order (which would
+    // also pass through the Aa toggle and Prev/Next buttons first).
     await page.keyboard.press('Tab');
     await expect(page.locator('#replace-input')).toBeFocused();
   });
@@ -120,6 +124,7 @@ test.describe('Find & Replace panel', () => {
     await createRoom(page);
     await openSearchPanel(page);
     await page.locator('#replace-input').focus();
+    // Symmetric reverse of the single-hop Shift+Tab handler in panels.js.
     await page.keyboard.press('Shift+Tab');
     await expect(page.locator('#search-input')).toBeFocused();
   });
@@ -134,7 +139,7 @@ test.describe('Find & Replace panel', () => {
 
   test('Aa button toggles case-sensitive search', async ({ page }) => {
     await createRoom(page);
-    await page.locator('#note-editor').fill('Apple apple APPLE');
+    await typeInEditor(page, 'Apple apple APPLE');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('apple');
 
@@ -154,7 +159,7 @@ test.describe('Find & Replace panel', () => {
 
   test('Replace All respects case-sensitive mode', async ({ page }) => {
     await createRoom(page);
-    await page.locator('#note-editor').fill('Foo foo FOO');
+    await typeInEditor(page, 'Foo foo FOO');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('foo');
     await page.locator('#replace-input').fill('bar');

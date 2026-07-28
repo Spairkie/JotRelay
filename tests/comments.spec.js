@@ -41,14 +41,21 @@ async function addCommentViaPanel(page, from, to, text) {
   await page.locator('#comment-composer-input').fill(text);
   await page.locator('#comment-composer-btn').click();
   await page.waitForTimeout(500); // _refreshComments() + margin recompute
-  await page.locator('.panel-close').click();
+  await page.locator('#comments-panel .panel-close').click();
 }
 
 test.describe('Comments panel', () => {
-  test('opening the panel with no selection shows the hint, not the composer', async ({ page }) => {
+  test('opening the panel on a fresh room shows the composer anchored to the live surface\'s default cursor position', async ({ page }) => {
+    // Rooms default to Live/Preview mode (see _resolveInitialEditorMode() in
+    // src/app/state.js), where the CM6 surface always reports a real cursor
+    // position (0,0) from the moment it mounts — unlike the plain textarea,
+    // there's no "unfocused, no selection at all" state to fall back to, so
+    // the composer (anchored to the cursor) shows immediately rather than
+    // the "select text first" hint.
     await createRoom(page);
     await openCommentsPanel(page);
-    await expect(page.locator('#comment-composer-hint')).toBeVisible();
+    await expect(page.locator('#comment-composer')).toBeVisible();
+    await expect(page.locator('#comment-composer-anchor')).toContainText('cursor position');
   });
 
   test('selecting text in Write mode shows the composer with an anchor preview', async ({ page }) => {
@@ -183,6 +190,11 @@ test.describe('Comment navigation', () => {
   test('Next/Prev in the floating bubble cycles between comments', async ({ page }) => {
     await createRoom(page);
     await addTwoComments(page);
+    // The realtime echo of the second comment's own insert can still be
+    // in flight (subscribeToComments() → _refreshComments()) right after
+    // addCommentViaPanel()'s own 500ms wait returns, rebuilding the margin
+    // dots out from under an immediate click. Give it a moment to settle.
+    await page.waitForTimeout(500);
 
     await page.locator('.comment-dot').first().click();
     const firstText = await page.locator('.comment-floating-bubble-text').textContent();
