@@ -256,8 +256,10 @@ export function renderCommentsList(comments, { onDelete, onJump, canDelete = tru
 export function renderFloatingComments(dots, { activeId, onToggle, onDelete, onNavigate, canDelete = true } = {}) {
   const layer = document.getElementById('comment-margin-layer');
   if (!layer) return;
-  layer.innerHTML = '';
 
+  // Dots are cheap and numerous, and don't need positional continuity
+  // between themselves, so they're always rebuilt fresh.
+  layer.querySelectorAll('.comment-dot').forEach((el) => el.remove());
   (dots || []).forEach((d) => {
     const dot = document.createElement('button');
     dot.className = 'comment-dot';
@@ -271,9 +273,20 @@ export function renderFloatingComments(dots, { activeId, onToggle, onDelete, onN
   });
 
   const active = (dots || []).find((d) => d.id === activeId);
-  if (!active) return;
+  const existingBubble = layer.querySelector('.comment-floating-bubble');
 
-  const bubble = document.createElement('div');
+  if (!active) {
+    existingBubble?.remove();
+    return;
+  }
+
+  // Reuse the existing bubble element (if there is one) instead of tearing
+  // it down and rebuilding from scratch: navigating prev/next then animates
+  // its position via the `top` transition on .comment-floating-bubble
+  // (styles/editor.css) instead of jumping, and doesn't replay the one-time
+  // "entering" animation on every click — only a genuinely new bubble
+  // (first open, or reopened after being closed) gets that entrance.
+  const bubble = existingBubble || document.createElement('div');
   bubble.className = 'comment-floating-bubble';
   bubble.style.top = `${active.y}px`;
   const bodyHtml = active.text == null
@@ -290,6 +303,6 @@ export function renderFloatingComments(dots, { activeId, onToggle, onDelete, onN
   bubble.querySelector('.comment-nav-prev')?.addEventListener('click', () => onNavigate?.(-1));
   bubble.querySelector('.comment-nav-next')?.addEventListener('click', () => onNavigate?.(1));
   bubble.querySelector('.comment-delete-btn')?.addEventListener('click', () => onDelete?.(active.id));
-  layer.appendChild(bubble);
+  if (!existingBubble) layer.appendChild(bubble);
 }
 

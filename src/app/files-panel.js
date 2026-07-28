@@ -5,10 +5,10 @@
 
 import { copyToClipboard } from '../utils.js';
 import { uploadFile, listFiles, deleteFile, getDownloadUrl, getForceDownloadUrl } from '../files.js';
-import { canUploadFiles, canDeleteFiles, editBlockedReason } from '../permissions.js';
+import { canUploadFiles, canDeleteFiles, canEdit, editBlockedReason } from '../permissions.js';
 import { broadcastFilesChange } from '../live-broadcast.js';
 import * as UI from '../ui.js';
-import { openFilePreview } from '../file-preview.js';
+import { openFilePreview, _isImage, _ext } from '../file-preview.js';
 import { state } from './state.js';
 import { _insertTextAtActiveCursor } from './editor-behavior.js';
 
@@ -124,6 +124,12 @@ export async function refreshFiles() {
         else         state.selectedFiles.delete(file.id);
         _updateBulkBar();
       },
+      onInsert: canEdit() ? (file) => {
+        const isImage = _isImage(file.mime_type, _ext(file.filename));
+        const ref = `${isImage ? '!' : ''}[${file.filename}](syncpad-file:${file.file_path})\n`;
+        _insertTextAtActiveCursor(ref);
+        UI.showToast(`Inserted "${file.filename}".`, 'success');
+      } : null,
       onPreview: async (file) => {
         try {
           await openFilePreview(

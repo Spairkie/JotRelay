@@ -72,12 +72,16 @@ export async function openFilePreview(file, getSignedUrl, onDownload) {
 
 // ── Type detection helpers ────────────────────────────────────────────────────
 
-function _ext(filename) {
+export function _ext(filename) {
   const m = (filename || '').toLowerCase().match(/\.[^.]+$/);
   return m ? m[0] : '';
 }
 
-function _isImage(mime, ext) {
+// Exported so files-panel.js's "insert into note" action can decide between
+// an image reference (![...]) and a plain file link using the exact same
+// rule this modal uses — including excluding SVG (never embedded raw, see
+// the security note atop this file), rather than a second, drifting copy.
+export function _isImage(mime, ext) {
   return IMAGE_MIME_SET.has(mime) || IMAGE_EXT_SET.has(ext);
 }
 function _isSvg(ext)      { return ext === '.svg'; }

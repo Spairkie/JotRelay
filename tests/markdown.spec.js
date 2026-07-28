@@ -56,6 +56,31 @@ test.describe('Markdown preview', () => {
     await expect(preview.locator('pre code')).toContainText('const x = 1;');
   });
 
+  test('renders every line of a fenced code block nested inside a list item', async ({ page }) => {
+    // @lezer/markdown emits one CodeText child per line for a list-nested
+    // fence (unlike a top-level fence's single contiguous CodeText) —
+    // grabbing only the first via getChild() used to silently drop lines 2+.
+    const preview = await withPreview(page, '- item\n  ```js\n  line1\n  line2\n  line3\n  ```');
+    await expect(preview.locator('pre code')).toContainText('line1\nline2\nline3');
+  });
+
+  test('HTML comments never appear in rendered output', async ({ page }) => {
+    const block = await withPreview(page, 'para one\n\n<!-- a block comment -->\n\npara two');
+    await expect(block).not.toContainText('block comment');
+    await expect(block).toContainText('para one');
+    await expect(block).toContainText('para two');
+
+    const inline = await withPreview(page, 'hello <!-- inline note --> world');
+    await expect(inline).not.toContainText('inline note');
+    await expect(inline).toContainText('hello');
+    await expect(inline).toContainText('world');
+  });
+
+  test('a stray literal HTML tag still renders as escaped visible text', async ({ page }) => {
+    const preview = await withPreview(page, 'hello <div> world');
+    await expect(preview).toContainText('hello <div> world');
+  });
+
   test('renders unordered list', async ({ page }) => {
     const preview = await withPreview(page, '- Item A\n- Item B\n- Item C');
     const items = preview.locator('ul li');

@@ -84,7 +84,7 @@ All spec files live in `tests/`. Each file is focused on a single area of the ap
 | `command-palette.spec.js` | Command palette open/close, filtering, keyboard navigation, and the `Ctrl+K` context split between "insert link" (in the editor) and "open the palette" (elsewhere) |
 | `comments.spec.js` | Comments — the merged cursor-chat + comments feature: the Comments panel composer, the floating add-comment composer, margin dots, the floating bubble, and Prev/Next comment navigation |
 | `dialogs.spec.js` | `showPrompt()`, focus trapping in modals, and other dialog-related keyboard/accessibility improvements |
-| `editor-context-menu.spec.js` | Right-click context menu: clipboard (Cut/Copy/Paste/Copy as plain text), selection (Select all/Delete), Add comment, quick formatting, and read-only viewers' reduced item set |
+| `editor-context-menu.spec.js` | Right-click context menu: clipboard (Cut/Copy/Paste), selection (Select all/Delete), Add comment, and read-only viewers' reduced item set |
 | `editor-modes.spec.js` | Editor mode switching (Source/Live/Split) and CSS class correctness — note Live is the default for fresh rooms, not Source |
 | `editor.spec.js` | Core editor: textarea input, word count, Source/Live/Split mode switching, the CM6 live surface, auto-pair, smart punctuation, Focus mode, Typewriter mode, export actions |
 | `export.spec.js` | Export and copy behavior: empty-note warning toasts, file downloads, copy to clipboard |

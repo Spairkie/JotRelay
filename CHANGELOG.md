@@ -8,6 +8,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 42 — Editor polish: scroll sync, navigation, context menu, comments, cursor, code blocks, file insertion
+
+A batch of editor UX fixes and small features, verified both by direct code tracing/Node scripts and a full manual pass in a live browser session (every item below confirmed working with zero console errors).
+
+#### Added
+- **Sync scroll setting** (`src/app/state.js`, `index.html`, `src/app/editor-behavior.js`): a new Editor-preferences toggle (on by default, matching prior always-on behavior) that gates Split mode's Write/Live proportional scroll sync — both the CM6 path (`live-editor.js`'s `wireScrollSync`/`unwireScrollSync`) and the non-live rendered-HTML fallback path (`ui/editor.js`, which gained matching `wireScrollSync`/`unwireScrollSync`/`setSplitScrollSync` exports). Takes effect immediately on toggle, not just on the next mode switch.
+- **Insert file/image from the Files panel into the note** (`src/ui/panels.js`, `src/app/files-panel.js`, `src/file-preview.js`): a new per-file "Insert" action reusing the existing `syncpad-file:` URL scheme — image files insert as `![...]`, everything else as a plain `[...]` link, using the same image-vs-generic detection (`_isImage`/`_ext`, now exported) the preview modal already relies on.
+
+#### Fixed
+- **Fenced code block inside a list item silently dropped every line but the first** (`src/markdown.js`). `@lezer/markdown` emits one `CodeText` sibling per line in that context (unlike a top-level fence's single contiguous `CodeText`) — the renderer only ever read the first via `getChild()`. Now collects and joins every `CodeText` child.
+- **HTML comments (`<!-- ... -->`) rendered as visible escaped text** instead of being invisible (`src/markdown.js`). Split the combined `HTMLTag`/`CommentBlock`/`ProcessingInstructionBlock` case: stray literal HTML tags still render as escaped visible text (no interpretation, unchanged), but both the block-level `CommentBlock` and the distinct inline `Comment` node now render as nothing.
+- **Double upload on drag-and-drop**: dropping an image onto the Write-mode textarea fired two separate `drop` listeners — the image-insert handler in `editor-behavior.js` and the generic upload-zone handler in `ui/editor.js`'s `setFileHandlers` — since `#note-editor` is a descendant of `.editor-area`. Added `e.stopPropagation()` to the inner handler.
+- **TOC and footnote links only jumped instantly**, not smoothly (`styles/editor.css`): added `scroll-behavior: smooth` to `.note-preview` and `.note-live .cm-scroller` (respecting `prefers-reduced-motion`). The anchors themselves were already real, working `#id` links — this was a pure CSS easing gap, not a broken-navigation one.
+- **Context menu simplified**: removed the redundant "Copy as plain text" action and the six formatting actions (bold/italic/strikethrough/highlight/code/link) — all already one click away on the always-visible toolbar. "Copy" is now the single, context-aware action: it copies a raw-markdown-source slice in Write/Live/Split (unchanged), and — a latent bug fixed along the way — correctly reads `window.getSelection()` when the plain rendered `#note-preview` fallback is the visible surface, instead of silently reading the hidden textarea's stale selection. Added a touch-target sizing pass (`@media (pointer: coarse)`) for the shorter, now more mobile-native-feeling menu.
+- **Comment-to-comment navigation jumped instantly and fully rebuilt its DOM every click** (`src/ui/collab.js`, `styles/editor.css`). `renderFloatingComments()` now reuses the existing bubble element across Prev/Next navigation (confirmed via same-node identity) with a `top` transition, rather than tearing it down and rebuilding from scratch. Along the way, fixed an incidental bug where the bubble inherited a keyframe animation authored for the unrelated `.comment-floating-composer`, permanently overwriting its resting `transform` once the animation finished.
+- **Cursor/caret sometimes invisible in the Live/Split (CM6) surface** (`src/live-editor.js`). Root cause: CM6's `drawSelection()` extension hides the native caret and drives its own via an infinite CSS blink animation that only restarts (from its visible phase) on a selection-changing transaction — if the tab is backgrounded and refocused mid-cycle, the animation can resume on its invisible phase and stay stuck there. Now forces a no-op reselect on window focus / tab-visible to restart the blink fresh (verified: the animation name reliably toggles on a simulated `visibilitychange`). Also added an explicit `caret-color` to the plain Write textarea as a defensive baseline (contrast across all 7 themes was already fine — this just removes any ambiguity).
+
+#### Investigated, confirmed already correct — no change
+- **Blockquote nesting**: traced 2- and 3-level nested blockquotes through the real parser/renderer (`_dequoteText`/`_renderFragmentBlocks` in `src/markdown.js`) and confirmed correct recursive rendering; also confirmed visually in a live browser session.
+- **CM6's own right-click context menu**: already correctly shared via event bubbling through `.editor-wrap` — no separate/duplicate wiring, no `preventDefault()` blocking it.
+
+#### Out of scope this round
+Math/subscript/superscript/HTML formatting — raised as an open question rather than assumed; declined per explicit instruction, since real HTML pass-through would reverse `markdown.js`'s documented "never interpret raw HTML" security stance.
+
 ### Phase 41 — Doc-accuracy pass and test-suite repair
 
 A full pass over the project: read the whole codebase, ran the test suite (159 of ~360 tests were failing), browsed every feature live in a browser, and audited every doc against current code. The docs and the test suite had each drifted independently from the app and from each other.

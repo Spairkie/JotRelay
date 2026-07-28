@@ -379,7 +379,7 @@ function _ensureDropOverlay(container, label) {
  * @param {'write'|'preview'|'split'} mode
  * @param {Function|null} [renderFn]  – called to produce preview HTML
  */
-export function setMarkdownMode(mode, renderFn, { live = false } = {}) {
+export function setMarkdownMode(mode, renderFn, { live = false, syncScroll = true } = {}) {
   const editor   = document.getElementById('note-editor');
   const preview  = document.getElementById('note-preview');
   const livePane = document.getElementById('note-live');
@@ -421,8 +421,10 @@ export function setMarkdownMode(mode, renderFn, { live = false } = {}) {
     wrap?.classList.add('mode-split');
     if (!(live && livePane) && renderFn) {
       preview.innerHTML = renderFn(); _prismHighlight(preview); _injectTocNav(preview); _resolveFileImages(preview);
-      _wireScrollSync(editor, preview);
+      if (syncScroll) _wireScrollSync(editor, preview); else unwireScrollSync();
     }
+  } else {
+    unwireScrollSync();
   }
 }
 
@@ -484,6 +486,7 @@ function _injectTocNav(preview) {
 
 // ── Scroll synchronisation (split mode) ──────────────────────────────────────
 let _scrollSyncWired = false;
+let _scrollSync = null; // { editor, preview, onEditorScroll, onPreviewScroll }
 /** Reset the scroll-sync guard so _wireScrollSync can re-attach on the next split-mode entry.
  *  Must be called from teardownRealtimeSession so the guard doesn't persist across rooms. */
 export function resetScrollSync() { _scrollSyncWired = false; }
@@ -491,22 +494,49 @@ function _wireScrollSync(editor, preview) {
   if (_scrollSyncWired) return;
   _scrollSyncWired = true;
   let _lock = false;
-  editor.addEventListener('scroll', () => {
+  const onEditorScroll = () => {
     if (_lock || preview.classList.contains('hidden')) return;
     _lock = true;
     const maxScroll = editor.scrollHeight - editor.clientHeight;
     const ratio = maxScroll > 0 ? editor.scrollTop / maxScroll : 0;
-    preview.scrollTop = ratio * (preview.scrollHeight - preview.clientHeight);
+    const target = ratio * (preview.scrollHeight - preview.clientHeight);
+    if (Math.abs(preview.scrollTop - target) >= 1) preview.scrollTop = target;
     requestAnimationFrame(() => { _lock = false; });
-  });
-  preview.addEventListener('scroll', () => {
+  };
+  const onPreviewScroll = () => {
     if (_lock || editor.classList.contains('hidden')) return;
     _lock = true;
     const maxScroll = preview.scrollHeight - preview.clientHeight;
     const ratio = maxScroll > 0 ? preview.scrollTop / maxScroll : 0;
-    editor.scrollTop = ratio * (editor.scrollHeight - editor.clientHeight);
+    const target = ratio * (editor.scrollHeight - editor.clientHeight);
+    if (Math.abs(editor.scrollTop - target) >= 1) editor.scrollTop = target;
     requestAnimationFrame(() => { _lock = false; });
-  });
+  };
+  editor.addEventListener('scroll', onEditorScroll);
+  preview.addEventListener('scroll', onPreviewScroll);
+  _scrollSync = { editor, preview, onEditorScroll, onPreviewScroll };
+}
+
+/** Detach the non-live split-mode scroll listeners (if wired) so toggling the
+ *  Sync scroll setting off takes effect immediately, not just on next mode switch. */
+export function unwireScrollSync() {
+  if (!_scrollSync) return;
+  const { editor, preview, onEditorScroll, onPreviewScroll } = _scrollSync;
+  editor.removeEventListener('scroll', onEditorScroll);
+  preview.removeEventListener('scroll', onPreviewScroll);
+  _scrollSync = null;
+  _scrollSyncWired = false;
+}
+
+/** Re-evaluate the non-live split-mode scroll sync immediately when the Sync
+ *  scroll setting is toggled, rather than waiting for the next mode switch. */
+export function setSplitScrollSync(enabled) {
+  const editor  = document.getElementById('note-editor');
+  const preview = document.getElementById('note-preview');
+  const wrap    = document.querySelector('.editor-wrap');
+  const inSplitFallback = wrap?.classList.contains('mode-split') && preview && !preview.classList.contains('hidden');
+  if (enabled && inSplitFallback && editor) _wireScrollSync(editor, preview);
+  else unwireScrollSync();
 }
 
 

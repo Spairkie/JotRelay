@@ -9,13 +9,12 @@ import { insertTimestamp } from '../utils.js';
 import { onLocalInput, onEditorBlur, flushSave } from '../sync.js';
 import { setTyping, setCursorLine, destroyPresence, setPresenceHidden } from '../presence.js';
 import { canEdit, canPaste, editBlockedReason } from '../permissions.js';
-import { markdownToPlainText } from '../markdown.js';
 import { BODY_MAX } from '../templates.js';
 import * as LiveEditor from '../live-editor.js';
 import * as UI from '../ui.js';
 import { copyToClipboard } from '../utils.js';
-import { state, SLASH_MENU_ITEMS, _STRIP_PASTE_KEY, _SMART_PUNCT_KEY, _FOCUS_MODE_KEY, _TYPEWRITER_MODE_KEY, _HIDE_PRESENCE_KEY } from './state.js';
-import { _currentSelectionRange, _openFloatingCommentComposer, _refreshFloatingComments } from './comments-preview.js';
+import { state, SLASH_MENU_ITEMS, _STRIP_PASTE_KEY, _SMART_PUNCT_KEY, _FOCUS_MODE_KEY, _TYPEWRITER_MODE_KEY, _HIDE_PRESENCE_KEY, _SYNC_SCROLL_KEY } from './state.js';
+import { _currentSelectionRange, _openFloatingCommentComposer, _refreshFloatingComments, _updateScrollSyncWiring } from './comments-preview.js';
 import { _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedRefreshFloatingComments } from './comments-preview.js';
 import { _uploadAndInsertImages } from './files-panel.js';
 import { _openTemplatesModalFresh } from './panels.js';
@@ -302,6 +301,11 @@ export function _wireEditorToolbarAndLifecycle() {
     const imageFiles = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
     if (!imageFiles.length) return;
     e.preventDefault();
+    // Stop this from also reaching .editor-area's own generic drop handler
+    // (ui/editor.js's setFileHandlers) — #note-editor is a descendant of
+    // .editor-area, so without this the same drop bubbles into both,
+    // uploading the same file twice.
+    e.stopPropagation();
     _uploadAndInsertImages(imageFiles);
   });
 
@@ -338,15 +342,15 @@ export function _wireEditorToolbarAndLifecycle() {
 
 // ── Editor selection context menu ───────────────────────────────────────────
 // Right-click (or long-press, on touch) anywhere in either editor surface
-// (Source textarea or Live/Split's CM6 pane) for clipboard, selection,
-// comment, and quick-formatting actions — modeled on the right-click menu
-// in Typora/Obsidian: always available (not just with an active selection),
-// with items that don't apply to the current state or permission level
-// hidden rather than shown disabled. Shift+right-click bypasses this
-// entirely for the browser's native menu (spell-check suggestions,
-// "Inspect", etc.) — the same escape hatch Gmail/Docs/Notion use.
-
-const _CTX_FORMAT_ACTIONS = ['bold', 'italic', 'strikethrough', 'highlight', 'code', 'link'];
+// (Source textarea or Live/Split's CM6 pane) for clipboard, selection, and
+// comment actions — modeled on the right-click menu in Typora/Obsidian:
+// always available (not just with an active selection), with items that
+// don't apply to the current state or permission level hidden rather than
+// shown disabled. Shift+right-click bypasses this entirely for the
+// browser's native menu (spell-check suggestions, "Inspect", etc.) — the
+// same escape hatch Gmail/Docs/Notion use. Formatting actions (bold/italic/
+// etc.) are deliberately not duplicated here — they're already one click
+// away on the always-visible toolbar (see _applyFormatToActiveSurface).
 
 export function _closeEditorContextMenu() {
   document.getElementById('editor-context-menu')?.classList.remove('visible');
@@ -367,25 +371,28 @@ function _openEditorContextMenu(x, y) {
 /**
  * Show/hide each menu item for the current permission level and whether a
  * selection is active, then collapse any separator left with nothing
- * visible on one side of it (e.g. every formatting item hidden for a
+ * visible on one side of it (e.g. every mutating item hidden for a
  * read-only viewer shouldn't leave a dangling divider line).
  */
 function _updateContextMenuAvailability(hasSelection) {
   const menu = document.getElementById('editor-context-menu');
   if (!menu) return;
   const editable = canEdit();
+  // The plain rendered #note-preview fallback (live editor not mounted) is a
+  // read-only rendered view with no real cursor/source-offset concept — Cut/
+  // Paste/Delete/Add comment all assume one, so they only make sense on the
+  // Write textarea or the CM6 Live/Split surface.
+  const usingRenderedFallback = state.markdownMode !== 'write' && !LiveEditor.isMounted();
   const setVisible = (action, visible) => {
     menu.querySelector(`[data-ctx-action="${action}"]`)?.classList.toggle('hidden', !visible);
   };
 
-  setVisible('cut',        editable && hasSelection);
+  setVisible('cut',        editable && hasSelection && !usingRenderedFallback);
   setVisible('copy',       hasSelection);
-  setVisible('paste',      editable);
-  setVisible('copy-plain', true);
+  setVisible('paste',      editable && !usingRenderedFallback);
   setVisible('select-all', true);
-  setVisible('delete',     editable && hasSelection);
-  setVisible('comment',    editable && hasSelection);
-  _CTX_FORMAT_ACTIONS.forEach((a) => setVisible(a, editable && hasSelection));
+  setVisible('delete',     editable && hasSelection && !usingRenderedFallback);
+  setVisible('comment',    editable && hasSelection && !usingRenderedFallback);
 
   const isVisibleItem = (el) => el.classList.contains('editor-context-item') && !el.classList.contains('hidden');
   const children = Array.from(menu.children);
@@ -404,10 +411,8 @@ export function _wireEditorContextMenu() {
 
   wrap.addEventListener('contextmenu', (e) => {
     if (e.shiftKey) return; // Shift+right-click → native browser menu
-    const range = _currentSelectionRange();
-    const hasSelection = !!range && range.to > range.from;
     e.preventDefault();
-    _updateContextMenuAvailability(hasSelection);
+    _updateContextMenuAvailability(_ctxHasSelection());
     _openEditorContextMenu(e.clientX, e.clientY);
   });
 
@@ -431,12 +436,24 @@ function _runContextMenuAction(action) {
     case 'comment':    _openFloatingCommentComposer(); return;
     case 'cut':        _ctxCut(); return;
     case 'copy':       _ctxCopy(); return;
-    case 'copy-plain': _ctxCopyPlain(); return;
     case 'paste':      _ctxPaste(); return;
     case 'delete':     _ctxDelete(); return;
     case 'select-all': _ctxSelectAll(); return;
-    default:           _applyFormatToActiveSurface(action);
   }
+}
+
+/**
+ * Whether there's an active selection worth acting on, reading from whichever
+ * surface is actually visible — the rendered #note-preview fallback has its
+ * own independent window.getSelection(), which _currentSelectionRange()
+ * (source-offset-based, for Write/CM6) doesn't know about at all.
+ */
+function _ctxHasSelection() {
+  if (state.markdownMode !== 'write' && !LiveEditor.isMounted()) {
+    return !!window.getSelection()?.toString();
+  }
+  const range = _currentSelectionRange();
+  return !!range && range.to > range.from;
 }
 
 /** The current selection range, or a collapsed range at the end of the note if none. */
@@ -447,24 +464,28 @@ function _ctxRangeOrEnd() {
   return { from: len, to: len };
 }
 
+// A single Copy that adapts to whichever surface the selection actually
+// lives in, rather than a second "Copy as plain text" action: Write mode
+// and the CM6 Live/Split surface both mirror the same underlying markdown
+// source, so copying a slice of UI.getEditorValue() is correct there — but
+// the plain rendered #note-preview fallback (shown when the live editor
+// isn't mounted) is real rendered HTML with its own independent selection,
+// and reading raw source offsets for it would copy the wrong text entirely.
+// window.getSelection().toString() there is already plain reading text by
+// construction, which is exactly what a separate "plain text" action used
+// to provide.
 async function _ctxCopy() {
-  const { from, to } = _ctxRangeOrEnd();
-  const text = UI.getEditorValue().slice(from, to);
+  const usingRenderedFallback = state.markdownMode !== 'write' && !LiveEditor.isMounted();
+  let text;
+  if (usingRenderedFallback) {
+    text = window.getSelection()?.toString() || '';
+  } else {
+    const { from, to } = _ctxRangeOrEnd();
+    text = UI.getEditorValue().slice(from, to);
+  }
   if (!text) return;
   const ok = await copyToClipboard(text);
   UI.showToast(ok ? 'Copied.' : 'Could not copy — your browser may be blocking clipboard access.', ok ? 'success' : 'error');
-}
-
-async function _ctxCopyPlain() {
-  const { from, to } = _ctxRangeOrEnd();
-  const val = UI.getEditorValue();
-  // No selection → plain-text-ify the whole note, matching Typora's "Copy as
-  // Plain Text" when nothing is selected, rather than copying nothing.
-  const src = to > from ? val.slice(from, to) : val;
-  const text = markdownToPlainText(src);
-  if (!text) return;
-  const ok = await copyToClipboard(text);
-  UI.showToast(ok ? 'Copied as plain text.' : 'Could not copy — your browser may be blocking clipboard access.', ok ? 'success' : 'error');
 }
 
 async function _ctxCut() {
@@ -643,13 +664,31 @@ export function _wireEditorPreferenceToggles() {
     UI.showToast(state.hidePresence ? 'Cursor & typing hidden from others' : 'Cursor & typing visible to others', 'info', 2000);
   });
 
+  // ── Sync-scroll setting button ──────────────────────────────────────────────
+  const _updateSyncScrollUI = () => {
+    const btn = document.getElementById('setting-sync-scroll-btn');
+    if (!btn) return;
+    btn.textContent = state.syncScroll ? 'On' : 'Off';
+    btn.setAttribute('aria-pressed', String(state.syncScroll));
+  };
+  _updateSyncScrollUI();
+
+  document.getElementById('setting-sync-scroll-btn')?.addEventListener('click', () => {
+    state.syncScroll = !state.syncScroll;
+    try { localStorage.setItem(_SYNC_SCROLL_KEY, String(state.syncScroll)); } catch {}
+    _updateScrollSyncWiring();
+    UI.setSplitScrollSync(state.syncScroll);
+    _updateSyncScrollUI();
+    UI.showToast(state.syncScroll ? 'Sync scroll: On' : 'Sync scroll: Off', 'info', 2000);
+  });
+
   // These are simple on/off flips, not navigations — clicking one shouldn't
   // steal focus (and with it the caret position/selection) from the editor.
   // preventDefault on mousedown stops the browser's default click-to-focus
   // behavior for pointer users while leaving keyboard activation (Tab +
   // Enter/Space, which never fires mousedown) untouched.
   ['setting-monospace-btn', 'setting-strip-paste-btn', 'setting-smart-punct-btn',
-   'setting-focus-mode-btn', 'setting-typewriter-mode-btn', 'setting-hide-presence-btn']
+   'setting-focus-mode-btn', 'setting-typewriter-mode-btn', 'setting-hide-presence-btn', 'setting-sync-scroll-btn']
     .forEach((id) => document.getElementById(id)?.addEventListener('mousedown', (e) => e.preventDefault()));
 }
 

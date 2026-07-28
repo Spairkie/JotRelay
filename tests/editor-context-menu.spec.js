@@ -1,6 +1,10 @@
 // tests/editor-context-menu.spec.js
-// Right-click context menu: clipboard (Cut/Copy/Paste/Copy as plain text),
-// selection (Select all/Delete), Add comment, and quick formatting.
+// Right-click context menu: clipboard (Cut/Copy/Paste), selection
+// (Select all/Delete), and Add comment. Formatting actions (bold/italic/
+// etc.) and the separate "Copy as plain text" action were removed from this
+// menu — formatting is already one click away on the always-visible
+// toolbar, and Copy itself is now context-aware (see _ctxCopy in
+// editor-behavior.js) so a second plain-text-specific action is redundant.
 //
 // Playwright's synthetic right-click (page.mouse.click(..., {button:'right'}))
 // doesn't reliably fire a real `contextmenu` DOM event across environments —
@@ -48,11 +52,9 @@ test.describe('Editor selection context menu', () => {
     // Selection-only actions are hidden when nothing is selected.
     await expect(page.locator('[data-ctx-action="cut"]')).toHaveClass(/hidden/);
     await expect(page.locator('[data-ctx-action="copy"]')).toHaveClass(/hidden/);
-    await expect(page.locator('[data-ctx-action="bold"]')).toHaveClass(/hidden/);
     // But actions that don't need a selection remain available.
     await expect(page.locator('[data-ctx-action="paste"]')).not.toHaveClass(/hidden/);
     await expect(page.locator('[data-ctx-action="select-all"]')).not.toHaveClass(/hidden/);
-    await expect(page.locator('[data-ctx-action="copy-plain"]')).not.toHaveClass(/hidden/);
   });
 
   test('Shift+right-click bypasses the custom menu', async ({ page }) => {
@@ -64,15 +66,6 @@ test.describe('Editor selection context menu', () => {
       const rect = el.getBoundingClientRect();
       el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, shiftKey: true, clientX: rect.x + 40, clientY: rect.y + 20 }));
     });
-    await expect(page.locator('#editor-context-menu')).not.toHaveClass(/visible/);
-  });
-
-  test('Bold applies formatting to the selection and closes the menu', async ({ page }) => {
-    await createRoom(page);
-    await typeInEditor(page, 'hello selectable world');
-    await rightClickSelection(page, 0, 5);
-    await page.locator('[data-ctx-action="bold"]').click();
-    await expect(page.locator('#note-editor')).toHaveValue('**hello** selectable world');
     await expect(page.locator('#editor-context-menu')).not.toHaveClass(/visible/);
   });
 
@@ -127,30 +120,6 @@ test.describe('Editor context menu — clipboard actions', () => {
     expect(clip).toBe('hello');
   });
 
-  test('Copy as plain text strips Markdown syntax from the selection', async ({ page, context }) => {
-    await grantClipboardPermissions(context);
-    await createRoom(page);
-    await typeInEditor(page, 'a **bold** word');
-    await rightClickSelection(page, 2, 10); // "**bold**"
-    await page.locator('[data-ctx-action="copy-plain"]').click();
-    const clip = await page.evaluate(() => navigator.clipboard.readText());
-    expect(clip).toBe('bold');
-  });
-
-  test('Copy as plain text with no selection copies the whole note, stripped', async ({ page, context }) => {
-    await grantClipboardPermissions(context);
-    await createRoom(page);
-    await typeInEditor(page, '# Title\n\nSome **bold** text.');
-    await rightClickSelection(page, 0, 0);
-    await page.locator('[data-ctx-action="copy-plain"]').click();
-    // Normalize line endings — the OS clipboard (Windows in particular)
-    // round-trips '\n' as '\r\n'; that's a platform artifact of
-    // navigator.clipboard itself, not something markdownToPlainText()
-    // controls or this test is meant to verify.
-    const clip = await page.evaluate(() => navigator.clipboard.readText());
-    expect(clip.replace(/\r\n/g, '\n')).toBe('Title\nSome bold text.');
-  });
-
   test('Paste inserts clipboard text at the caret', async ({ page, context }) => {
     await grantClipboardPermissions(context);
     await createRoom(page);
@@ -197,7 +166,7 @@ test.describe('Editor context menu — selection actions', () => {
 });
 
 test.describe('Editor context menu — read-only viewers', () => {
-  test('read-only viewers see Copy/Copy as plain text/Select all but not Cut/Paste/Delete/formatting', async ({ page }) => {
+  test('read-only viewers see Copy/Select all but not Cut/Paste/Delete', async ({ page }) => {
     const roomId = await createRoom(page);
     await typeInEditor(page, 'read only content here');
     // The Postgres write is debounced 1s behind typing (src/sync.js); without
@@ -223,11 +192,9 @@ test.describe('Editor context menu — read-only viewers', () => {
     await rightClickSelection(page, 0, 4);
     await expect(page.locator('#editor-context-menu')).toHaveClass(/visible/);
     await expect(page.locator('[data-ctx-action="copy"]')).not.toHaveClass(/hidden/);
-    await expect(page.locator('[data-ctx-action="copy-plain"]')).not.toHaveClass(/hidden/);
     await expect(page.locator('[data-ctx-action="select-all"]')).not.toHaveClass(/hidden/);
     await expect(page.locator('[data-ctx-action="cut"]')).toHaveClass(/hidden/);
     await expect(page.locator('[data-ctx-action="paste"]')).toHaveClass(/hidden/);
     await expect(page.locator('[data-ctx-action="delete"]')).toHaveClass(/hidden/);
-    await expect(page.locator('[data-ctx-action="bold"]')).toHaveClass(/hidden/);
   });
 });
