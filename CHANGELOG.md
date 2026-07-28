@@ -8,6 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 41 — Doc-accuracy pass and test-suite repair
+
+A full pass over the project: read the whole codebase, ran the test suite (159 of ~360 tests were failing), browsed every feature live in a browser, and audited every doc against current code. The docs and the test suite had each drifted independently from the app and from each other.
+
+#### Fixed — test suite
+- **Root cause of the bulk of the failures**: fresh rooms default to Live/Preview mode (`_resolveInitialEditorMode()`, `src/app/state.js`), which keeps `#note-editor` (the plain textarea most tests act on) hidden — Playwright's actionability checks refuse to `.click()`/`.fill()` a hidden element. Added `ensureWriteMode()` to `tests/helpers.js` and applied it across ~16 spec files.
+- The app's custom `showPrompt()`/`showConfirm()` dialogs (`src/ui/dialogs.js`) are not native browser dialogs — `page.once('dialog', …)` never fires for them. Added `fillPromptDialog()` to `tests/helpers.js`.
+- Roughly a dozen smaller per-file fixes: wrong element ids/selectors that had drifted from the real DOM (`#btn-templates` → `#tool-templates`, `#templates-list` → `.templates-list`), a strict-mode-violating `.panel-close` selector matching 7 elements, wrong assumptions about native Tab order vs. the app's own single-hop keyboard shortcuts, an async gap around template-apply needing a toast wait, and a Windows clipboard CRLF-normalization false failure.
+- **`serve.json`'s SPA rewrite pointed at `/SyncPad/index.html`**, a path that doesn't exist on disk (the real file is `/index.html`) — silently broke `npx serve .` for anyone not using the project's own `tests/spa-server.js`, for who knows how long. Fixed the rewrite destination.
+- **`editor-context-menu.spec.js`'s read-only-viewer test had a real race**, not a flaky one: it created a read-only share link and navigated to it before the 1 s debounced Postgres save (`src/sync.js`) had landed, so the freshly-loaded read-only view saw the room's stale (empty) body instead of what was just typed. Fixed by waiting for the save-status indicator to read "Saved" before creating the share link — the same race exists for a real user who shares a link immediately after typing, worth keeping in mind if it resurfaces elsewhere.
+- Two full clean runs at the end of this pass: 353 passed, 0 hard failures, 5 flaky-but-pass-on-retry (real browser/animation-frame timing, not deterministically fixable), 7 skipped (gated behind optional migrations, as intended).
+
+#### Fixed — real application bugs found along the way
+- **`src/markdown.js`**: a link whose label text is itself the same bare URL (e.g. `[https://x.com](https://x.com)`) rendered as a duplicate nested `<a>` tag. Added `_unwrapRedundantAnchor()`.
+- **`src/shortcuts.js`**: `Ctrl+/` unconditionally intercepted before the shift check below it, making `Ctrl+Shift+/` ("add comment") unreachable. Added a `&& !shift` guard.
+- **`src/app/panels.js`**: the custom-templates modal held a one-time snapshot of `customs`; renaming or deleting a template updated localStorage but not the open modal, requiring a close/reopen to see the change. Now mutates the in-memory object alongside the localStorage write.
+- **`src/app/panels.js`**: Search panel's dedicated Tab shortcut (search input → replace input, and back) fought the generic per-panel focus trap (`openPanel()` in `src/ui/panels.js`) — when Replace's buttons are disabled (no active search yet), `#replace-input` is also the trap's computed "last focusable," so the instant the dedicated handler moved focus there, the trap's own bubble-phase listener saw the same keydown and immediately wrapped focus back to the panel's first item, undoing the move. Fixed with `e.stopPropagation()` in the dedicated handler.
+- **`src/app/comments-preview.js`**: two comments anchored to the same line (or close together) produced margin dots at an identical pixel position — `.comment-dot` has no horizontal spread (CSS: fixed `right: 6px`), so the later dot fully covered the earlier one, making it unclickable. `_refreshFloatingComments()` now enforces a minimum vertical gap between dots.
+- **`src/files.js`**: `@supabase/supabase-js`'s `createSignedUrl(..., { download })` double-encodes special characters in the filename it builds into the URL's `download` query param — a file named `My Report (Final).txt` downloaded as literally `My Report %28Final%29.txt`, because the SDK's own encoding pass ran over an already-percent-encoded string. Since `download` is a plain, unsigned query param appended after the signed token (not part of the cryptographic signature), `getForceDownloadUrl()` now overwrites it with a correctly, singly-encoded value after the SDK call.
+
+#### Fixed — docs
+Rewrote `CLAUDE.md`, `README.md`, `docs/architecture.md`, `docs/playwright.md`, `docs/security.md`, `DEPLOYMENT.md`, and `RELEASE_CHECKLIST.md` against current code rather than patching individual stale lines: missing modules in the module tables (`rooms.js`, `live-editor.js`, `comments.js`, `revisions.js`, `offline.js`, and the two markdown-sharing helper files), an actively wrong keyboard shortcut in the README (`Ctrl+Shift+P` documented, `Alt+Shift+P` real), the admin dashboard's tab count (3 documented, 5 real), the theme count (5 documented, 7 real), a State Management section in `docs/architecture.md` that described a different, outdated architecture than the current shared-`state`-object pattern, a missing migration row in `DEPLOYMENT.md`'s optional-features table, and a stale `tests/playwright.md` file-count/helper-table. Theme picker itself intentionally left untouched throughout, per explicit instruction.
+
 ### Phase 40 — Close out the deliberately-not-done items from Phase 35/39
 
 Branch: `claude/syncpad-review-fixes-180t01`
