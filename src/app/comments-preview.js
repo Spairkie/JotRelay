@@ -195,6 +195,19 @@ export function _refreshFloatingComments() {
     })
     .filter(Boolean);
 
+  // Comments anchored to the same line (or close together) land at the same
+  // margin-gutter Y — .comment-dot has no horizontal spread (CSS: fixed
+  // `right: 6px`), so without this, one dot fully occludes the other and the
+  // covered one becomes unclickable. Stack them with a minimum vertical gap
+  // instead, in anchor order (dots is already in state.lastComments' order,
+  // which is anchor position order).
+  const DOT_MIN_GAP = 14;
+  let _prevY = -Infinity;
+  for (const d of dots) {
+    if (d.y < _prevY + DOT_MIN_GAP) d.y = _prevY + DOT_MIN_GAP;
+    _prevY = d.y;
+  }
+
   UI.renderFloatingComments(dots, {
     activeId: state.activeCommentId,
     onToggle: _toggleCommentBubble,

@@ -679,7 +679,7 @@ function _renderLink(node, text, ctx) {
     const textStart = marks[0]?.to ?? node.from;
     const textEnd = marks.length > 1 ? marks[1].from : labelNode.from;
     const rawLabel = text.slice(textStart, textEnd);
-    const visibleLabel = _renderInlineFallback(rawLabel, text, ctx);
+    const visibleLabel = _unwrapRedundantAnchor(_renderInlineFallback(rawLabel, text, ctx));
     const rawLabelKey = _linkLabelKey(text.slice(labelNode.from, labelNode.to));
     // A collapsed reference "[text][]" has an empty LinkLabel — the implied
     // label is the visible text itself, per CommonMark.
@@ -701,8 +701,28 @@ function _renderLink(node, text, ctx) {
   const labelStart = marks[0]?.to ?? node.from;
   const labelEnd = marks.length > 1 ? marks[1].from : (urlNode.from);
   const rawLabel = text.slice(labelStart, labelEnd);
-  const label = _renderInlineFallback(rawLabel, text, ctx);
+  const label = _unwrapRedundantAnchor(_renderInlineFallback(rawLabel, text, ctx));
   return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener noreferrer">${label}</a>`;
+}
+
+/**
+ * A link's label is re-parsed from scratch as its own fragment
+ * (_renderInlineFallback), which means a label that happens to look like a
+ * bare URL — e.g. `[https://example.com](https://example.com)` — gets
+ * caught by the same autolink detection that applies to genuinely bare URL
+ * text, producing a redundant nested `<a>` inside the real one. CommonMark
+ * link text is normal inline content and should never itself become a
+ * second clickable link. Unwrap it when (and only when) the *entire*
+ * rendered label is a single anchor with no other anchor tags inside it —
+ * mixed content like "Click **here**" never matches this and is left
+ * untouched, and neither does an unusual label containing more than one
+ * bare-URL autolink (e.g. two space-separated URLs), where naively matching
+ * only the outermost `<a…>`/`</a>` would strip tags that don't actually
+ * wrap the whole label and leave the rest mismatched.
+ */
+function _unwrapRedundantAnchor(html) {
+  const m = /^<a\b[^>]*>((?:(?!<\/?a\b)[\s\S])*)<\/a>$/.exec(html.trim());
+  return m ? m[1] : html;
 }
 
 /**
