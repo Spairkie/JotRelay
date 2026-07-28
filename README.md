@@ -34,7 +34,7 @@
 - **Vanilla JavaScript** ES module architecture — no build step, no bundler, no framework
 - **Supabase Realtime** for live sync via Broadcast (~250 ms) and Presence
 - **Shareable temporary rooms** — editable and read-only links, QR codes
-- **Markdown editor** with Write / Preview / Split modes and a safe custom renderer
+- **Typora-style live markdown editing** — the Live surface (CodeMirror 6) renders formatting inline as you type (hidden syntax markers, real tables/images/checkboxes) alongside a raw Source mode and a side-by-side Split view, plus a safe custom renderer (no CM6 dependency) powering export/print/file-preview output
 - **File upload and preview** — images, text, Markdown, CSV, PDF (no library)
 - **Presence, typing indicator, and cursor/activity tracking**
 - **Responsive layout** with 7 themes, bottom action bar on mobile
@@ -60,23 +60,23 @@
 - **Room editing lock** — pause edits on all devices; enforced server-side by a database trigger, not just the frontend
 
 ### Content & Editing
-- **Markdown** — Write, Preview, and Split view modes
-- **Safe Markdown rendering** — custom renderer with no raw HTML pass-through; XSS-safe
+- **Three editor modes — Source, Live, and Split** — Source shows raw markdown text; Live (the default for new rooms, remembered per-device once you switch) is a Typora-style CodeMirror 6 surface that renders formatting inline as you type — headings, bold/italic, GFM tables, images, checkboxes, GitHub-style alerts (`> [!NOTE]` etc.), footnotes, and syntax-highlighted fenced code blocks all render live, with raw syntax revealed only where the caret currently is; Split shows Source and Live side by side with synced scrolling
+- **Safe Markdown rendering** — a from-scratch renderer (built on the same Lezer parse tree CodeMirror uses) with no raw HTML pass-through; powers export, PDF/print, and file preview output; XSS-safe
 - **Images** — `![alt](https://…)` renders inline (http/https only)
 - **Bare URL autolinking** — plain `https://…` text becomes a clickable link automatically
 - **Nested lists** — indented bullet/numbered sub-items render as proper nested lists
-- **Checklist preview** — GFM-style checkboxes; click to toggle in preview
+- **Checklist preview** — GFM-style checkboxes; click to toggle, live in the editor
 - **Templates Library v2** — 13 built-in templates (meeting, checklist, standup, bug report, code review, and more); searchable modal with two-column preview pane
 - **Custom templates** — save, rename, delete, export/import as JSON (localStorage-backed, up to 50 000 chars each)
-- **Find & Replace** — case-insensitive search with Prev / Next navigation, Replace, and Replace All
-- **Selection context menu** — right-click (or long-press) selected text for quick formatting (bold/italic/strikethrough/highlight/code/link) or to add a comment, without navigating to the toolbar or Comments panel first
+- **Find & Replace** — case-insensitive (toggle to case-sensitive) search with Prev / Next navigation, Replace, and Replace All
+- **Selection context menu** — right-click (or long-press) selected text, in either Source or Live mode, for quick formatting (bold/italic/strikethrough/highlight/code/link) or to add a comment, without navigating to the toolbar or Comments panel first
 - **Inline comments** — anchor a comment to a text range from the Comments panel, the selection context menu, or the floating add-comment button (bottom-right of the editor, or `Ctrl/⌘ + Shift + /`) which opens a composer right at your selection/caret; a small dot in the editor's margin marks each comment's anchor line — click to expand it into a floating bubble with the full text and Prev/Next navigation between comments, without needing to open the panel; requires the optional `supabase/migrations/0003_room_comments.sql` migration
-- **Version History** — browse and restore past snapshots of a room's content; requires the optional `supabase/migrations/0004_version_history.sql` migration
+- **Version History** — browse and restore past snapshots of a room's content, including a scrubbable time-slider; requires the optional `supabase/migrations/0004_version_history.sql` migration
 - **Command palette** — `Ctrl/⌘ + K` (or the More menu) opens a searchable list of every app action — modes, panels, sharing, export, themes, and more — filter by typing, navigate with arrow keys, run with Enter
-- **Slash-command quick-insert** — type `/` at the start of a line (Write mode) to open a filterable popup for headings, lists, checklist, links, code blocks, dividers, timestamp, and templates, without leaving the keyboard for the toolbar
+- **Slash-command quick-insert** — type `/` at the start of a line (Source mode) to open a filterable popup for headings, lists, checklist, links, code blocks, dividers, timestamp, and templates, without leaving the keyboard for the toolbar
 - **Keyboard shortcuts** — see [Keyboard Shortcuts](#keyboard-shortcuts) below
 - **Export** — download as `.txt`, `.md`, rendered `.html`, or PDF (browser print); copy as plain text or rendered HTML
-- **Monospace toggle** — switch editor font with `Ctrl/⌘ + Shift + M`
+- **Monospace toggle, Focus mode, Typewriter mode, smart punctuation, paste-as-plain-text** — opt-in editor preferences, remembered per-device across rooms
 - **Timestamp insert** — add current date/time inline
 
 ### Collaboration
@@ -91,6 +91,8 @@
 - **Text encryption** — AES-256-GCM + PBKDF2 in-browser; encrypted rooms use DB-only content sync (no plaintext live snapshots); files are NOT encrypted
 - **Auto-expiration** — rooms cleared at open after expiry; pg_cron backend cleanup optional
 - **View-once** — note cleared server-side after first non-creator editable viewer
+- **Device limit** — auto-clear the note once N distinct devices (excluding the creator's own) have joined the room; requires the optional `supabase/migrations/0005_device_limit.sql` migration
+- **Anonymous write rate limiting** — server-side, per-device and per-IP caps on room creation and report submission; requires the optional `supabase/migrations/0010_anonymous_write_rate_limiting.sql` migration
 
 ### Files
 - **File attachments** — upload up to 10 MB per file; signed download URLs (1 h TTL)
@@ -112,17 +114,23 @@
 | Shortcut | Action |
 |---|---|
 | `Ctrl/⌘ + S` | Force save |
-| `Ctrl/⌘ + Shift + P` | Toggle Preview mode |
-| `Ctrl/⌘ + Shift + S` | Toggle Split view |
-| `Ctrl/⌘ + Shift + M` | Toggle Monospace font |
-| `Ctrl/⌘ + F` | Open Find & Replace panel |
+| `Ctrl/⌘ + F` | Find in note (Find & Replace panel) |
 | `Ctrl/⌘ + B` | Bold selected text |
 | `Ctrl/⌘ + I` | Italic selected text |
+| `` Ctrl/⌘ + ` `` | Inline code |
 | `Ctrl/⌘ + K` | Insert Markdown link (in the editor) — or open the **command palette** everywhere else, to search and run any app action by name |
+| `Ctrl/⌘ + Shift + S` | Toggle Split view |
+| `Ctrl/⌘ + Shift + M` | Toggle Monospace font |
+| `Ctrl/⌘ + Shift + /` | Add a comment at the cursor/selection |
 | `Ctrl/⌘ + /` | Open keyboard shortcuts help |
+| `Alt + Shift + P` | Toggle Live mode |
+| `Alt + Shift + S` | Open the Share modal |
+| `Alt + Shift + T` | Insert a timestamp |
+| `Alt + Shift + C` | Copy the note |
+| `Tab` / `Shift + Tab` | Indent / dedent (in the editor) |
 | `Esc` | Close panel / modal / dropdown |
 
-Formatting shortcuts (`B`, `I`, `K` for links) do nothing in read-only or locked mode.
+Formatting shortcuts (`B`, `I`, `` ` ``, `K` for links) do nothing in read-only or locked mode. The last four rows use `Alt+Shift` rather than `Ctrl/⌘+Shift` because those specific letter combos are already claimed by browser/OS chrome (reopen-closed-tab, Inspect Element, Private Window, Firefox's Web Console) that page JavaScript cannot override.
 
 ---
 
@@ -240,29 +248,36 @@ ORDER  BY room_id, uploaded_at;
 
 ```
 Browser UI (HTML/CSS/JS)
-    └── ES Modules (src/*.js)
-            ├── app.js          — routing, event wiring, state coordination
-            ├── ui.js           — all DOM manipulation
+    └── ES Modules (src/*.js, plus src/app/*.js, src/ui/*.js, src/admin/*.js)
+            ├── app.js          — thin entry point; routing/join-flow/event wiring in src/app/*.js
+            ├── ui.js           — barrel over src/ui/*.js; all DOM manipulation
             ├── sync.js         — live typing + durable save lanes
             ├── presence.js     — device/typing/cursor tracking
             ├── live-broadcast.js — Supabase Broadcast events
+            ├── live-editor.js  — CodeMirror 6 Live/Split editable preview surface
+            ├── rooms.js        — room CRUD, read-only share links, short codes
+            ├── comments.js     — anchored inline comments (optional migration)
+            ├── revisions.js    — version-history snapshots (optional migration)
+            ├── offline.js      — localStorage draft save/restore
             ├── files.js        — upload, download, delete (signed-URL cache)
             ├── file-preview.js — in-app preview modal
-            ├── markdown.js     — safe custom Markdown renderer
+            ├── markdown.js     — safe custom Markdown renderer (Lezer parse tree)
             ├── encryption.js   — AES-256-GCM + PBKDF2 (Web Crypto)
             ├── permissions.js  — frontend permission context
             ├── settings.js     — room settings (passcode, expiry, etc.)
             ├── templates.js    — 13 built-ins + localStorage custom templates
             ├── theme.js        — CSS variable theme system
             ├── shortcuts.js    — keyboard shortcut handler
-            └── admin.js        — admin dashboard (Supabase Auth + RLS)
+            └── admin.js        — admin dashboard entry point; shell/tabs in src/admin/*.js
 
 Supabase Backend
-    ├── syncpad_rooms        (Postgres table + Realtime)
-    ├── syncpad_files        (Postgres table + Realtime)
-    ├── syncpad_share_links  (Postgres table)
-    ├── syncpad_room_reports (Postgres table, insert-only for anon)
-    └── syncpad-files        (Storage bucket, private, signed URLs)
+    ├── syncpad_rooms         (Postgres table + Realtime)
+    ├── syncpad_files         (Postgres table + Realtime)
+    ├── syncpad_room_comments (Postgres table, optional migration)
+    ├── syncpad_room_revisions (Postgres table, optional migration)
+    ├── syncpad_share_links   (Postgres table)
+    ├── syncpad_room_reports  (Postgres table, insert-only for anon)
+    └── syncpad-files         (Storage bucket, private, signed URLs)
 ```
 
 See [`docs/architecture.md`](docs/architecture.md) for the full module-by-module breakdown and data flow diagrams.
@@ -310,13 +325,14 @@ See [`docs/architecture.md`](docs/architecture.md) for the full module-by-module
 ## Testing
 
 ```bash
-npm run serve          # start static server on :5555
 npx playwright install # one-time browser download
-npm test               # run all tests (headless)
+npm test               # run all tests (headless) — auto-starts tests/spa-server.js on :5555 if nothing is listening there yet
 npm run test:ui        # Playwright UI mode
 npm run test:chrome    # chromium only
 npm run test:report    # open HTML report
 ```
+
+To browse the app itself (not run tests), `npm run serve` and open `http://localhost:5555/SyncPad/` — `serve.json` gives it the same `/SyncPad` SPA fallback the test suite's `tests/spa-server.js` uses.
 
 See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 
@@ -333,14 +349,15 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 - [x] Markdown: image embedding (`![alt](url)`), bare-URL autolinking, and nested lists
 - [x] Find & Replace — case-sensitive toggle (`Aa`), Replace / Replace All
 - [x] Expiration countdown — live "expires in Xh Xm Xs" bar; relative time in settings panel
-- [x] Syntax highlighting in preview — Prism.js autoloader for fenced code blocks
+- [x] Syntax highlighting — real per-token highlighting natively in the Live/Split surface (CodeMirror 6 + `@lezer/highlight`); Prism.js autoloader still covers the static rendered-HTML fallback preview path
 - [x] Bulk file delete — multi-select checkboxes with confirmation modal
 - [x] File sort — 6 orderings in the Files panel (newest, oldest, name, size)
 - [x] Admin dashboard — Supabase Auth gate, rooms / reports / cleanup tabs
 - [x] Templates Library v2 — 13 built-ins, searchable modal, export / import JSON
 - [x] PDF export — browser `window.print()` in a styled preview window
-- [x] Playwright test suite — grown from an initial ~75 scenarios across 6 spec files to 28 spec files today; see `docs/playwright.md` for current scope
+- [x] Playwright test suite — grown from an initial ~75 scenarios across 6 spec files to 27 spec files today; see `docs/playwright.md` for current scope
 - [x] Editor modernization — floating card layout, comfortable max writing width, split-view divider
+- [x] Typora-style Live editing surface — CodeMirror 6-backed, replacing the old read-only rendered-HTML preview pane as the default view for new rooms
 
 ### Takeover roadmap completed
 
@@ -353,11 +370,12 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 - [x] Batch admin expired-room cleanup queries for larger room sets
 - [x] Add real `/share/:token` protected-room regression tests
 - [x] Add admin user setup documentation in `docs/admin-setup.md`
-- [x] Bump service worker cache version for this release (`syncpad-v18`)
+- [x] Bump service worker cache version on every release that changes cached assets (currently `syncpad-v40` — see `service-worker.js`)
+- [x] Anonymous write rate limiting for room creation (30/device + 60/IP per 15 min) and report submission (10/device + 20/IP per 15 min) — optional `supabase/migrations/0010_anonymous_write_rate_limiting.sql`; see [Optional feature migrations](DEPLOYMENT.md#optional-feature-migrations)
 
 ### Outside current demo scope
 
-- Rate limiting (room creation, share-link resolution, report submission) — see `docs/security.md`
+- Rate limiting for share-link resolution specifically (room creation and report submission are covered — see above) — see `docs/security.md`
 - Live deployment verification after Supabase/GitHub Pages secrets are configured
 
 ---

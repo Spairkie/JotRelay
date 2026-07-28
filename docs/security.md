@@ -98,6 +98,8 @@ The Markdown renderer does not pass raw HTML through. Its pipeline is:
 
 `javascript:` link hrefs are blocked: the renderer checks the protocol of any link before emitting an `<a>` tag. Links with a `javascript:` protocol are dropped.
 
+The same scheme allowlist applies to the editable Live/Split surface (`live-editor.js`, CodeMirror 6): ctrl/cmd-click only opens a link whose destination matches `^https?://`, and its inline image widget only resolves `https?://` URLs or the app's own `syncpad-file:` pseudo-scheme (resolved server-side to a signed URL for a private-bucket attachment) — never `javascript:`/`data:`.
+
 ### SVG Files
 
 SVG files are not previewed inline. They are opened in a new browser tab. This prevents execution of embedded scripts that SVG files can legally contain.

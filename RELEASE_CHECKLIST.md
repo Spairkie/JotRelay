@@ -41,9 +41,9 @@ Use this checklist before publishing a new version or sharing the demo link.
 
 ## 3. Editor & Tools
 
-- [ ] **Write mode** — textarea is editable, preview hidden
-- [ ] **Preview mode** — Markdown rendered, textarea hidden
-- [ ] **Split mode** — both visible side by side
+- [ ] **Source mode** — textarea is editable, Live surface hidden
+- [ ] **Live mode** (default for fresh rooms) — the CodeMirror 6 surface renders formatting inline and is itself directly editable (not a read-only render); textarea hidden
+- [ ] **Split mode** — Source and Live visible side by side, scroll-synced
 - [ ] **Checklist preview** — GFM checkboxes render; checking one updates the raw note
 - [ ] **Safe Markdown** — pasting `<script>alert(1)</script>` or raw HTML into the editor does NOT execute or render as HTML in preview
 - [ ] **Built-in templates** — at least 3 templates apply correctly (replace and append)
@@ -125,9 +125,11 @@ Preview mode.
 
 - [ ] `/SyncPad/admin` shows a login form (email + password)
 - [ ] Invalid credentials show an error message; valid credentials load the dashboard
-- [ ] **Rooms tab** — lists latest rooms; search works; Clear and Delete actions work
-- [ ] **Reports tab** — lists reports; Dismiss and Delete-room work; "show only new" filter works
-- [ ] **Cleanup tab** — RPC `run_cleanup_expired_syncpad_rooms_as_admin()` runs without error
+- [ ] **Rooms tab** — lists/paginates rooms; filter chips and search work; Clear/Delete (single and bulk) work; CSV export works
+- [ ] **Reports tab** — lists reports; status filter chips work; Dismiss/Review and Delete-room work
+- [ ] **Files tab** — lists/paginates files; search by filename/room works; per-file delete works; storage-used total is correct
+- [ ] **Audit Log tab** — records admin actions (clear/delete room, dismiss report, etc.); shows a "not configured" message (not an error) if the optional migration isn't applied
+- [ ] **Cleanup tab** — expired-room cleanup and Storage Orphan Reconciliation (dry-run, then delete) run without error
 - [ ] Non-admin user (or no login) cannot reach dashboard data — `is_syncpad_admin()` RLS blocks
 - [ ] `PGRST301` error shown as "You do not have admin access." (not a raw error code)
 - [ ] Logout button signs out and returns to login form
@@ -141,8 +143,10 @@ Preview mode.
 - [ ] **Forest Green** — green accent; dark background
 - [ ] **Paper Light** — light background; readable text in all panels
 - [ ] **Terminal** — bright green accent; high contrast
+- [ ] **Mocha Dark** — warm brown accent; dark background
+- [ ] **Lavender Light** — light lilac background; readable text in all panels
 - [ ] **Theme persists** after page refresh
-- [ ] **All text readable** in Paper Light (light mode) — no invisible text
+- [ ] **All text readable** in both light themes (Paper Light, Lavender Light) — no invisible text
 
 ---
 
@@ -153,7 +157,7 @@ Preview mode.
 - [ ] **Share modal** opens full-width; links and QR codes are visible
 - [ ] **Files panel** is full-width; upload zone visible; file rows are tappable
 - [ ] **File preview modal** fills the viewport; scrollable
-- [ ] `/SyncPad/admin` placeholder page renders correctly on mobile viewport
+- [ ] `/SyncPad/admin` dashboard renders correctly on mobile viewport
 - [ ] **Tap targets** are at least 44×44 px for all buttons
 - [ ] **Orientation change** — layout reflows correctly
 
@@ -177,17 +181,8 @@ Preview mode.
 
 ## 11. Automated tests
 
-- [ ] `npm run serve` starts static server on port 5555
-- [ ] `npm test` runs without errors (or known failures documented)
-- [ ] `tests/landing.spec.js` — landing screen tests pass
-- [ ] `tests/editor.spec.js` — editor & export tests pass
-- [ ] `tests/markdown.spec.js` — Markdown renderer tests pass
-- [ ] `tests/search.spec.js` — Find & Replace tests pass
-- [ ] `tests/settings.spec.js` — settings panel tests pass
-- [ ] `tests/routing.spec.js` — URL routing tests pass
-- [ ] `tests/shortcuts.spec.js` — keyboard shortcuts work in both Write and Live surfaces; renamed Alt+Shift combos pass
-- [ ] `tests/accessibility.spec.js` — ARIA / keyboard tests pass
-- [ ] `tests/utils.spec.js` — unit tests (escapeHtml, formatFileSize, templates) pass
+- [ ] `npm test` runs without errors (or known failures documented) — it starts `tests/spa-server.js` on port 5555 automatically if nothing's already listening there
+- [ ] All 27 spec files in `tests/` pass — see `docs/playwright.md` §4 for the current list; spot-check at minimum: `landing`, `editor`, `editor-modes`, `markdown`, `live-editor-rendering`, `search`, `settings`, `routing`, `shortcuts`, `comments`, `editor-context-menu`, `read-only`, `templates`, `accessibility`, `utils`
 
 ---
 

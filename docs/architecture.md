@@ -97,56 +97,53 @@ Collects small, stateless helper functions (string formatting, date utilities, d
 
 ## 3. Data Flow — Editing a Note
 
-1. **User types** in the `<textarea>` inside the editor screen.
-2. An `input` event fires, handled in `app.js` via `wireEvents()`.
-3. `app.js` immediately calls `sync.js` → **Broadcast lane**: the current textarea value is published on the Supabase Broadcast channel for the room (~250 ms latency). No database write occurs.
-4. **Other tabs/devices** receive the Broadcast event via `live-broadcast.js`, which dispatches it to `sync.js` on the receiving side.
-5. `sync.js` (receiver) calls `ui.js` to update the textarea with the incoming content, carefully avoiding a cursor-jump for the local user.
-6. Back on the **originating tab**, a 1-second debounce timer is (re)started on every keystroke.
-7. When the debounce fires, `sync.js` → **Durable lane**: the content is written to the `syncpad_rooms` row in Postgres (encrypted if text encryption is enabled).
-8. Supabase **Postgres Realtime** fires an `UPDATE` event on all other subscribers.
-9. `sync.js` (receiver, durable lane) receives the Realtime event via `handleRemoteDatabaseChange()`. It first ignores the event entirely if `updated_by_device` matches this client's own device id (it's an echo of our own write, not a remote change) — client clocks are not compared, since they can drift. Otherwise it checks whether the local user has typed within the last 3 seconds (`_isLocallyActive()`):
-   - **Idle** → the remote content is applied immediately.
-   - **Actively typing** → the remote content is held as a "pending remote" update and `ui.js` shows a conflict notice (Apply / Keep / Copy) instead of overwriting the user's in-progress edit.
-10. If applied immediately, `ui.js` updates the textarea on the remote tab.
+1. **User types** in the Write-mode `<textarea>`, or in the CM6-backed Live/Split surface (`live-editor.js`), which mirrors its content into the textarea on every change — the textarea remains the single source of truth every other module reads.
+2. An `input` event fires on the textarea, handled by the listener `_wireEditorCore()` (`src/app/editor-behavior.js`) attaches, which calls `sync.js`'s `onLocalInput()`.
+3. `onLocalInput()` does three things, gated by `permissions.js`'s `canEdit()`/`canBroadcastTyping()`/`canBroadcastLiveContent()`:
+   - Saves an immediate local draft to `localStorage` (`offline.js`) — encrypted first if the room has text encryption enabled.
+   - Broadcasts a metadata-only **typing** event (device id/name, no note content) over the room's Broadcast channel, throttled to ~250 ms, so other devices can show a typing indicator.
+   - If the room is **not** encrypted and the note is under `LIVE_CONTENT_BROADCAST_MAX_CHARS` (32 000 chars), also broadcasts a **live-content** snapshot (the actual current text) over the same throttle — this is the fast-responsiveness lane. Encrypted rooms skip this entirely and rely on the durable lane only, so plaintext is never broadcast unencrypted.
+   - Starts (or restarts) a 1-second debounce timer for the durable Postgres save.
+4. **Other tabs/devices** receive the Broadcast events via `live-broadcast.js`, which dispatches them to `sync.js`'s `handleRemoteTyping()` / `handleRemoteLiveContent()` on the receiving side; the latter applies the new text to the textarea (and, if mounted, the live surface) unless the local user has typed within the last 3 seconds, in which case it's queued as a "pending remote" update instead.
+5. When the 1-second debounce fires, `sync.js`'s durable-save callback re-checks `canEdit()` (a save queued before a lock/read-only/encryption change lands must not write stale or plaintext data), encrypts the content if needed, and writes it to the `syncpad_rooms` row in Postgres via `rooms.js`'s `saveContent()`.
+6. Supabase **Postgres Realtime** fires an `UPDATE` event on all other subscribers, wired in `src/app/room-lifecycle.js`'s `subscribeToRoom()` callback.
+7. `sync.js`'s `handleRemoteDatabaseChange()` handles it: it first ignores the event entirely if `updated_by_device` matches this client's own device id (an echo of our own write) — client clocks are never compared, since they can drift. Otherwise, same idle-vs-actively-typing check as step 4 decides whether to apply immediately or show the conflict notice (Apply / Keep mine / Copy remote / Dismiss).
+8. If applied immediately, `sync.js` updates the textarea (via the `setEditorVal` callback wired in `startApp()`), which also re-syncs the live surface and refreshes the rendered preview if active.
 
 ---
 
 ## 4. Data Flow — Joining a Room
 
-1. The browser loads `index.html`; `app.js` reads `window.location`.
-2. The **router** in `app.js` parses the URL path to extract the room ID — rooms live directly under the configured base path (e.g. `/SyncPad/<roomId>`, or `/SyncPad/share/<token>` for a read-only share link).
-3. `app.js` calls **`joinRoom(roomId)`**.
-4. `joinRoom()` issues a Supabase query against `syncpad_rooms` for the given ID.
-5. If the room has a passcode, `ui.js` renders the passcode prompt and verifies a PBKDF2 hash client-side. If the room has text encryption, the submitted passphrase is passed to `encryption.js` to derive `_encKey` and `_encSalt`, which are stored in `app.js` module-level state.
-6. `permissions.js` is updated with the resolved permission context (owner, read-only, anonymous, etc.).
-7. `app.js` calls **`wireEvents()`** to attach all editor, toolbar, and settings event listeners for this room session.
-8. Three Supabase subscriptions are started:
-   - **Realtime** on `syncpad_rooms` (durable sync lane)
-   - **Presence** channel (device roster and typing indicator)
-   - **Broadcast** channel (live typing lane, via `live-broadcast.js`)
-9. `ui.js` renders the editor screen, populates the textarea with the room's current content (decrypted if needed), and shows the presence device list.
+1. The browser loads `index.html`; `boot()` (`src/app/room-lifecycle.js`) runs.
+2. `_parseRoute()` (`src/app/routing.js`) strips the configured base path (`window.SYNCPAD_CONFIG.basePath`, `/SyncPad`) from `location.pathname` and classifies the route — a room id, `/admin`, `/contact`/`/privacy`/`/terms`, `/share/:token`, or the landing screen.
+3. For a room route, `boot()` calls **`joinRoom(roomId)`**, which tears down any previous session (`teardownRealtimeSession()`) and issues a Supabase query against `syncpad_rooms` for the given id via `rooms.js`'s `loadRoom()`. A room that doesn't exist yet is created on the spot (same as the landing page's Create Room button) unless the route is a forced-read-only one (`?mode=read`, `/share/:token`).
+4. If the room has a passcode, `ui.js` renders the passcode prompt and `settings.js`'s `checkPasscode()` verifies a PBKDF2 hash client-side. If the room has text encryption, the submitted passphrase is passed to `encryption.js` to derive a CryptoKey, stored as `state.encKey`/`state.encSalt` in `src/app/state.js`'s shared `state` object (see §5) — verified by a trial decrypt of the stored content before proceeding.
+5. `permissions.js`'s `setPermissionContext()` is updated with the resolved permission context (read-only URL, editing-locked, encrypted-without-key, cleared, view-once-consumed) — every UI branch that gates a write reads this.
+6. `startApp()` renders the editor screen, decrypts and populates the textarea with the room's current content (preferring a newer local draft if one exists), applies the user's remembered editor mode (`_resolveInitialEditorMode()` — Live/Preview by default, or whichever mode was last chosen), and calls **`wireEvents()`** (`src/app/wiring.js`) to attach every editor/toolbar/panel/settings listener for this session — guarded by `state.eventsWired` so re-navigation never double-registers them.
+7. Three Supabase subscriptions are started: **Realtime** on `syncpad_rooms` (durable sync lane, `rooms.js`), a **Presence** channel (device roster/typing/cursor, `presence.js`), and a **Broadcast** channel (typing + live-content + settings/files/clear events, `live-broadcast.js`) — plus Realtime subscriptions on `syncpad_files` and (if the optional migration is applied) `syncpad_room_comments`.
+8. Device-limit and view-once bookkeeping run last: a device-limited room records this device's join (clearing the room if the configured device count is now reached), and a view-once room not yet viewed by a non-creator is atomically consumed *after* the content has already been rendered to this viewer.
 
 ---
 
 ## 5. State Management
 
-`app.js` holds all module-level state in file-scoped `let` variables. No global `window` properties are used for application state.
+Room/session/editor-UI state lives on a **single shared `state` object** — `export const state = {...}` in `src/app/state.js` — imported by reference everywhere across `src/app/*.js` (mutate its properties, never reassign the binding). This replaced an earlier generation of scattered file-scoped `let`s in a monolithic `app.js`; `app.js` today is a thin entry point (file-image resolver wiring, the passcode/encryption auth-gate forms, and starting the router) — routing, the join flow, and all feature-area event wiring live in `src/app/*.js`. `admin.js`'s dashboard state follows the identical pattern via `src/admin/state.js`.
 
-| Variable | Purpose |
+Representative room-scoped properties (not exhaustive — see `src/app/state.js` for the full, current list):
+
+| Property | Purpose |
 |---|---|
-| `_roomId` | Active room identifier |
-| `_room` | Full room row object fetched from Supabase |
-| `_encKey` | Derived AES-256-GCM CryptoKey (null if unencrypted) |
-| `_encSalt` | PBKDF2 salt for the current encryption passphrase |
-| `_markdownMode` | `'write' \| 'preview' \| 'split'` — current editor view mode |
-| `_showPreview` | Boolean — whether the Markdown preview pane is visible |
-| `_expPreset` | Selected expiry preset string |
-| `_expTimer` | Handle for the expiry countdown interval |
-| `_searchMatches` | Array of match positions for the current search query |
-| `_searchIndex` | Index of the currently highlighted search match |
+| `state.roomId` / `state.room` | Active room id and the full row object fetched from Supabase |
+| `state.encKey` / `state.encSalt` | Derived AES-256-GCM CryptoKey and PBKDF2 salt (null if unencrypted) |
+| `state.markdownMode` | `'write' \| 'preview' \| 'split'` — current editor view mode |
+| `state.expTimer` | Handle for the expiry countdown timer |
+| `state.searchMatches` / `state.searchIndex` | Find & Replace match positions and current index |
+| `state.lastComments` / `state.activeCommentId` | Last-fetched comments and which one's floating bubble is expanded |
+| `state.followedDeviceId` | Which remote device (if any) the local view auto-scrolls to follow |
 
-**Critical invariant**: every variable in this table must be explicitly reset in both `navigateToRoom()` and `leaveRoom()`. Failing to reset any variable can cause state bleed between room sessions (e.g. a stale encryption key being applied to an unencrypted room).
+A handful of properties are deliberately **user-global, not room-scoped**, and persist across room navigation by design: editor preferences (`stripPaste`, `smartPunct`, `focusMode`, `typewriterMode`, `hidePresence`, `monospace`), and `filesSort`.
+
+**Critical invariant**: every room-scoped property must be explicitly reset in `teardownRealtimeSession()` (`src/app/room-lifecycle.js`) — the single authoritative list, deliberately not duplicated here or in `CLAUDE.md` since a second copy drifts as properties are added. Failing to reset any of them can cause state bleed between room sessions (e.g. a stale encryption key being applied to an unencrypted room).
 
 ---
 
@@ -213,11 +210,17 @@ The `/admin` route activates `admin.js` exclusively and is completely isolated f
 
 ### Tabs
 
+Five tabs, each its own file under `src/admin/` (`rooms-tab.js`, `reports-tab.js`, `files-tab.js`, `audit-tab.js`, `cleanup-tab.js`), rendered by `dashboard-shell.js`:
+
 | Tab | Data source | Actions |
 |---|---|---|
-| **Rooms** | 50 most recent `syncpad_rooms` rows; client-side search filter; flag badges for reported rooms | Clear content, Delete room |
-| **Reports** | 100 most recent `syncpad_room_reports` rows | Dismiss report, Delete reported room |
-| **Cleanup** | — | Remove known Storage objects in admin deletion paths, then invoke/delete via Supabase |
+| **Rooms** | Paginated, server-filtered/sorted `syncpad_rooms` rows (filter chips: All/Active/Active today/Expired/Encrypted/Passcode/Locked/Quarantined if that optional migration is applied); search by id or name | Per-row: view detail drawer, copy link, clear content, delete; bulk clear/delete for selected rows; export current filter as CSV |
+| **Reports** | Paginated `syncpad_room_reports` rows, filterable by status (New/Reviewed/Dismissed/All) | Mark reviewed, dismiss, view the reported room, delete the reported room |
+| **Files** | Paginated `syncpad_files` rows; search by filename or room id; aggregate storage-used stat | View the file's room, delete a file (storage object + metadata row) |
+| **Audit Log** | `syncpad_admin_audit_logs` (optional migration — the tab probes for the table and degrades gracefully if it's absent) | Read-only record of admin actions (room/report/file mutations, CSV exports) for accountability |
+| **Cleanup** | — | Batched expired-room cleanup; Storage Orphan Reconciliation (dry-run preview, then delete) via the optional `syncpad-cleanup` Edge Function |
+
+The stat cards at the top of the dashboard (Rooms, Files, Reports) are clickable shortcuts that jump to the corresponding tab, pre-filtered where relevant (e.g. the "Active today" stat filters the Rooms tab).
 
 The optional `supabase/functions/syncpad-cleanup` Edge Function runs with a service-role key, deletes known Storage objects for encrypted expired rooms before DB cleanup, and can remove orphaned bucket objects after a dry run. It's callable both as a backend cron/curl job (`SYNCPAD_CLEANUP_SECRET`) and directly from the admin dashboard's Cleanup tab, authenticated with the admin's own Supabase session instead.
 
