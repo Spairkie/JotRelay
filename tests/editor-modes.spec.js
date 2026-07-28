@@ -2,13 +2,16 @@
 // Editor mode switching: write, preview, split. CSS class correctness.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, setEditorMode, typeInEditor } from './helpers.js';
+import { createRoom, setEditorMode, typeInEditor, ensureWriteMode } from './helpers.js';
 
 test.describe('Editor mode classes', () => {
-  test('editor-wrap starts with mode-write class', async ({ page }) => {
+  test('editor-wrap starts with mode-preview class (Live is the default for fresh rooms)', async ({ page }) => {
+    // See _resolveInitialEditorMode() in src/app/state.js — new rooms open
+    // in Live/Preview mode; Write is one click away and is remembered
+    // per-device once chosen.
     await createRoom(page);
     const wrap = page.locator('.editor-wrap');
-    await expect(wrap).toHaveClass(/mode-write/);
+    await expect(wrap).toHaveClass(/mode-preview/);
   });
 
   test('clicking preview mode adds mode-preview and removes mode-write', async ({ page }) => {
@@ -48,6 +51,7 @@ test.describe('Editor mode classes', () => {
     const live   = page.locator('#note-live');
 
     // Write mode: editor visible, live surface hidden
+    await setEditorMode(page, 'write');
     await expect(editor).toBeVisible();
     const liveHidden = await live.evaluate(el => el.classList.contains('hidden'));
     expect(liveHidden).toBe(true);
@@ -71,13 +75,13 @@ test.describe('Editor mode classes', () => {
     const previewBtn = page.locator('.md-seg-btn[data-mode="preview"]');
     const writeBtn   = page.locator('.md-seg-btn[data-mode="write"]');
 
-    // Initially write is active
-    await expect(writeBtn).toHaveAttribute('aria-pressed', 'true');
-    await expect(previewBtn).toHaveAttribute('aria-pressed', 'false');
-
-    await setEditorMode(page, 'preview');
+    // Initially preview (Live) is active — the default for fresh rooms.
     await expect(previewBtn).toHaveAttribute('aria-pressed', 'true');
     await expect(writeBtn).toHaveAttribute('aria-pressed', 'false');
+
+    await setEditorMode(page, 'write');
+    await expect(writeBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(previewBtn).toHaveAttribute('aria-pressed', 'false');
   });
 
   test('preview shows the note content in the editable live surface', async ({ page }) => {

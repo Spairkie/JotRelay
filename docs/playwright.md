@@ -20,14 +20,13 @@ npm install
 # 2. Install Playwright browser binaries
 npx playwright install
 
-# 3. Start the static file server in one terminal
-npm run serve
-
-# 4. Run the full test suite in another terminal
+# 3. Run the full test suite — this alone is enough; Playwright starts
+#    tests/spa-server.js on port 5555 automatically if nothing is
+#    already listening there (see webServer in playwright.config.js)
 npm test
 ```
 
-The static server must be running on port 5555 before executing tests. In CI, Playwright starts the server automatically via its `webServer` config block. In local development, `reuseExistingServer` is enabled, so if you already have `npm run serve` running the tests will attach to it rather than spawning a new process.
+You don't need to manually start a server first — `npm test` does it for you. If you want a server running yourself (e.g. to poke around in the app between test runs), either `npm run serve` or `node tests/spa-server.js` in a separate terminal both work — `reuseExistingServer` is enabled locally, so Playwright will attach to whichever is already running on port 5555 instead of spawning its own. Both give `/SyncPad/*` routes SPA fallback to `index.html` (`npm run serve`'s `npx serve .` picks up the rewrite rule in `serve.json`); a plain `npx serve .` run from somewhere that rewrite isn't visible (a different working directory, or the file deleted) won't have it, and will 404 on every route but the bare landing screen.
 
 ---
 
@@ -40,7 +39,7 @@ The static server must be running on port 5555 before executing tests. In CI, Pl
 | `npm run test:headed` | Run tests with the browser window visible |
 | `npm run test:ui` | Launch Playwright's interactive UI mode |
 | `npm run test:report` | Open the last HTML report in your browser |
-| `npm run serve` | Start the static server on port 5555 (required for local runs) |
+| `npm run serve` (or `node tests/spa-server.js`) | Start a server on port 5555 manually (optional — `npm test` starts one automatically) |
 
 You can also pass Playwright flags directly through `npx`:
 
@@ -76,20 +75,37 @@ npx playwright test --project=webkit
 
 ## 4. Test File Overview
 
-All spec files live in `tests/`. Each file is focused on a single area of the application.
+All spec files live in `tests/`. Each file is focused on a single area of the application. There are 27 spec files today.
 
 | File | What it tests |
 |---|---|
-| `landing.spec.js` | Landing page: logo, tagline, and button visibility; new-room navigation; valid room ID format; join button and Enter-key behaviour; feature chips |
-| `editor.spec.js` | Note editor: textarea input, word count display, preview/split/write mode switching, export modal, empty-export toast |
-| `markdown.spec.js` | Markdown renderer: H1–H3 headings, bold, italic, inline code, fenced code blocks, ordered and unordered lists, GFM checkboxes, HTTPS links, `javascript:` URL blocking, no double-escaping, snake_case not italicised |
-| `search.spec.js` | Find & Replace panel: Ctrl+F to open, Esc to close, match count display, "No results" state, Next/Prev cycling with wrap, Enter advances match, Replace action, Replace All action, Tab/Shift+Tab panel navigation |
-| `settings.spec.js` | Settings panel: open/close, expiration presets visible, rejection of values below 5 minutes (30 s and 4 m), acceptance of 5-minute value, theme picker rendering, theme class applied to document |
-| `routing.spec.js` | URL routing: `/`, `/admin`, `/contact`, `/privacy`, `/terms`, arbitrary room IDs, single screen visible at a time, browser back navigation |
-| `accessibility.spec.js` | A11y: Tab-key navigation on landing, Esc closes modals, `files-list` has `role=list`, `devices-list` has `role=list`, confirm modal has `role=dialog` and `aria-modal`, OK resolves true, Esc resolves false, danger mode focuses Cancel, editor accessible label, icon buttons carry `aria-label` or `title` |
-| `utils.spec.js` | Unit tests via `inBrowser()`: `escapeHtml`, `formatFileSize`, `countWords`, `TEMPLATES` count ≥ 13, `BODY_MAX` = 50 000, `getTemplate`, `importCustomTemplates` error cases, `exportCustomTemplates` valid JSON, `renderMarkdown` XSS safety, `toggleChecklistItem` |
-
-There is also a `templates.spec.js` file covering template-specific behaviour.
+| `accessibility.spec.js` | Keyboard navigation, ARIA roles, focus management, and the custom confirm dialog |
+| `admin.spec.js` | Admin dashboard: route, login form, unauthenticated access denial, pagination, stats |
+| `command-palette.spec.js` | Command palette open/close, filtering, keyboard navigation, and the `Ctrl+K` context split between "insert link" (in the editor) and "open the palette" (elsewhere) |
+| `comments.spec.js` | Comments — the merged cursor-chat + comments feature: the Comments panel composer, the floating add-comment composer, margin dots, the floating bubble, and Prev/Next comment navigation |
+| `dialogs.spec.js` | `showPrompt()`, focus trapping in modals, and other dialog-related keyboard/accessibility improvements |
+| `editor-context-menu.spec.js` | Right-click context menu: clipboard (Cut/Copy/Paste/Copy as plain text), selection (Select all/Delete), Add comment, quick formatting, and read-only viewers' reduced item set |
+| `editor-modes.spec.js` | Editor mode switching (Source/Live/Split) and CSS class correctness — note Live is the default for fresh rooms, not Source |
+| `editor.spec.js` | Core editor: textarea input, word count, Source/Live/Split mode switching, the CM6 live surface, auto-pair, smart punctuation, Focus mode, Typewriter mode, export actions |
+| `export.spec.js` | Export and copy behavior: empty-note warning toasts, file downloads, copy to clipboard |
+| `files.spec.js` | File attachments: multi-file upload, bulk select/delete, and download-filename correctness |
+| `history.spec.js` | Version history: opening the panel, the empty state, the snapshot-before-Clear-note → Restore round trip, and the scrubber slider |
+| `landing.spec.js` | Landing page: rendering, "New room" navigation, "Join room" navigation, recent-rooms list |
+| `live-editor-rendering.spec.js` | The CM6-backed Live/Split surface's own rendering path (separate from `markdown.js`'s static renderer): GFM tables, GitHub-style alerts, footnotes, fenced-code syntax highlighting |
+| `markdown.spec.js` | The static `renderMarkdown()` renderer: headings, bold, italic, code, links, checklists, tables of contents, highlight/`==mark==`, XSS safety |
+| `read-only.spec.js` | Read-only share link behavior: `?mode=read` and `/share/:token`, editor disabled, no upload/delete, unlocking passcode/encrypted rooms while staying read-only |
+| `remote-selection.spec.js` | A remote collaborator's selection renders as a highlighted span (not just a caret) in the CM6 live surface, and Devices panel "Follow" mode |
+| `room-errors.spec.js` | Room load error states, the retry button, multi-room navigation, and offline reconnect reconciliation |
+| `room-title.spec.js` | Inline room-title editing |
+| `routing.spec.js` | URL routing: `/`, `/admin`, `/contact`, `/privacy`, `/terms`, arbitrary room IDs, single screen visible at a time, browser Back/Forward |
+| `search.spec.js` | Find & Replace panel: `Ctrl+F` to open, match count, Next/Prev cycling, Replace/Replace All, case-sensitive toggle |
+| `settings.spec.js` | Settings panel: expiration presets, theme picker, paste-stripping toggle, view-once, device limit, editing lock, file sort |
+| `short-room-code.spec.js` | Short, human-typeable/speakable room codes — an alternate spelling of the editable room link, generated on demand in the Share modal |
+| `shortcuts.spec.js` | Keyboard shortcuts, verified in both the plain Write textarea and the CM6 live surface, including the `Alt+Shift` combos |
+| `slash-menu.spec.js` | The `/`-triggered quick-insert menu in Source mode |
+| `templates-custom.spec.js` | Custom template CRUD — save, rename (`showPrompt`), delete (`showConfirm`) |
+| `templates.spec.js` | Templates modal: open, tab switching, insert, search/filter, save-as-template |
+| `utils.spec.js` | Unit tests via `inBrowser()`: `escapeHtml`, `formatFileSize`, `countWords`, `TEMPLATES`/`BODY_MAX`, `getTemplate`, `importCustomTemplates`/`exportCustomTemplates`, `renderMarkdown` XSS safety, `toggleChecklistItem` |
 
 ---
 
@@ -100,13 +116,22 @@ Shared helpers live in `tests/helpers.js` and are imported by all spec files. Us
 | Function | Signature | Description |
 |---|---|---|
 | `goToLanding` | `(page) => Promise<void>` | Navigates to `/SyncPad/` and waits for `#landing-screen` to be visible. |
-| `createRoom` | `(page) => Promise<string>` | Calls `goToLanding`, clicks `.landing-create-btn`, waits for `#app-screen`, and returns the room ID extracted from the URL. |
-| `typeInEditor` | `(page, text, options?) => Promise<void>` | Clicks `#note-editor`, optionally clears it (`clear: true` by default), then fills it with `text`. |
-| `getEditorContent` | `(page) => Promise<string>` | Returns the current value of `#note-editor`. |
-| `openPanel` | `(page, panelId) => Promise<void>` | Opens the side panel with the given ID if it is not already open. Finds the toggle button via `[aria-controls]` or `[data-panel]`. |
+| `supabaseAvailable` | `(page) => Promise<boolean>` | Detects whether the Supabase JS CDN loaded (`window.supabase`). Use to skip a test cleanly in a network-blocked environment instead of timing out. |
+| `createRoom` | `(page) => Promise<string>` | Calls `goToLanding`, skips the test if Supabase isn't reachable, clicks `.landing-create-btn`, waits for `#app-screen`, and returns the room ID extracted from the URL. |
+| `ensureWriteMode` | `(page) => Promise<void>` | Switches to Source/Write mode if `#note-editor` is currently hidden. Fresh rooms default to Live/Preview mode (see `_resolveInitialEditorMode()` in `src/app/state.js`), where the plain textarea is hidden and Playwright's actionability checks (`.click()`, `.fill()`) will hang until timeout without this. No-ops if Write mode is already active. |
+| `typeInEditor` | `(page, text, options?) => Promise<void>` | Calls `ensureWriteMode`, clicks `#note-editor`, optionally clears it (`clear: true` by default), then fills it with `text`. |
+| `getEditorContent` | `(page) => Promise<string>` | Returns the current value of `#note-editor` (works regardless of which mode is active — reading `.inputValue()` doesn't require visibility). |
+| `openPanel` | `(page, panelId) => Promise<void>` | Opens the side panel with the given ID if it is not already open. Tries the mobile action-bar button first, then the desktop button behind the More dropdown, then falls back to `[aria-controls]`/`[data-panel]`. |
+| `openMoreMenu` | `(page) => Promise<void>` | Opens the header's "More" dropdown (parent of several desktop-only panel/action buttons: Tools, Files, Devices, Settings, Export, Share). |
+| `setEditorMode` | `(page, mode) => Promise<void>` | Switches to `'write'` / `'preview'` / `'split'` via the segmented mode control and waits for `.editor-wrap` to carry the matching `mode-*` class. |
+| `openSettingsPanel` | `(page) => Promise<void>` | Opens the Settings panel via the more-menu. |
 | `waitForToast` | `(page, textOrPattern, options?) => Promise<void>` | Waits for a `.toast` element containing the given text or pattern to become visible. Default timeout is 5 000 ms. |
+| `waitForModal` | `(page, id, timeout?) => Promise<void>` | Waits for `#<id>.visible` to appear. |
+| `closeModal` | `(page, id) => Promise<void>` | Closes a modal by clicking its visible close/cancel button, trying several common selector patterns. |
 | `closePanels` | `(page) => Promise<void>` | Clicks `#panel-backdrop` to dismiss any open panel, but only if the backdrop is currently visible. |
 | `roomIdFromUrl` | `(url: string) => string` | Pure function. Parses a SyncPad URL and returns the room ID segment, or an empty string if the URL does not match. |
+| `fillPromptDialog` | `(page, value) => Promise<void>` | Fills and confirms the app's custom `UI.showPrompt()` modal (`#sp-prompt-modal` / `#sp-prompt-input` / `#sp-prompt-ok`). **The app never uses the browser's native `window.prompt()`** — `page.once('dialog', ...)` will never fire for it. Use this instead. |
+| `getShareUrl` | `(page, type?) => Promise<string>` | Opens the Share modal, reads the `'editable'` (default) or `'readonly'` link, closes the modal, and returns the URL. |
 
 ---
 
@@ -277,22 +302,22 @@ The configuration in `playwright.config.js` detects CI automatically via `proces
 
 ```js
 forbidOnly: !!process.env.CI,   // fail immediately if test.only is present
-retries:    process.env.CI ? 2 : 0,  // retry flaky tests up to 2 times in CI
-workers:    process.env.CI ? 1 : undefined,  // single worker in CI for stability
+retries:    process.env.CI ? 2 : 1,  // 1 retry locally, up to 2 in CI
+workers:    1,  // always single-worker, in CI and locally — avoids saturating shared Supabase API limits
 ```
 
-The `webServer` block tells Playwright to start the static server before the test run:
+The `webServer` block tells Playwright to start the SPA-aware static server before the test run:
 
 ```js
 webServer: {
-  command: 'npx serve . -l 5555 --no-clipboard',
-  url: 'http://localhost:5555',
-  reuseExistingServer: !process.env.CI,  // always start fresh in CI
-  timeout: 20_000,
+  command: 'node tests/spa-server.js',
+  url: 'http://localhost:5555/SyncPad/',
+  reuseExistingServer: !process.env.CI,
+  timeout: 10_000,
 }
 ```
 
-In CI, `reuseExistingServer` is `false`, so Playwright always spawns a fresh server and tears it down after the run. This prevents port conflicts from a previous failed run.
+`tests/spa-server.js` serves the repo at `/SyncPad/` (matching the GitHub Pages deployment path `index.html` hardcodes as `window.SYNCPAD_CONFIG.basePath`) with SPA fallback to `index.html`, so every in-app route resolves the same way it does in production — `serve.json` gives plain `npx serve .` (what `npm run serve` runs) the identical rewrite. CI uses the dedicated script rather than `npx serve` mainly so there's no dependency on `serve.json` being picked up correctly from whatever directory the CI runner invokes it from. In CI, `reuseExistingServer` is `false`, so Playwright always spawns a fresh server and tears it down after the run, preventing port conflicts from a previous failed run.
 
 **Artifacts:** On failure, Playwright saves screenshots and videos to `test-results/` and writes a full HTML report to `playwright-report/`. Configure your CI pipeline to upload these directories as job artifacts so you can inspect failures without re-running the suite.
 

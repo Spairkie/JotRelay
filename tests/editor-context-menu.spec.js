@@ -9,15 +9,21 @@
 // how the test simulates one).
 
 import { test, expect } from '@playwright/test';
-import { createRoom, typeInEditor } from './helpers.js';
+import { createRoom, typeInEditor, ensureWriteMode } from './helpers.js';
 
 async function rightClickSelection(page, selectionStart, selectionEnd) {
   const editor = page.locator('#note-editor');
-  await editor.evaluate((el, [s, e]) => { el.selectionStart = s; el.selectionEnd = e; }, [selectionStart, selectionEnd]);
-  await editor.evaluate((el) => {
+  // Set the selection and dispatch the contextmenu event in one atomic
+  // evaluate() round-trip — splitting these across two separate calls
+  // leaves a gap where something async (observed: unreliable specifically
+  // for a read-only textarea) can intervene and reset selectionStart/End
+  // back to the default before the second call's dispatch actually reads it.
+  await editor.evaluate((el, [s, e]) => {
+    el.selectionStart = s;
+    el.selectionEnd = e;
     const rect = el.getBoundingClientRect();
     el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.x + 40, clientY: rect.y + 20 }));
-  });
+  }, [selectionStart, selectionEnd]);
 }
 
 // Grants clipboard-read/write permission so Paste (navigator.clipboard.readText)
@@ -137,8 +143,12 @@ test.describe('Editor context menu — clipboard actions', () => {
     await typeInEditor(page, '# Title\n\nSome **bold** text.');
     await rightClickSelection(page, 0, 0);
     await page.locator('[data-ctx-action="copy-plain"]').click();
+    // Normalize line endings — the OS clipboard (Windows in particular)
+    // round-trips '\n' as '\r\n'; that's a platform artifact of
+    // navigator.clipboard itself, not something markdownToPlainText()
+    // controls or this test is meant to verify.
     const clip = await page.evaluate(() => navigator.clipboard.readText());
-    expect(clip).toBe('Title\nSome bold text.');
+    expect(clip.replace(/\r\n/g, '\n')).toBe('Title\nSome bold text.');
   });
 
   test('Paste inserts clipboard text at the caret', async ({ page, context }) => {
@@ -190,6 +200,12 @@ test.describe('Editor context menu — read-only viewers', () => {
   test('read-only viewers see Copy/Copy as plain text/Select all but not Cut/Paste/Delete/formatting', async ({ page }) => {
     const roomId = await createRoom(page);
     await typeInEditor(page, 'read only content here');
+    // The Postgres write is debounced 1s behind typing (src/sync.js); without
+    // waiting for it, the share link below is created and the page navigated
+    // away before the save lands, so the freshly-loaded read-only view sees
+    // whatever the room's body was before this test typed into it (empty for
+    // a brand-new room) instead of 'read only content here'.
+    await expect(page.locator('#status-text')).toHaveText('Saved', { timeout: 5000 });
     const shareUrl = await page.evaluate(async () => {
       const { getOrCreateReadOnlyShareLink } = await import('/SyncPad/src/rooms.js');
       const roomIdFromUrl = location.pathname.split('/').filter(Boolean).pop();
@@ -199,6 +215,11 @@ test.describe('Editor context menu — read-only viewers', () => {
     test.skip(!shareUrl, 'read-only share links require the optional share-link migration');
     await page.goto(`/SyncPad/share/${shareUrl}`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
+    // This is a real page reload (not a client-side route change), so
+    // wireEvents() — including the contextmenu listener — runs fresh here
+    // and must be waited for, same as createRoom() already does.
+    await page.waitForFunction(() => window.__syncpadEventsWired === true, null, { timeout: 5000 });
+    await ensureWriteMode(page);
     await rightClickSelection(page, 0, 4);
     await expect(page.locator('#editor-context-menu')).toHaveClass(/visible/);
     await expect(page.locator('[data-ctx-action="copy"]')).not.toHaveClass(/hidden/);

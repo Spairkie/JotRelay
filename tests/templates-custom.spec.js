@@ -17,7 +17,7 @@ async function openTemplatesModal(page) {
     await expect(toolsPanel).toHaveClass(/open/, { timeout: 3000 });
   }
   // Click the Templates button in the tools panel
-  await page.locator('#btn-templates').click();
+  await page.locator('#tool-templates').click();
   await page.waitForSelector('#templates-modal.visible', { timeout: 5000 });
 }
 
@@ -50,7 +50,7 @@ test.describe('Custom templates (save / rename / delete)', () => {
 
     // Switch to custom tab and verify the template appears
     await switchToCustomTab(page);
-    await expect(page.locator('#templates-list')).toContainText('My Custom Template', { timeout: 3000 });
+    await expect(page.locator('.templates-list')).toContainText('My Custom Template', { timeout: 3000 });
   });
 
   test('rename custom template uses showPrompt with current name pre-filled', async ({ page }) => {
@@ -80,8 +80,8 @@ test.describe('Custom templates (save / rename / delete)', () => {
     await page.evaluate(() => document.getElementById('sp-prompt-ok').click());
 
     // Template list should show the new name
-    await expect(page.locator('#templates-list')).toContainText('Renamed Template', { timeout: 3000 });
-    await expect(page.locator('#templates-list')).not.toContainText('Template To Rename');
+    await expect(page.locator('.templates-list')).toContainText('Renamed Template', { timeout: 3000 });
+    await expect(page.locator('.templates-list')).not.toContainText('Template To Rename');
   });
 
   test('cancel rename leaves template name unchanged', async ({ page }) => {
@@ -104,7 +104,7 @@ test.describe('Custom templates (save / rename / delete)', () => {
     await page.evaluate(() => document.getElementById('sp-prompt-cancel').click());
 
     // Name should be unchanged
-    await expect(page.locator('#templates-list')).toContainText('Cancel Rename Test', { timeout: 2000 });
+    await expect(page.locator('.templates-list')).toContainText('Cancel Rename Test', { timeout: 2000 });
   });
 
   test('delete custom template shows danger showConfirm', async ({ page }) => {
@@ -133,8 +133,13 @@ test.describe('Custom templates (save / rename / delete)', () => {
     // Confirm deletion
     await page.evaluate(() => document.getElementById('sp-confirm-ok').click());
 
-    // Template should be gone
-    await expect(page.locator('#templates-list')).not.toContainText('Template To Delete', { timeout: 3000 });
+    // Template should be gone — this was the only custom template, so the
+    // list container itself is replaced by the "No custom templates yet"
+    // empty state (src/ui/feature-modals.js) rather than staying present
+    // but empty; assert against the whole modal body instead of a
+    // container that may no longer exist.
+    await expect(page.locator('#templates-modal .empty-state-title')).toContainText('No custom templates', { timeout: 3000 });
+    await expect(page.locator('.templates-body')).not.toContainText('Template To Delete');
   });
 
   test('cancel delete preserves the template', async ({ page }) => {
@@ -157,7 +162,7 @@ test.describe('Custom templates (save / rename / delete)', () => {
     await page.evaluate(() => document.getElementById('sp-confirm-cancel').click());
 
     // Template should still be there
-    await expect(page.locator('#templates-list')).toContainText('Preserved Template', { timeout: 2000 });
+    await expect(page.locator('.templates-list')).toContainText('Preserved Template', { timeout: 2000 });
   });
 
   test('save-as-template is hidden in read-only mode', async ({ page }) => {

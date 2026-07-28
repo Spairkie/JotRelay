@@ -135,8 +135,19 @@ export async function getForceDownloadUrl(filePath, filename, { fresh = false } 
     logSupabaseError('getForceDownloadUrl', error, { file_path: filePath });
     throw new Error('Could not generate download link.');
   }
-  _downloadUrlCache.set(filePath, { url: data.signedUrl, expiresAt: Date.now() + URL_TTL_MS });
-  return data.signedUrl;
+  // supabase-js double-encodes the `download` query param it builds from
+  // `filename` (e.g. "(" round-trips as "%2528" instead of "%28") — it's the
+  // one part of the signed URL that isn't inside the signed token (it's a
+  // plain query param appended after it), so it's safe to overwrite with a
+  // correctly, singly-encoded value instead of trusting the SDK's own.
+  let signedUrl = data.signedUrl;
+  if (filename) {
+    const url = new URL(signedUrl);
+    url.searchParams.set('download', filename);
+    signedUrl = url.toString();
+  }
+  _downloadUrlCache.set(filePath, { url: signedUrl, expiresAt: Date.now() + URL_TTL_MS });
+  return signedUrl;
 }
 
 /**

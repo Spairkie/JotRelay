@@ -2,7 +2,7 @@
 // Read-only share link behavior: access, editor disabled, no upload/delete.
 
 import { test, expect } from '@playwright/test';
-import { closePanels, createRoom, openPanel, typeInEditor, waitForToast } from './helpers.js';
+import { closePanels, createRoom, openPanel, typeInEditor, waitForToast, ensureWriteMode, fillPromptDialog } from './helpers.js';
 
 async function getReadOnlyShareUrl(page) {
   await closePanels(page);
@@ -22,6 +22,7 @@ test.describe('Read-only links', () => {
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
 
     // Editor should be disabled/read-only
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await expect(editor).toBeVisible();
     const isDisabled = await editor.evaluate(el =>
@@ -39,6 +40,7 @@ test.describe('Read-only links', () => {
     await page.goto(`/SyncPad/${roomId}?mode=read`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
 
+    await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     const initialContent = await editor.inputValue();
     // Try to type in the editor
@@ -115,10 +117,8 @@ test.describe('Read-only links', () => {
     const roomId = await createRoom(page);
     await openPanel(page, 'settings');
 
-    page.once('dialog', async (dialog) => {
-      await dialog.accept('reader-secret');
-    });
     await page.locator('#setting-passcode-btn').click();
+    await fillPromptDialog(page, 'reader-secret');
     await waitForToast(page, 'Passcode set.');
 
     await page.goto(`/SyncPad/${roomId}?mode=read`);
@@ -134,10 +134,8 @@ test.describe('Read-only links', () => {
     await createRoom(page);
     await openPanel(page, 'settings');
 
-    page.once('dialog', async (dialog) => {
-      await dialog.accept('shared-reader-secret');
-    });
     await page.locator('#setting-passcode-btn').click();
+    await fillPromptDialog(page, 'shared-reader-secret');
     await waitForToast(page, 'Passcode set.');
 
     const readOnlyUrl = await getReadOnlyShareUrl(page);
@@ -155,10 +153,8 @@ test.describe('Read-only links', () => {
     await typeInEditor(page, 'encrypted read-only content');
     await openPanel(page, 'settings');
 
-    page.once('dialog', async (dialog) => {
-      await dialog.accept('reader-passphrase');
-    });
     await page.locator('#setting-enc-btn').click();
+    await fillPromptDialog(page, 'reader-passphrase');
     await waitForToast(page, 'Encryption enabled.', { timeout: 15_000 });
 
     await page.goto(`/SyncPad/${roomId}?mode=read`);
@@ -176,10 +172,8 @@ test.describe('Read-only links', () => {
     await typeInEditor(page, 'encrypted share-link content');
     await openPanel(page, 'settings');
 
-    page.once('dialog', async (dialog) => {
-      await dialog.accept('shared-reader-passphrase');
-    });
     await page.locator('#setting-enc-btn').click();
+    await fillPromptDialog(page, 'shared-reader-passphrase');
     await waitForToast(page, 'Encryption enabled.', { timeout: 15_000 });
 
     const readOnlyUrl = await getReadOnlyShareUrl(page);

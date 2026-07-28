@@ -2,7 +2,7 @@
 // Export and copy behavior: empty warning, file downloads, copy to clipboard.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, openMoreMenu, typeInEditor, waitForToast } from './helpers.js';
+import { createRoom, openMoreMenu, typeInEditor, waitForToast, ensureWriteMode } from './helpers.js';
 
 test.describe('Export — empty note guard', () => {
   // Helper: open the tools panel and confirm the export sub-section is accessible
@@ -15,6 +15,7 @@ test.describe('Export — empty note guard', () => {
   test('exporting txt with empty note shows warning toast', async ({ page }) => {
     await createRoom(page);
     // Ensure editor is empty
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('');
     await openExportPanel(page);
     const exportTxt = page.locator('#export-txt');
@@ -26,6 +27,7 @@ test.describe('Export — empty note guard', () => {
 
   test('exporting md with empty note shows warning toast', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('');
     await openExportPanel(page);
     const exportMd = page.locator('#export-md');
@@ -57,6 +59,7 @@ test.describe('Export — empty note guard', () => {
 test.describe('Copy to clipboard', () => {
   test('copy text on empty note shows warning', async ({ page }) => {
     await createRoom(page);
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('');
 
     await openMoreMenu(page);

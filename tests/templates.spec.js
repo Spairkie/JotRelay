@@ -3,7 +3,7 @@
 // save as template, custom template delete.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, openPanel, waitForToast } from './helpers.js';
+import { createRoom, openPanel, waitForToast, ensureWriteMode, fillPromptDialog } from './helpers.js';
 
 async function openTemplatesModal(page) {
   if (await page.locator('#templates-modal.visible').isVisible().catch(() => false)) return;
@@ -87,15 +87,13 @@ test.describe('Templates modal', () => {
     await page.evaluate(() => localStorage.removeItem('syncpad_custom_templates'));
 
     // Type some content
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('This is my test template content');
 
     // Open templates modal and click Save
     await openTemplatesModal(page);
-    // Fill in the prompt — we can't control window.prompt easily, use evaluate
-    page.on('dialog', async (dialog) => {
-      await dialog.accept('My Test Template');
-    });
     await page.locator('#btn-save-as-template').click();
+    await fillPromptDialog(page, 'My Test Template');
 
     await waitForToast(page, 'Saved as template');
 
@@ -109,6 +107,7 @@ test.describe('Templates modal', () => {
     await createRoom(page);
     await page.evaluate(() => localStorage.removeItem('syncpad_custom_templates'));
     // Empty editor
+    await ensureWriteMode(page);
     await page.locator('#note-editor').fill('');
     await openTemplatesModal(page);
     // Click the first non-blank template
@@ -116,8 +115,11 @@ test.describe('Templates modal', () => {
     // Find Checklist button
     const checklistBtn = page.locator('.template-btn[data-key="checklist"]');
     await checklistBtn.click();
-    // Should close modal and insert content
+    // The modal closes synchronously, but _onTemplateChosen() (src/app/panels.js)
+    // awaits a Supabase revision-snapshot round-trip before actually setting the
+    // editor value — wait for its completion toast rather than racing it.
     await expect(page.locator('#templates-modal')).not.toHaveClass(/visible/);
+    await waitForToast(page, 'Template applied.');
     const content = await page.locator('#note-editor').inputValue();
     expect(content.trim().length).toBeGreaterThan(0);
   });

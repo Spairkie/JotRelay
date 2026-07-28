@@ -11,7 +11,7 @@
 // directly rather than through a second browser.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, setEditorMode, typeInEditor } from './helpers.js';
+import { createRoom, setEditorMode, typeInEditor, openPanel } from './helpers.js';
 
 async function setRemoteCursors(page, cursors) {
   await page.evaluate(async (cursors) => {
@@ -45,7 +45,7 @@ test.describe('Remote selection highlighting', () => {
 test.describe('Follow mode', () => {
   test('with only the local device connected, no Follow toggle is shown', async ({ page }) => {
     await createRoom(page);
-    await page.locator('#btn-presence').click();
+    await openPanel(page, 'presence');
     // Only the local device is connected in this test, so the follow
     // button (only rendered for non-self rows) shouldn't appear yet.
     await expect(page.locator('.device-follow-btn')).toHaveCount(0);
@@ -53,7 +53,7 @@ test.describe('Follow mode', () => {
 
   test('a non-self device gets a Follow toggle that activates on click', async ({ page }) => {
     await createRoom(page);
-    await page.locator('#btn-presence').click();
+    await openPanel(page, 'presence');
 
     await page.evaluate(async () => {
       const UI = await import('/SyncPad/src/ui.js');

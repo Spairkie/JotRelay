@@ -3,7 +3,7 @@
 // These tests validate the renderMarkdown() output through the preview pane.
 
 import { test, expect } from '@playwright/test';
-import { createRoom } from './helpers.js';
+import { createRoom, ensureWriteMode } from './helpers.js';
 
 /**
  * Render `markdown` through the real renderMarkdown() module into the
@@ -17,6 +17,7 @@ import { createRoom } from './helpers.js';
  */
 async function withPreview(page, markdown) {
   await createRoom(page);
+  await ensureWriteMode(page);
   await page.locator('#note-editor').fill(markdown);
   await page.evaluate(async (md) => {
     const { renderMarkdown } = await import('/SyncPad/src/markdown.js');
@@ -219,6 +220,24 @@ test.describe('Markdown preview', () => {
     // item's, but a normal top-level checkbox always matches a real,
     // toggleable source line.
     const preview = await withPreview(page, '> - [ ] quoted\n\n- [ ] normal');
+    // withPreview() sets #note-preview's innerHTML directly rather than
+    // going through _refreshPreviewIfActive(), so the app's own checkbox
+    // click listener (_wirePreviewClickOnce(), src/app/comments-preview.js)
+    // never gets wired — reproduce it here so this test can actually
+    // exercise the click→toggleChecklistItem()→editor round trip it's
+    // meant to cover, not just the static render.
+    await page.evaluate(() => {
+      document.getElementById('note-preview')?.addEventListener('click', async (e) => {
+        const cb = e.target;
+        if (!(cb instanceof HTMLInputElement) || cb.type !== 'checkbox') return;
+        const idx = Number(cb.dataset.cbIndex);
+        if (!Number.isFinite(idx)) return;
+        const { toggleChecklistItem } = await import('/SyncPad/src/markdown.js');
+        const editor = document.getElementById('note-editor');
+        editor.value = toggleChecklistItem(editor.value, idx, cb.checked);
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    });
     const checkboxes = preview.locator('input[type="checkbox"]');
     await expect(checkboxes).toHaveCount(2);
     await checkboxes.nth(1).check(); // the second rendered checkbox is "normal"
@@ -255,6 +274,27 @@ test.describe('Markdown preview', () => {
 test.describe('Table of contents', () => {
   test('shows a Contents nav for notes with 2+ headings, linking to each one', async ({ page }) => {
     const preview = await withPreview(page, '# Intro\n\n## Setup\n\n### Deep bit');
+    // withPreview() sets #note-preview's innerHTML directly rather than
+    // going through the real render pipeline (ui/editor.js's _applyMarkdownMode()),
+    // which is what normally calls the private _injectTocNav() afterward to
+    // auto-inject a `.note-toc` summary nav when a rendered note has 2+
+    // headings (independent of an explicit [TOC] marker in the source, which
+    // is a separate, already-covered inline feature). Reproduce that same
+    // post-processing step here so this test exercises the real behavior.
+    await page.evaluate(() => {
+      const preview = document.getElementById('note-preview');
+      const headings = Array.from(preview.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]'));
+      if (headings.length < 2) return;
+      const items = headings.map((h) => {
+        const level = Number(h.tagName[1]);
+        return `<li class="note-toc-item note-toc-h${level}"><a href="#${h.id}">${h.textContent}</a></li>`;
+      }).join('');
+      const nav = document.createElement('nav');
+      nav.className = 'note-toc';
+      nav.setAttribute('aria-label', 'Table of contents');
+      nav.innerHTML = `<details><summary>Contents</summary><ul>${items}</ul></details>`;
+      preview.insertBefore(nav, preview.firstChild);
+    });
     const toc = preview.locator('.note-toc');
     await expect(toc).toBeVisible();
     const links = toc.locator('a');

@@ -16,6 +16,7 @@ SyncPad is a vanilla-JavaScript realtime shared notepad built on Supabase. It ha
 ```
 npm run serve
 ```
+Then open `http://localhost:5555/SyncPad/`. `index.html` hardcodes `window.SYNCPAD_CONFIG.basePath = '/SyncPad'`, so every in-app route (`/SyncPad/<room-id>`, `/SyncPad/admin`, etc.) only resolves under that prefix — `serve.json`'s rewrite (`/SyncPad/** → /index.html`) gives plain `npx serve .` the same SPA fallback `tests/spa-server.js` provides for the test suite, so both paths work the same way. (If you ever see the bare landing screen render but every other `/SyncPad/*` route 404, check that `serve.json` is present and its rewrite destination is `/index.html`, not `/SyncPad/index.html` — the latter doesn't exist on disk and silently breaks the whole rewrite.)
 
 **Install Playwright browsers (first time only):**
 ```
@@ -26,6 +27,7 @@ npx playwright install
 ```
 npm test
 ```
+`npm test` starts `tests/spa-server.js` automatically via Playwright's `webServer` config if nothing is already listening on port 5555.
 
 Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. No `.env` file or build step is required — just serve and open.
 
@@ -42,9 +44,16 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 | `src/sync.js` | Live typing via Supabase Broadcast + durable save to Postgres (1 s debounce) |
 | `src/presence.js` | Device tracking, typing indicators, cursor position broadcasting |
 | `src/live-broadcast.js` | Low-level Supabase Broadcast event wiring |
+| `src/live-editor.js` | CodeMirror 6 "Live"/Split editable preview surface — Typora-style seamless markdown editing (hidden syntax markers, inline tables/images/checkboxes, remote cursors), mounted whenever the mode toggle is off Write |
+| `src/rooms.js` | Room CRUD, read-only share links, and short room codes (Supabase queries/RPCs) |
+| `src/comments.js` | Anchored inline comments (optional `0003_room_comments.sql` migration) |
+| `src/revisions.js` | Version-history snapshots (optional `0004_version_history.sql` migration) |
+| `src/offline.js` | localStorage draft save/restore (encrypted-at-rest for encrypted rooms) |
 | `src/files.js` | File upload, download, delete, and 55-min signed-URL cache |
 | `src/file-preview.js` | In-app preview modal for images, text, CSV, Markdown, and PDF |
-| `src/markdown.js` | Safe custom Markdown renderer — no raw HTML pass-through |
+| `src/markdown.js` | Safe custom Markdown renderer (Lezer parse tree) — no raw HTML pass-through |
+| `src/markdown-highlight-extension.js` | Shared `==highlight==` grammar extension used by both `markdown.js` and `live-editor.js` so the two renderers agree on syntax |
+| `src/markdown-table-utils.js` | GFM table-alignment parsing shared by `markdown.js` and `live-editor.js` |
 | `src/encryption.js` | AES-256-GCM encryption + PBKDF2 key derivation (Web Crypto API) |
 | `src/permissions.js` | Frontend permission context — `isReadOnly`, `isOwner`, `isLocked` |
 | `src/settings.js` | Room settings handlers — passcode, expiry, lock |
@@ -55,6 +64,8 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 | `src/utils.js` | `escapeHtml()`, `formatFileSize()`, `countWords()` |
 | `src/icons.js` | SVG icon strings |
 | `src/supabase.js` | Supabase client initialisation |
+
+See [`docs/architecture.md`](docs/architecture.md) for the full module-by-module breakdown (including the `src/app/*.js`, `src/ui/*.js`, and `src/admin/*.js` per-file splits) and data-flow diagrams.
 
 ### Data Flow
 
@@ -73,7 +84,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 All DOM writes go through `src/ui.js`. Never manipulate the DOM from `sync.js`, `files.js`, or any other module directly — call or add a function in `ui.js` instead.
 
 ### State Management
-The `app/*` modules keep their room/session/editor-UI state as properties on a single shared `state` object (`export const state = {...}` in `src/app/state.js`, imported by reference everywhere — mutate its properties, never reassign the binding) rather than scattered `let`s. Every property that is room-specific **must** be reset to `null` (or an empty structure) when navigating away from a room — see `teardownRealtimeSession()` in `src/app/room-lifecycle.js`. Properties that require this treatment include `state.roomId`, `state.encKey`, `state.encSalt`, `state.markdownMode`, `state.showPreview`, `state.expPreset`, `state.expTimer`, `state.searchMatches`, and `state.searchIndex`. (`admin.js`'s dashboard state follows the same pattern via `src/admin/state.js`.)
+The `app/*` modules keep their room/session/editor-UI state as properties on a single shared `state` object (`export const state = {...}` in `src/app/state.js`, imported by reference everywhere — mutate its properties, never reassign the binding) rather than scattered `let`s. Every property that is room-specific **must** be reset to `null` (or an empty structure) when navigating away from a room — see `teardownRealtimeSession()` in `src/app/room-lifecycle.js`, which is the authoritative, actively-maintained list (room id/content, encryption key/salt, editor mode, search state, comment/slash-menu UI state, files-panel selection, subscriptions, timers, etc.). Don't duplicate that list elsewhere in docs — it grows as features are added and a second copy will drift; link to the function instead. User-global preferences (e.g. `stripPaste`, `smartPunct`, `filesSort`) are deliberately *not* reset — they persist across rooms by design. (`admin.js`'s dashboard state follows the same pattern via `src/admin/state.js`.)
 
 ### Escaping User Content
 Any user-supplied string that is interpolated into an HTML template **must** be passed through `escapeHtml()` from `src/utils.js` first. Never trust room names, file names, note bodies, or any other user content without escaping.
@@ -113,13 +124,17 @@ Transitions for background-color (0.22 s ease) are applied to `body`, panels, an
 
 - **`wireEvents()` accumulates listeners.** If called more than once (e.g., on re-navigation) it registers duplicate listeners. Guard calls with a cleanup flag or ensure it is called exactly once per page lifecycle.
 
-- **Room state must be fully reset on navigation.** When leaving a room, reset `state.roomId`, `state.encKey`, `state.encSalt`, `state.markdownMode`, `state.showPreview`, `state.expPreset`, `state.expTimer`, `state.searchMatches`, and `state.searchIndex` to `null` (or empty). Stale state causes subtle bugs that are hard to reproduce.
+- **Room state must be fully reset on navigation.** When leaving a room, every room-scoped `state.*` property must be reset to `null` (or empty) — see `teardownRealtimeSession()` in `src/app/room-lifecycle.js` for the current, complete list. Stale state causes subtle bugs that are hard to reproduce. If you add a new room-scoped property, add its reset there too.
 
 - **Signed-URL cache eviction.** `src/files.js` caches signed URLs in a `Map` with a 55-minute TTL. When a file is deleted, call the eviction helper so the stale URL is not served to subsequent requests.
 
 - **Expiration minimum is 1 second.** `_buildExpirationDuration()` only requires a positive number (`n > 0`, enforced client-side via the input's `min="1"`) — there is no artificial floor beyond that. A 1-second custom expiry is a legitimate (if aggressive) choice; it is not validated further.
 
 - **Bulk file delete requires `danger: true`.** Pass `{ danger: true }` to `showConfirm()` so that Cancel is focused by default, protecting users from accidental mass deletion.
+
+- **Fresh rooms open in Live/Preview mode, not Write.** `_resolveInitialEditorMode()` (`src/app/state.js`) defaults to `'preview'` when no mode has been chosen yet, so `#note-editor` starts hidden (`class="hidden"`) — a plain `<textarea>` element that Playwright's actionability checks (`.click()`, `.fill()`) refuse to act on. Any test that touches `#note-editor` directly must switch to Write mode first (`ensureWriteMode(page)` or `typeInEditor()`, which calls it automatically) rather than assuming Write is the default.
+
+- **The app never uses `window.prompt()` / `window.confirm()`.** `UI.showPrompt()` and `UI.showConfirm()` (`src/ui/dialogs.js`) are custom in-app modals (`#sp-prompt-modal`, `#sp-confirm-modal`), not native browser dialogs — `page.once('dialog', ...)` will never fire for them in tests. Fill `#sp-prompt-input` and click `#sp-prompt-ok`/`#sp-confirm-ok` directly (see `fillPromptDialog()` in `tests/helpers.js`).
 
 - **Read-only share links with passcode/encryption.** A read-only visitor to a passcode-protected or encrypted room still sees the normal authentication screen (passcode/encryption prompt) and must pass it to view the room — the info screen is only shown when the room/share link itself doesn't exist. Passing the gate does not grant edit access on a forced-read-only route (`?mode=read`, `/share/:token`) — those stay read-only regardless.
 
@@ -154,14 +169,23 @@ Tests live in `tests/` and run with `npm test`. `playwright.config.js` defines f
 
 | Helper | Purpose |
 |---|---|
-| `createRoom(page)` | Navigate to landing and create a new room; returns the room URL |
+| `createRoom(page)` | Navigate to landing and create a new room; returns the room ID |
 | `goToLanding(page)` | Navigate to the SyncPad landing page |
-| `typeInEditor(page, text)` | Type text into the main editor |
+| `supabaseAvailable(page)` | Detect a CDN-blocked environment so a test can skip cleanly instead of timing out |
+| `ensureWriteMode(page)` | Switch to Write mode if `#note-editor` is currently hidden (rooms default to Live/Preview — see §5) |
+| `typeInEditor(page, text)` | Type text into the main editor (calls `ensureWriteMode` first) |
 | `getEditorContent(page)` | Return the current editor text content |
 | `openPanel(page, name)` | Open a named side panel (e.g., `'files'`, `'settings'`) |
+| `openMoreMenu(page)` | Open the header's "More" dropdown (parent of several desktop panel buttons) |
+| `setEditorMode(page, mode)` | Switch to `'write'` / `'preview'` / `'split'` via the segmented control |
+| `openSettingsPanel(page)` | Open the Settings panel via the more-menu |
 | `waitForToast(page, text)` | Wait for a toast notification containing the given text |
+| `waitForModal(page, id)` | Wait for a modal with the given id to become visible |
+| `closeModal(page, id)` | Close a modal by clicking its visible close/cancel button |
 | `closePanels(page)` | Close all open side panels |
-| `roomIdFromUrl(page)` | Extract the room ID from the current URL |
+| `roomIdFromUrl(url)` | Extract the room ID from a SyncPad URL |
+| `fillPromptDialog(page, value)` | Fill and confirm the app's custom `showPrompt()` modal (`#sp-prompt-modal`) — the app never uses the browser's native `window.prompt()`, so `page.once('dialog', ...)` will never fire for it |
+| `getShareUrl(page, type)` | Open the Share modal, read the editable or read-only link, and close it |
 
 ### Writing New Tests
 

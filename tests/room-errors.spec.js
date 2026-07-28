@@ -122,26 +122,26 @@ test.describe('Multi-room navigation', () => {
     expect(page.url()).toContain(roomA);
   });
 
-  test('editor mode resets to write when navigating between rooms', async ({ page }) => {
+  test('editor mode is a remembered per-device preference that persists across room navigation', async ({ page }) => {
+    // _resolveInitialEditorMode() (src/app/state.js) persists the chosen
+    // mode to localStorage and re-applies it on every room join — a
+    // deliberate per-device preference, not room-scoped state that resets
+    // on navigation (teardownRealtimeSession() only sets a transient
+    // 'write' placeholder for the loading screen in between).
     const roomA = await createRoom(page);
 
     // Switch to split mode
     const splitBtn = page.locator('.md-seg-btn[data-mode="split"]');
-    if (await splitBtn.count() > 0) {
-      await splitBtn.click();
-      // Verify split mode active
-      await expect(page.locator('.editor-wrap')).toHaveClass(/mode-split/);
-    }
+    await splitBtn.click();
+    await expect(page.locator('.editor-wrap')).toHaveClass(/mode-split/);
 
     // Navigate to second room
     await goToLanding(page);
     await page.click('.landing-create-btn');
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
 
-    // Editor wrap should be back in write mode (mode-write, not mode-split)
-    const editorWrap = page.locator('.editor-wrap');
-    const classes = await editorWrap.getAttribute('class') || '';
-    expect(classes).not.toContain('mode-split');
+    // The remembered split-mode preference carries over to the new room.
+    await expect(page.locator('.editor-wrap')).toHaveClass(/mode-split/);
   });
 });
 

@@ -15,8 +15,13 @@ test.describe('Live/Split surface rendering', () => {
     await createRoom(page);
     await typeInEditor(page, '| Left | Center | Right |\n|:---|:---:|---:|\n| a | b | c |\n');
     await setEditorMode(page, 'preview');
-    // Cursor stays at the top of the doc after typing via fill(); move it
+    // Cursor stays at the top of the doc (position 0) after mount; move it
     // away so the table isn't in its "being edited, show raw source" state.
+    // Switching modes leaves DOM focus on the mode-toggle button, not the
+    // CM6 surface, so Control+End must be preceded by a real click into it
+    // — this table's own markdown starts at position 0, so an unfocused
+    // Control+End (a no-op) leaves the cursor exactly touching the table.
+    await page.locator('.note-live .cm-content').click();
     await page.keyboard.press('Control+End');
 
     const table = page.locator('.note-live table.cm-md-table');
@@ -64,6 +69,9 @@ test.describe('Live/Split surface rendering', () => {
     await createRoom(page);
     await typeInEditor(page, '| A | B |\n|---|---|\n| 1 | 2 |\n');
     await setEditorMode(page, 'preview');
+    // See the previous test's comment: a real click is required before
+    // Control+End actually moves the CM6 cursor away from position 0.
+    await page.locator('.note-live .cm-content').click();
     await page.keyboard.press('Control+End');
     await expect(page.locator('.note-live table.cm-md-table')).toBeVisible();
 
@@ -82,10 +90,13 @@ test.describe('Live/Split surface rendering', () => {
     await page.keyboard.press('Control+Home');
 
     const live = page.locator('.note-live');
-    await expect(live).not.toContainText('[ref1]');
+    // The usage "[Reference link][ref1]" folds to just its visible text —
+    // no raw "[Reference link][ref1]" or bracketed "[ref1]" survives next
+    // to it (unlike the definition line below, which legitimately keeps
+    // its own "[id]" label — a LinkReference node, not a Link usage — so a
+    // blanket "no '[ref1]' anywhere" assertion would be self-contradictory).
+    await expect(live).not.toContainText('[Reference link][ref1]');
     await expect(live).toContainText('Reference link');
-    // The definition lines are a different node shape (LinkReference, not a
-    // Link usage) and must keep their own "[id]" label visible.
     await expect(live).toContainText('[ref1]: https://example.com "Title"');
     await expect(live).toContainText('[Reference link, collapsed]: https://example.com');
   });

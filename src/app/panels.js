@@ -142,12 +142,21 @@ export async function _onTemplateChosen(key, mode) {
 }
 
 export function _openTemplatesModalFresh() {
+  // openTemplatesModal()'s onRename/onDelete only trigger a rerender() of
+  // this same `customs` object (src/ui/feature-modals.js) — they don't
+  // re-fetch it, so renameCustomTemplate()/deleteCustomTemplate() writing
+  // to localStorage alone left the open modal showing the pre-rename
+  // label / the "deleted" template still in the list until it was closed
+  // and reopened. Mutate this object in place alongside the persisted
+  // write so the very next rerender() (called right after these callbacks
+  // return) reflects it immediately.
+  const customs = getCustomTemplates();
   UI.openTemplatesModal(
     TEMPLATES,
-    getCustomTemplates(),
+    customs,
     _onTemplateChosen,
-    (key) => { deleteCustomTemplate(key); },
-    (key, label) => { renameCustomTemplate(key, label); },
+    (key) => { deleteCustomTemplate(key); delete customs[key]; },
+    (key, label) => { renameCustomTemplate(key, label); if (customs[key]) customs[key].label = label; },
     {
       onExport: () => {
         const json = exportCustomTemplates();
@@ -314,11 +323,17 @@ export function _wireFindReplacePanel() {
       editor?.focus();
       _jumpToMatch(state.searchIndex);
     }
-    if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); replaceInput?.focus(); }
+    // stopPropagation matters here: the panel's generic focus-trap (see
+    // openPanel() in ui/panels.js) also listens for Tab on document and
+    // wraps focus back to the panel's first/last focusable item when
+    // Replace's buttons are disabled (no active search yet), #replace-input
+    // IS that last item — so without stopping propagation, the trap would
+    // immediately re-fire on this same keydown and undo the focus() below.
+    if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); replaceInput?.focus(); }
     if (e.key === 'Escape') { UI.closeAllPanels(); _focusActiveEditorSurface(); }
   });
   replaceInput?.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab'    && e.shiftKey)  { e.preventDefault(); searchInput?.focus(); }
+    if (e.key === 'Tab'    && e.shiftKey)  { e.preventDefault(); e.stopPropagation(); searchInput?.focus(); }
     if (e.key === 'Enter')  { e.preventDefault(); replaceOne?.click(); }
     if (e.key === 'Escape') { UI.closeAllPanels(); _focusActiveEditorSurface(); }
   });

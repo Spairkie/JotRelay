@@ -140,8 +140,14 @@ function _handleKeyDown(e) {
     return;
   }
 
-  // Ctrl+/ — shortcuts modal
-  if (key === '/') {
+  // Ctrl+/ — shortcuts modal. Must exclude Shift: some environments report
+  // Shift+/ as e.key === '/' rather than the shifted '?' a US keyboard
+  // layout normally produces (confirmed: Playwright's synthetic key events
+  // do this) — without the guard, this unconditional match swallows every
+  // Ctrl+Shift+/ press before it ever reaches the "add comment" handler
+  // below, making that shortcut unreachable whenever a browser/layout goes
+  // through this code path instead of the shifted '?'.
+  if (key === '/' && !shift) {
     e.preventDefault();
     _onOpenShortcuts?.();
     return;
