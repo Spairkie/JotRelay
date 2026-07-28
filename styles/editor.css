@@ -188,6 +188,13 @@
   padding-left: 0.8em;
   color: var(--text-secondary);
 }
+/* Nesting depth (> > >) reads as increasing indent, not a flat single
+   border — a line inside N nested blockquotes carries every depth's class
+   (see the _seamless plugin's Blockquote handling), and since these are
+   declared in increasing order, the deepest one wins the cascade. */
+.note-live .cm-md-blockquote-2 { padding-left: 1.6em; }
+.note-live .cm-md-blockquote-3 { padding-left: 2.4em; }
+.note-live .cm-md-blockquote-4 { padding-left: 3.2em; }
 /* Fenced code block — background box matching .note-preview pre, applied
    per-line since this surface styles lines rather than wrapping a <pre>
    around the block (the lines stay individually editable). */

@@ -117,7 +117,17 @@ const _MARK_NODES = new Set(['HeaderMark', 'EmphasisMark', 'CodeMark', 'Striketh
 const _hideDeco      = Decoration.replace({});
 const _codeDeco      = Decoration.mark({ class: 'cm-md-inlinecode' });
 const _highlightDeco = Decoration.mark({ class: 'cm-md-highlight' });
-const _quoteLine     = Decoration.line({ class: 'cm-md-blockquote' });
+const _QUOTE_MAX_DEPTH = 4; // beyond this, cap the class rather than emit unbounded CSS/decorations
+const _quoteLineByDepth = new Map();
+function _quoteLineForDepth(depth) {
+  const d = Math.max(1, Math.min(depth, _QUOTE_MAX_DEPTH));
+  let deco = _quoteLineByDepth.get(d);
+  if (!deco) {
+    deco = Decoration.line({ class: `cm-md-blockquote cm-md-blockquote-${d}` });
+    _quoteLineByDepth.set(d, deco);
+  }
+  return deco;
+}
 const _codeLine      = Decoration.line({ class: 'cm-md-codeblock' });
 const _codeFirstLine = Decoration.line({ class: 'cm-md-codeblock cm-md-codeblock-first' });
 const _codeLastLine  = Decoration.line({ class: 'cm-md-codeblock cm-md-codeblock-last' });
@@ -404,6 +414,26 @@ const _checklistProgressField = StateField.define({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+// EditorView.scrollIntoView() (the built-in CM6 scroll-effect API) doesn't
+// produce a visible scroll anywhere in this app's actual runtime — confirmed
+// by dispatching it directly: the selection moves to the right offset, but
+// .cm-scroller's scrollTop never changes. Ruled out a stale vendor bundle
+// (rebuilt fresh with esbuild, same result), the wrong scrollable ancestor
+// (only .cm-scroller in the chain has real overflow), and a duplicate
+// @codemirror/view copy (only one is installed). Root cause not fully
+// pinned down beyond that; this computes and applies the scroll manually
+// instead. view.coordsAtPos() alone isn't enough here — it returns null for
+// any position that isn't currently drawn (i.e. exactly the case that needs
+// scrolling in the first place), so this uses view.lineBlockAt(pos).top,
+// which is based on CM6's own height map/oracle and works for undrawn
+// positions too — confirmed reliable via direct testing.
+function _scrollPosIntoView(view, pos, { center = true } = {}) {
+  const scroller = view.scrollDOM;
+  const block = view.lineBlockAt(Math.min(pos, view.state.doc.length));
+  const target = center ? block.top - scroller.clientHeight / 2 : block.top - 40;
+  scroller.scrollTop = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
+}
+
 // Typora-style [TOC] marker: a line containing only "[TOC]" gets a rendered
 // contents nav placed above it (the literal "[TOC]" text stays visible/
 // editable below, same badge-above-content pattern as the checklist
@@ -443,10 +473,8 @@ class _TocWidget extends WidgetType {
         // otherwise steal focus/selection on the way to a click.
         evt.preventDefault();
         const pos = Math.min(e.pos, view.state.doc.length);
-        view.dispatch({
-          selection: { anchor: pos },
-          effects: EditorView.scrollIntoView(pos, { y: 'center' }),
-        });
+        view.dispatch({ selection: { anchor: pos } });
+        _scrollPosIntoView(view, pos);
         view.focus();
       });
       li.appendChild(a);
@@ -564,7 +592,7 @@ export function setRemoteCursors(cursors) {
  */
 export function scrollToPos(pos) {
   if (!_view || typeof pos !== 'number' || pos < 0 || pos > _view.state.doc.length) return;
-  _view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
+  _scrollPosIntoView(_view, pos);
 }
 
 /**
@@ -579,10 +607,8 @@ export function setSelection(from, to) {
   const docLen = _view.state.doc.length;
   const a = Math.max(0, Math.min(from ?? 0, docLen));
   const b = Math.max(0, Math.min(to ?? a, docLen));
-  _view.dispatch({
-    selection: { anchor: a, head: b },
-    effects: EditorView.scrollIntoView(b, { y: 'center' }),
-  });
+  _view.dispatch({ selection: { anchor: a, head: b } });
+  _scrollPosIntoView(_view, b);
 }
 
 // ── Comment anchors ───────────────────────────────────────────────────────────
@@ -666,11 +692,19 @@ const _seamless = ViewPlugin.fromClass(class {
 
 
           // Blockquote: styled left border on each line (a GFM-alert kind's
-          // coloured variant when the first line is "> [!NOTE]" etc.); the
-          // > marks are hidden below via QuoteMark when not being edited.
+          // coloured variant when the first line is "> [!NOTE]" etc.), scaled
+          // by nesting depth so "> > text" reads as visibly more indented
+          // than "> text" instead of both getting the same flat border. The
+          // walk visits every ancestor Blockquote too, so a nested line ends
+          // up with more than one cm-md-blockquote-N class — harmless, since
+          // increasing-depth rules are declared in increasing order in CSS,
+          // so the deepest one simply wins the cascade for that line. The >
+          // marks are hidden below via QuoteMark when not being edited.
           if (name === 'Blockquote') {
             const alertKind = _blockquoteAlertKind(state, nodeRef.from);
-            const lineDeco  = alertKind ? _alertLineDeco[alertKind] : _quoteLine;
+            let depth = 0;
+            for (let n = nodeRef.node; n; n = n.parent) if (n.name === 'Blockquote') depth++;
+            const lineDeco = alertKind ? _alertLineDeco[alertKind] : _quoteLineForDepth(depth);
             for (let line = state.doc.lineAt(nodeRef.from); line.from <= nodeRef.to;) {
               ranges.push(lineDeco.range(line.from));
               if (line.to + 1 > state.doc.length) break;
@@ -722,7 +756,16 @@ const _seamless = ViewPlugin.fromClass(class {
                 state.doc.sliceString(nodeRef.to, nodeRef.to + 1) === ':';
               if (!_selectionTouches(state, nodeRef.from, nodeRef.to)) {
                 const widget = isDefinition ? new _FootnoteDefMarkerWidget(fnMatch[1]) : new _FootnoteRefWidget(fnMatch[1]);
-                ranges.push(Decoration.replace({ widget }).range(nodeRef.from, nodeRef.to));
+                // A definition's own marker widget already renders "1." —
+                // the raw ":" right after [^1] is still literal source text,
+                // not part of the matched node, so it must be folded in here
+                // too or it's left dangling right after the widget ("1.:
+                // text" instead of "1. text"). The space after the colon is
+                // deliberately left alone — it's the widget's only separator
+                // from the following text, unlike HeaderMark's swallowed
+                // space (which has no widget standing in for it).
+                const to = isDefinition ? nodeRef.to + 1 : nodeRef.to;
+                ranges.push(Decoration.replace({ widget }).range(nodeRef.from, to));
               }
               return false;
             }
@@ -733,6 +776,20 @@ const _seamless = ViewPlugin.fromClass(class {
           // GFM tables are handled by _tableField below — block-replace
           // decorations can only come from a StateField, not this plugin
           // ("Block decorations may not be specified via plugins").
+
+          // HTML comments (<!-- ... -->) are fully hidden — not just dimmed
+          // like a syntax-highlighted code comment — while the selection
+          // isn't touching them, same reveal-on-touch pattern as every other
+          // hideable element here. 'Comment' is the inline node name; a
+          // comment that's a whole block on its own line parses as the
+          // distinct 'CommentBlock' node instead (confirmed via a direct
+          // parser trace) — both need the same treatment.
+          if (name === 'Comment' || name === 'CommentBlock') {
+            if (!_selectionTouches(state, nodeRef.from, nodeRef.to)) {
+              ranges.push(_hideDeco.range(nodeRef.from, nodeRef.to));
+            }
+            return;
+          }
 
           // Horizontal rule → rendered line (revealed while touched).
           if (name === 'HorizontalRule') {

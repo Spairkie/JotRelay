@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 43 — Fix real Live-editor bugs missed by Phase 42, plus an admin debug reset
+
+Phase 42 was mis-verified: its testing mostly exercised the static `markdown.js` renderer (via a forced-visible `#note-preview` override) instead of the CM6 Live surface real users actually see by default. Re-investigated directly in a live browser session against the real Live surface, confirmed each gap, and fixed it.
+
+#### Fixed
+- **TOC links (and Follow-mode/Find-&-Replace jumps) didn't scroll at all** in the Live surface — traced to `EditorView.scrollIntoView()` not producing a visible scroll anywhere in this app's actual runtime (confirmed: the effect moves the selection correctly but never touches `.cm-scroller`'s `scrollTop`; ruled out a stale vendor bundle, the wrong scrollable ancestor, and a duplicate `@codemirror/view` copy). All three call sites in `src/live-editor.js` (`_TocWidget`'s click handler, `scrollToPos()`, `setSelection()`) now compute and apply the scroll manually via `view.lineBlockAt(pos).top` — `coordsAtPos()` alone isn't enough since it returns null for any position that isn't currently drawn, which is exactly the case that needs scrolling.
+- **Nested blockquotes rendered with a flat, identical border regardless of depth** in the Live surface — the static renderer already nested correctly; the CM6 decoration just never computed nesting depth. Now computed per line and depth-scaled in both the decoration class and `styles/editor.css`.
+- **HTML comments were fully visible (just dimmed) in the Live surface**, not hidden — there was no handling for `Comment`/`CommentBlock` nodes at all in the seamless-editing tree walk; they only looked dimmed by coincidence (inherited generic code-comment syntax styling). Now hidden entirely while the selection isn't touching them, same reveal-on-touch pattern as every other hideable element in this file.
+- **Footnote definition markers left a dangling `:`** ("1.: text" instead of "1. text") — the replace range only covered the `[^1]` text, not the following `:` that marks it as a definition.
+
+#### Added
+- **Admin "Reset Database (Debug)" action** (`src/admin/cleanup-tab.js`, `src/admin/shared.js`) — for local/dev cleanup: deletes every room (cascading to files/comments/revisions/share links/codes/seen-devices/edit-tokens) plus reports and the rate-limit log, leaving admin accounts and the audit log untouched. Gated behind `_adminTypedConfirm` (a typed confirmation phrase, not just yes/no) given how destructive and broad this is — not scoped to the admin's own rooms.
+
 ### Phase 42 — Editor polish: scroll sync, navigation, context menu, comments, cursor, code blocks, file insertion
 
 A batch of editor UX fixes and small features, verified both by direct code tracing/Node scripts and a full manual pass in a live browser session (every item below confirmed working with zero console errors).

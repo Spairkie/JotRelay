@@ -7,8 +7,9 @@ import { state } from './state.js';
 import { showConfirm } from '../ui.js';
 import { getIcon } from '../icons.js';
 import {
-  _friendlyErrorMessage, _logAdminAction,
+  _friendlyErrorMessage, _logAdminAction, _adminTypedConfirm,
   _listExpiredEncryptedRoomFilePaths, _removeStorageObjects, _deleteExpiredRoomsAndStorage,
+  _resetEntireDatabase,
 } from './shared.js';
 import { _loadStats } from './stats.js';
 
@@ -54,6 +55,21 @@ export async function _renderCleanupTab(contentEl) {
         </p>
         <button id="admin-orphan-preview-btn" class="admin-action-btn admin-action-primary">Preview orphaned files</button>
         <div id="admin-orphan-result" class="admin-cleanup-result hidden"></div>
+      </div>
+
+      <hr class="admin-divider" />
+
+      <div class="admin-cleanup-section admin-cleanup-danger">
+        <h3>${getIcon('warning', 16)} Reset Database (Debug)</h3>
+        <p class="admin-cleanup-desc">
+          <strong>For local/dev cleanup only.</strong> Permanently deletes every room and its
+          files, comments, revisions, share links, and reports — the entire dataset, not just
+          expired rooms — and clears the rate-limit log. Admin accounts and this audit log are
+          left untouched. This action is <strong>irreversible</strong> and affects every room in
+          this Supabase project, not just ones you created.
+        </p>
+        <button id="admin-reset-db-btn" class="admin-action-btn admin-action-danger">Reset entire database…</button>
+        <div id="admin-reset-db-result" class="admin-cleanup-result hidden"></div>
       </div>
     </div>`;
 
@@ -117,6 +133,29 @@ export async function _renderCleanupTab(contentEl) {
     resultEl.classList.remove('hidden'); resultEl.classList.add('admin-cleanup-result--success');
     resultEl.textContent = `✓ Deleted ${deleted} expired room${deleted !== 1 ? 's' : ''}.`;
     await _logAdminAction('manual_cleanup_expired', { metadata: { deleted_count: deleted } });
+    await _loadStats();
+  });
+
+  document.getElementById('admin-reset-db-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('admin-reset-db-btn');
+    const resultEl = document.getElementById('admin-reset-db-result');
+    const ok = await _adminTypedConfirm(
+      'Reset entire database?',
+      'This permanently deletes every room, file, comment, revision, share link, and report in this Supabase project — not just yours. Admin accounts and this audit log are kept.\n\nType RESET EVERYTHING to confirm.',
+      'RESET EVERYTHING',
+    );
+    if (!ok) return;
+    btn.disabled = true; btn.textContent = 'Resetting…';
+    resultEl.classList.add('hidden'); resultEl.className = 'admin-cleanup-result';
+    const { error, roomsDeleted } = await _resetEntireDatabase();
+    btn.disabled = false; btn.textContent = 'Reset entire database…';
+    if (error) {
+      resultEl.classList.remove('hidden'); resultEl.classList.add('admin-cleanup-result--error');
+      resultEl.textContent = `Error: ${_friendlyErrorMessage(error)}`; return;
+    }
+    resultEl.classList.remove('hidden'); resultEl.classList.add('admin-cleanup-result--success');
+    resultEl.textContent = `✓ Database reset. ${roomsDeleted} room${roomsDeleted !== 1 ? 's' : ''} deleted.`;
+    await _logAdminAction('reset_entire_database', { metadata: { rooms_deleted: roomsDeleted } });
     await _loadStats();
   });
 
