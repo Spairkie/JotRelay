@@ -253,6 +253,7 @@ export function renderFilesList(files, onDownload, onDelete, opts = {}) {
   const canDownload       = opts.canDownload       !== false;
   const onPreview         = opts.onPreview         || null;
   const onCopyLink        = opts.onCopyLink        || null;
+  const onInsert          = opts.onInsert          || null;
   const selectMode        = !!opts.selectMode;
   const selectedIds       = opts.selectedIds        || new Set();
   const onSelectionChange = opts.onSelectionChange  || null;
@@ -268,6 +269,7 @@ export function renderFilesList(files, onDownload, onDelete, opts = {}) {
         <div class="file-meta">${formatFileSize(file.file_size)} · ${formatTimestamp(file.uploaded_at)}</div>
       </div>
       <div class="file-actions">
+        ${(!selectMode && onInsert) ? `<button class="file-action-btn insert" title="Insert ${escapeHtml(file.filename)} into note" aria-label="Insert ${escapeHtml(file.filename)} into note">${getIcon('paste', 15)}</button>` : ''}
         ${(!selectMode && canDownload && onPreview) ? `<button class="file-action-btn preview" title="Preview ${escapeHtml(file.filename)}" aria-label="Preview ${escapeHtml(file.filename)}">${getIcon('eye', 15)}</button>` : ''}
         ${(!selectMode && canDownload && onCopyLink) ? `<button class="file-action-btn copy-link" title="Copy link to ${escapeHtml(file.filename)}" aria-label="Copy link to ${escapeHtml(file.filename)}">${getIcon('link', 15)}</button>` : ''}
         ${(!selectMode && canDownload) ? `<button class="file-action-btn download" title="Download ${escapeHtml(file.filename)}" aria-label="Download ${escapeHtml(file.filename)}">${getIcon('download', 15)}</button>` : ''}
@@ -284,6 +286,7 @@ export function renderFilesList(files, onDownload, onDelete, opts = {}) {
       });
     }
     if (!selectMode) {
+      if (onInsert) item.querySelector('.insert').addEventListener('click', () => onInsert(file));
       if (canDownload && onPreview) item.querySelector('.preview').addEventListener('click', () => onPreview(file));
       if (canDownload && onCopyLink) {
         const copyBtn = item.querySelector('.copy-link');

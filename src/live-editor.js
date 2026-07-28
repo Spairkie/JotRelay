@@ -962,6 +962,27 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
   });
 }
 
+// CM6's drawSelection() extension hides the native caret and draws its own
+// via an infinite `cm-blink` CSS animation, which only restarts (from its
+// visible phase) when a transaction carries an explicit `selection` — see
+// @codemirror/view's own dom-drawing plugin: `update.transactions.some(tr =>
+// tr.selection)` toggles the animation name to force a restart. That only
+// ever happens on a real selection *change* today, so if the tab is
+// backgrounded and refocused while the animation happens to be mid-way
+// through its invisible half, it can resume there and the caret stays
+// invisible until the next keystroke that moves the selection. Forcing a
+// no-op reselect (same position, but still a `selection` spec) on window
+// focus/tab-visible restarts the animation fresh, without moving anything.
+function _restartCursorBlink() {
+  if (_view && _view.hasFocus) _view.dispatch({ selection: _view.state.selection.main });
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('focus', _restartCursorBlink);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') _restartCursorBlink();
+  });
+}
+
 export function destroy() {
   unwireScrollSync();
   _view?.destroy();

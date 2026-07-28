@@ -55,6 +55,7 @@ export const state = {
   focusMode: false, // set below, once its localStorage key const is in scope
   typewriterMode: false, // set below, once its localStorage key const is in scope
   hidePresence: false, // set below, once its localStorage key const is in scope
+  syncScroll: true, // set below, once its localStorage key const is in scope
   filesSelectMode: false,
   selectedFiles: new Set(), // Set<file.id>
   filesSort: 'newest', // sort order for the files panel (not room-scoped)
@@ -99,6 +100,9 @@ export const _TYPEWRITER_MODE_KEY = 'syncpad_typewriter_mode';
 state.typewriterMode = localStorage.getItem(_TYPEWRITER_MODE_KEY) === 'true';
 export const _HIDE_PRESENCE_KEY = 'syncpad_hide_presence';
 state.hidePresence = localStorage.getItem(_HIDE_PRESENCE_KEY) === 'true';
+// On by default — matches the always-on behavior this setting replaces.
+export const _SYNC_SCROLL_KEY = 'syncpad_sync_scroll';
+state.syncScroll = localStorage.getItem(_SYNC_SCROLL_KEY) !== 'false';
 // Which editor mode a room opens into. Defaults to Live (Preview) rather
 // than Source — most reading/reviewing happens rendered, and Write is one
 // segmented-control click away for anyone who wants raw markdown. Once a

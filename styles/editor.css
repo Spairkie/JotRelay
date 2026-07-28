@@ -75,6 +75,9 @@
   color: var(--text-primary); font-size: 15px; line-height: 1.7;
   letter-spacing: 0.01em;
   font-family: var(--font-ui); outline: none;
+  /* Explicit rather than left to the browser default (which tracks `color`
+     anyway) — removes any ambiguity across the 7 themes/OS dark-mode heuristics. */
+  caret-color: var(--text-primary);
   transition: font-family var(--transition), box-shadow var(--transition);
 }
 #note-editor.monospace    { font-family: var(--font-mono); font-size: 14px; }
@@ -135,6 +138,8 @@
   background: var(--bg-surface); color: var(--text-primary);
   font-size: 15px; line-height: 1.7; letter-spacing: 0.01em;
   font-family: var(--font-ui); overflow-y: auto;
+  /* Smooth same-page jumps for TOC/footnote anchor links. */
+  scroll-behavior: smooth;
 }
 .note-preview.monospace { font-family: var(--font-mono); font-size: 14px; }
 .note-preview.hidden    { display: none; }
@@ -157,6 +162,14 @@
 }
 .note-live.hidden { display: none; }
 .note-live .cm-editor { height: 100%; }
+/* Smooth same-page jumps for the [TOC] widget's own Contents links — the
+   real scrolling element here is CM6's own .cm-scroller, not .note-live
+   (which is overflow:hidden above). */
+.note-live .cm-scroller { scroll-behavior: smooth; }
+
+@media (prefers-reduced-motion: reduce) {
+  .note-preview, .note-live .cm-scroller { scroll-behavior: auto; }
+}
 .note-live .cm-md-inlinecode {
   font-family: var(--font-mono); font-size: 0.9em;
   background: var(--bg-elevated); border-radius: 4px; padding: 1px 3px;
@@ -531,7 +544,17 @@ body.lock-mode .md-toolbar { opacity: 0.4; pointer-events: none; }
   border-radius: var(--radius-md); padding: 8px 10px;
   box-shadow: var(--shadow-md); pointer-events: auto; z-index: 6;
   font-size: 12.5px; line-height: 1.4;
-  animation: comment-floating-in 0.15s ease forwards;
+  /* Own keyframe (not shared with .comment-floating-composer, which animates
+     a different transform) so this bubble's `forwards` fill lands back on
+     its own translateY(-50%) instead of the composer's translate(-8px,-100%).
+     `top` transitions separately so navigating prev/next slides the same
+     element to its new anchor instead of jumping. */
+  animation: comment-bubble-in 0.15s ease forwards;
+  transition: top 0.18s ease;
+}
+@keyframes comment-bubble-in { from { opacity: 0; transform: translateY(-50%) scale(0.97); } to { opacity: 1; transform: translateY(-50%) scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .comment-floating-bubble { transition: none; animation: none; }
 }
 .comment-floating-bubble-meta {
   font-size: 10.5px; font-weight: 650; color: var(--text-secondary); margin-bottom: 3px;

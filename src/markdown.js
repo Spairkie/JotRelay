@@ -379,8 +379,12 @@ function _renderNode(node, text, ctx) {
     case 'FencedCode': {
       const infoNode = node.getChild('CodeInfo');
       const lang = infoNode ? text.slice(infoNode.from, infoNode.to).trim() : '';
-      const textNode = node.getChild('CodeText');
-      const body = textNode ? text.slice(textNode.from, textNode.to) : '';
+      // A top-level fence gets one contiguous CodeText child, but @lezer/
+      // markdown emits one CodeText *per line* when the fence is nested
+      // inside a list item — getChild() alone silently dropped every line
+      // after the first in that case. Collect and join all of them.
+      const textNodes = _children(node).filter((c) => c.type.name === 'CodeText');
+      const body = textNodes.map((n) => text.slice(n.from, n.to)).join('');
       return `<pre><code${lang ? ` class="language-${escapeHtml(lang)}" data-lang="${escapeHtml(lang)}"` : ''}>${escapeHtml(body)}</code></pre>`;
     }
 
@@ -414,6 +418,14 @@ function _renderNode(node, text, ctx) {
     // Raw HTML — never interpreted, always its literal escaped source text.
     case 'HTMLBlock':
       return `<p>${escapeHtml(text.slice(node.from, node.to))}</p>`;
+
+    // A block-level HTML comment (<!-- ... -->) parses as its own top-level
+    // CommentBlock, not wrapped in HTMLBlock — unlike stray HTML tags, a
+    // comment is meant to be invisible in the rendered output (its content
+    // is still never parsed/interpreted, just discarded entirely instead of
+    // shown as escaped visible text).
+    case 'CommentBlock':
+      return '';
 
     case 'LinkReference':
       // Reference-link *definitions* never render at their own source
@@ -655,8 +667,14 @@ function _renderInlineNode(node, text, ctx) {
     case 'Image':
       return _renderImage(node, text, ctx);
     // Raw HTML — never interpreted.
-    case 'HTMLTag': case 'CommentBlock': case 'ProcessingInstructionBlock':
+    case 'HTMLTag': case 'ProcessingInstructionBlock':
       return escapeHtml(text.slice(node.from, node.to));
+    // Inline HTML comment (a distinct 'Comment' node — not the same node
+    // name as the block-level 'CommentBlock' case above, confirmed by
+    // tracing the actual parse tree). Content still never parsed/
+    // interpreted, just rendered as nothing rather than visible escaped text.
+    case 'Comment':
+      return '';
 
     default: {
       const children = _children(node);

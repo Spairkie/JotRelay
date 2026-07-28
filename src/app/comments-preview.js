@@ -271,17 +271,27 @@ export function _applyMarkdownMode(mode) {
     }
   }
 
-  UI.setMarkdownMode(mode, () => renderMarkdown(UI.getEditorValue()), { live });
+  UI.setMarkdownMode(mode, () => renderMarkdown(UI.getEditorValue()), { live, syncScroll: state.syncScroll });
   if (state.showPreview && !live) _wirePreviewClickOnce();
 
-  // Proportional scroll sync only makes sense when both panes are visible.
-  if (mode === 'split' && live) {
+  _updateScrollSyncWiring();
+
+  _refreshFloatingComments();
+}
+
+/**
+ * (Re)apply the CM6 (Live/Split) proportional scroll-sync wiring for the
+ * current mode/setting. Split out from _applyMarkdownMode so the Sync scroll
+ * settings toggle can re-evaluate it immediately without re-running the rest
+ * of a full mode switch (which would needlessly re-sync CM6 from the
+ * textarea, clear floating comments, etc.).
+ */
+export function _updateScrollSyncWiring() {
+  if (state.markdownMode === 'split' && state.syncScroll && LiveEditor.isMounted()) {
     LiveEditor.wireScrollSync(document.getElementById('note-editor'));
   } else {
     LiveEditor.unwireScrollSync();
   }
-
-  _refreshFloatingComments();
 }
 
 // User edits in the live surface flow back through the textarea's normal

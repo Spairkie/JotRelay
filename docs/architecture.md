@@ -141,7 +141,7 @@ Representative room-scoped properties (not exhaustive — see `src/app/state.js`
 | `state.lastComments` / `state.activeCommentId` | Last-fetched comments and which one's floating bubble is expanded |
 | `state.followedDeviceId` | Which remote device (if any) the local view auto-scrolls to follow |
 
-A handful of properties are deliberately **user-global, not room-scoped**, and persist across room navigation by design: editor preferences (`stripPaste`, `smartPunct`, `focusMode`, `typewriterMode`, `hidePresence`, `monospace`), and `filesSort`.
+A handful of properties are deliberately **user-global, not room-scoped**, and persist across room navigation by design: editor preferences (`stripPaste`, `smartPunct`, `focusMode`, `typewriterMode`, `hidePresence`, `monospace`, `syncScroll`), and `filesSort`.
 
 **Critical invariant**: every room-scoped property must be explicitly reset in `teardownRealtimeSession()` (`src/app/room-lifecycle.js`) — the single authoritative list, deliberately not duplicated here or in `CLAUDE.md` since a second copy drifts as properties are added. Failing to reset any of them can cause state bleed between room sessions (e.g. a stale encryption key being applied to an unencrypted room).
 
