@@ -3,7 +3,7 @@
 // beyond a positive number of seconds), theme switching, file sort.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, openPanel, openMoreMenu, waitForToast } from './helpers.js';
+import { createFreshRoom, openPanel, openMoreMenu, waitForToast } from './helpers.js';
 
 async function openSettingsPanel(page) {
   if (await page.locator('#settings-panel.open').isVisible().catch(() => false)) return;
@@ -14,7 +14,7 @@ async function openSettingsPanel(page) {
 
 test.describe('Settings panel', () => {
   test('opens and shows room settings', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     await expect(page.locator('#settings-panel')).toBeVisible();
     // Should show some setting rows
@@ -22,7 +22,7 @@ test.describe('Settings panel', () => {
   });
 
   test('expiration preset buttons are visible', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     // Expand expiration controls
     await page.locator('#setting-exp-btn').click();
@@ -33,7 +33,7 @@ test.describe('Settings panel', () => {
   });
 
   test('30-second expiry preset is removed (B-2)', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     await page.locator('#setting-exp-btn').click();
     // The 30s preset chip must not exist — it was below the 5-minute minimum
@@ -41,7 +41,7 @@ test.describe('Settings panel', () => {
   });
 
   test('10-minute expiry preset is first and active by default (B-2)', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     await page.locator('#setting-exp-btn').click();
     // First preset chip should be the 10m one
@@ -51,7 +51,7 @@ test.describe('Settings panel', () => {
   });
 
   test('custom expiration accepts 1 second (no artificial floor)', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     await page.locator('#setting-exp-btn').click();
     await page.locator('[data-exp-preset="custom"]').click();
@@ -69,7 +69,7 @@ test.describe('Settings panel', () => {
   });
 
   test('custom expiration rejects zero and negative values', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     await page.locator('#setting-exp-btn').click();
     await page.locator('[data-exp-preset="custom"]').click();
@@ -80,14 +80,14 @@ test.describe('Settings panel', () => {
   });
 
   test('theme picker renders theme options', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     const themeOptions = page.locator('.theme-option');
     expect(await themeOptions.count()).toBeGreaterThanOrEqual(4);
   });
 
   test('clicking a theme option applies it to the document', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     const themes = page.locator('.theme-option');
     // Click the second theme option
@@ -108,7 +108,7 @@ test.describe('Settings panel', () => {
     // overflow-y:auto — promoted overflow-x to auto too, producing an
     // unwanted sideways scroll. See styles/panels.css .theme-option's
     // min-width:0 for the fix.
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     const overflow = await page.evaluate(() => {
       const body   = document.querySelector('#settings-panel .panel-body');
@@ -123,14 +123,14 @@ test.describe('Settings panel', () => {
   });
 
   test('strip formatting on paste toggle is visible', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     const btn = page.locator('#setting-strip-paste-btn');
     await expect(btn).toBeVisible();
   });
 
   test('strip formatting on paste toggles between On and Off', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     const btn = page.locator('#setting-strip-paste-btn');
 
@@ -149,19 +149,19 @@ test.describe('Settings panel', () => {
 
 test.describe('View-once mode', () => {
   test('view-once toggle button is visible in settings panel', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     await expect(page.locator('#setting-vo-btn')).toBeVisible();
   });
 
   test('view-once status element is present', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     await expect(page.locator('#setting-vo-status')).toBeVisible();
   });
 
   test('clicking view-once button toggles the status text', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     const btn    = page.locator('#setting-vo-btn');
     const status = page.locator('#setting-vo-status');
@@ -176,7 +176,7 @@ test.describe('View-once mode', () => {
   });
 
   test('consumeViewOnce is atomic — two racing consumers cannot both win (SP-AUDIT-0006)', async ({ page }) => {
-    const roomId = await createRoom(page);
+    const roomId = await createFreshRoom(page);
 
     // consumeViewOnceAtomic() conditions its UPDATE on viewed=false, so of
     // two consumers racing from the exact same pre-consumption room
@@ -205,14 +205,14 @@ test.describe('View-once mode', () => {
 
 test.describe('Device limit', () => {
   test('device limit toggle button and input are visible in settings panel', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     await expect(page.locator('#setting-dl-btn')).toBeVisible();
     await expect(page.locator('#setting-dl-input')).toBeVisible();
   });
 
   test('rejects an out-of-range device count without enabling', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     await page.fill('#setting-dl-input', '0');
     await page.click('#setting-dl-btn');
@@ -221,7 +221,7 @@ test.describe('Device limit', () => {
   });
 
   test('clicking the button toggles the status text and disables the input while armed', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     const btn    = page.locator('#setting-dl-btn');
     const status = page.locator('#setting-dl-status');
@@ -242,13 +242,13 @@ test.describe('Device limit', () => {
 
 test.describe('Lock editing', () => {
   test('lock editing button is visible in settings panel for owner', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     await expect(page.locator('#setting-lock-btn')).toBeVisible();
   });
 
   test('clicking lock button makes editor read-only', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     const lockBtn = page.locator('#setting-lock-btn');
 
@@ -263,7 +263,7 @@ test.describe('Lock editing', () => {
   });
 
   test('clicking lock button again unlocks the editor', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openSettingsPanel(page);
     const lockBtn = page.locator('#setting-lock-btn');
 
@@ -285,14 +285,14 @@ test.describe('Lock editing', () => {
 
 test.describe('File sort', () => {
   test('file sort dropdown is visible in the files panel', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openPanel(page, 'files');
     const sortSelect = page.locator('#files-sort');
     await expect(sortSelect).toBeVisible();
   });
 
   test('file sort dropdown has the expected ordering options', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openPanel(page, 'files');
     const sortSelect = page.locator('#files-sort');
     const options = await sortSelect.locator('option').allTextContents();
@@ -304,7 +304,7 @@ test.describe('File sort', () => {
   });
 
   test('file sort defaults to "newest"', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openPanel(page, 'files');
     const sortSelect = page.locator('#files-sort');
     const value = await sortSelect.inputValue();

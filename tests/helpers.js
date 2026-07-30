@@ -20,20 +20,26 @@ export async function supabaseAvailable(page) {
   return page.evaluate(() => typeof window.supabase !== 'undefined');
 }
 
-/**
- * Create a new room via the landing page "New room" button.
- * Automatically skips the calling test when Supabase is not reachable
- * (CDN blocked, network policy) so flaky timeouts become clean skips.
- * @returns {string} The room path (e.g. "abc123")
- */
-export async function createRoom(page) {
-  await goToLanding(page);
-  // Detect CDN-blocked environments early so tests skip gracefully instead
-  // of spending 15–30 s waiting for a timeout they can never win.
-  const sbAvail = await page.evaluate(() => typeof window.supabase !== 'undefined');
+function _skipIfSupabaseUnavailable(sbAvail) {
   if (!sbAvail) {
     test.skip(true, 'Supabase JS CDN blocked — room creation requires network access');
   }
+}
+
+/**
+ * Create a genuinely new room via the landing page "Create Room" button.
+ * This is the old always-fresh createRoom() behavior — kept under its own
+ * name for the handful of tests that specifically need a room no other
+ * test has touched (see createRoom()'s own comment for exactly which
+ * cases those are). Automatically skips the calling test when Supabase is
+ * not reachable (CDN blocked, network policy) so flaky timeouts become
+ * clean skips.
+ * @returns {string} The room path (e.g. "abc123")
+ */
+export async function createFreshRoom(page) {
+  await goToLanding(page);
+  const sbAvail = await page.evaluate(() => typeof window.supabase !== 'undefined');
+  _skipIfSupabaseUnavailable(sbAvail);
   await page.click('.landing-create-btn');
   await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
   await page.waitForFunction(() => window.__syncpadEventsWired === true, null, { timeout: 5000 });
@@ -41,6 +47,81 @@ export async function createRoom(page) {
   const url = page.url();
   const match = url.match(/\/SyncPad\/([^/?#]+)/);
   return match?.[1] ?? '';
+}
+
+// The suite runs single-worker/serial (playwright.config.js's workers: 1),
+// so a single fixed room reused across tests has no cross-test race to
+// design around — just resetting its state between uses. Room IDs have no
+// server-side format constraint (plain `text primary key`), and visiting a
+// not-yet-existing room ID auto-creates it (joinRoom()'s documented
+// not-found fallback — see CLAUDE.md), so this needs no separate
+// provisioning step: the very first test run's reset silently updates zero
+// rows, and the following goto() creates it fresh with default (empty)
+// content, which is already pristine.
+const _FIXTURE_ROOM_ID = 'e2e-fixture-main-9f3k2';
+
+/**
+ * Directly reset the fixture room's server-side state to pristine defaults
+ * via a raw Supabase call — bypassing the UI entirely, since most of what
+ * needs resetting (passcode, lock, expiry, device limit) has no single
+ * "reset everything" UI action, only individual remove/disable ones. Anon
+ * has unrestricted update/delete rights on these specific rows by design
+ * (see CLAUDE.md: "room_id alone is a sufficient write credential" — the
+ * same no-accounts trust model every other anonymous write in this app
+ * relies on).
+ *
+ * Deliberately does NOT touch: syncpad_room_revisions (anon can insert/
+ * read but not delete), syncpad_room_seen_devices, syncpad_share_links, or
+ * syncpad_room_codes (anon has no direct access at all to these three —
+ * function/admin-only). Tests that care about a clean revision history, a
+ * fresh share link, or a fresh short code use createFreshRoom() instead.
+ */
+async function _resetRoomToPristine(page, roomId) {
+  await page.evaluate(async (id) => {
+    // window.supabase is the CDN-loaded library namespace (createClient,
+    // etc.), not an initialized client — the app's own already-configured
+    // client lives behind getSupabaseClient() in src/supabase.js, same as
+    // every other in-page Supabase call this suite makes.
+    const { getSupabaseClient } = await import('/SyncPad/src/supabase.js');
+    const sb = getSupabaseClient();
+    await sb.from('syncpad_rooms').update({
+      content: '', room_name: '', passcode_hash: null, passcode_salt: null,
+      encryption_enabled: false, encryption_salt: null, expires_at: null,
+      view_once: false, viewed: false, editing_locked: false,
+      device_limit: null, cleared_reason: null,
+      updated_at: new Date().toISOString(),
+    }).eq('room_id', id);
+    await sb.from('syncpad_files').delete().eq('room_id', id);
+    await sb.from('syncpad_room_comments').delete().eq('room_id', id);
+  }, roomId);
+}
+
+/**
+ * The common case for "give me a working room" — reuses one fixed,
+ * dedicated fixture room (reset to pristine defaults first) instead of
+ * inserting a brand-new row every call, which is what made the full suite
+ * create 300+ rooms per run and trip this project's own anonymous-write
+ * rate limiter (supabase/migrations/0010_anonymous_write_rate_limiting.sql).
+ * Same signature/return value as the old always-fresh behavior, so the
+ * large majority of spec files need no changes at all.
+ *
+ * Not used by: tests/settings.spec.js (encryption — anon can't be told the
+ * passphrase a prior test used to disable it again), tests/history.spec.js
+ * (version history — its revisions can't be cleared by anon), and
+ * tests/short-room-code.spec.js (short codes — also anon-inaccessible).
+ * Those use createFreshRoom() instead, isolating their harder-to-reset
+ * state to a room nothing else touches.
+ * @returns {string} The room path (e.g. "abc123")
+ */
+export async function createRoom(page) {
+  await goToLanding(page);
+  const sbAvail = await page.evaluate(() => typeof window.supabase !== 'undefined');
+  _skipIfSupabaseUnavailable(sbAvail);
+  await _resetRoomToPristine(page, _FIXTURE_ROOM_ID);
+  await page.goto(`/SyncPad/${_FIXTURE_ROOM_ID}`);
+  await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
+  await page.waitForFunction(() => window.__syncpadEventsWired === true, null, { timeout: 5000 });
+  return _FIXTURE_ROOM_ID;
 }
 
 /**

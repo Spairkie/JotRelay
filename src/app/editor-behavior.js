@@ -13,7 +13,7 @@ import { BODY_MAX } from '../templates.js';
 import * as LiveEditor from '../live-editor.js';
 import * as UI from '../ui.js';
 import { copyToClipboard } from '../utils.js';
-import { state, SLASH_MENU_ITEMS, _STRIP_PASTE_KEY, _SMART_PUNCT_KEY, _FOCUS_MODE_KEY, _TYPEWRITER_MODE_KEY, _HIDE_PRESENCE_KEY, _SYNC_SCROLL_KEY } from './state.js';
+import { state, SLASH_MENU_ITEMS, _STRIP_PASTE_KEY, _SMART_PUNCT_KEY, _FOCUS_MODE_KEY, _TYPEWRITER_MODE_KEY, _HIDE_PRESENCE_KEY, _SYNC_SCROLL_KEY, _CODE_LINE_NUMBERS_KEY } from './state.js';
 import { _currentSelectionRange, _openFloatingCommentComposer, _refreshFloatingComments, _updateScrollSyncWiring } from './comments-preview.js';
 import { _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedRefreshFloatingComments } from './comments-preview.js';
 import { _uploadAndInsertImages } from './files-panel.js';
@@ -301,11 +301,14 @@ export function _wireEditorToolbarAndLifecycle() {
     const imageFiles = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
     if (!imageFiles.length) return;
     e.preventDefault();
-    // Stop this from also reaching .editor-area's own generic drop handler
-    // (ui/editor.js's setFileHandlers) — #note-editor is a descendant of
-    // .editor-area, so without this the same drop bubbles into both,
-    // uploading the same file twice.
-    e.stopPropagation();
+    // #note-editor is a descendant of .editor-area, so this drop also
+    // bubbles up to .editor-area's own generic drop handler (ui/editor.js's
+    // setFileHandlers) — mark which files this handler already claimed so
+    // that one can skip them (avoiding the double-upload this used to cause)
+    // while still uploading any *other*, non-image files from the same
+    // mixed drop (e.g. an image dropped together with a PDF) — deliberately
+    // not stopPropagation()'d, which would've silently discarded those too.
+    e._syncpadHandledFiles = new Set(imageFiles);
     _uploadAndInsertImages(imageFiles);
   });
 
@@ -682,13 +685,31 @@ export function _wireEditorPreferenceToggles() {
     UI.showToast(state.syncScroll ? 'Sync scroll: On' : 'Sync scroll: Off', 'info', 2000);
   });
 
+  // ── Code-block line-numbers setting button ──────────────────────────────────
+  const _updateCodeLineNumbersUI = () => {
+    const btn = document.getElementById('setting-code-line-numbers-btn');
+    if (!btn) return;
+    btn.textContent = state.codeLineNumbers ? 'On' : 'Off';
+    btn.setAttribute('aria-pressed', String(state.codeLineNumbers));
+  };
+  _updateCodeLineNumbersUI();
+
+  document.getElementById('setting-code-line-numbers-btn')?.addEventListener('click', () => {
+    state.codeLineNumbers = !state.codeLineNumbers;
+    try { localStorage.setItem(_CODE_LINE_NUMBERS_KEY, String(state.codeLineNumbers)); } catch {}
+    UI.setCodeLineNumbers(state.codeLineNumbers);
+    _updateCodeLineNumbersUI();
+    UI.showToast(state.codeLineNumbers ? 'Code line numbers: On' : 'Code line numbers: Off', 'info', 2000);
+  });
+
   // These are simple on/off flips, not navigations — clicking one shouldn't
   // steal focus (and with it the caret position/selection) from the editor.
   // preventDefault on mousedown stops the browser's default click-to-focus
   // behavior for pointer users while leaving keyboard activation (Tab +
   // Enter/Space, which never fires mousedown) untouched.
   ['setting-monospace-btn', 'setting-strip-paste-btn', 'setting-smart-punct-btn',
-   'setting-focus-mode-btn', 'setting-typewriter-mode-btn', 'setting-hide-presence-btn', 'setting-sync-scroll-btn']
+   'setting-focus-mode-btn', 'setting-typewriter-mode-btn', 'setting-hide-presence-btn', 'setting-sync-scroll-btn',
+   'setting-code-line-numbers-btn']
     .forEach((id) => document.getElementById(id)?.addEventListener('mousedown', (e) => e.preventDefault()));
 }
 

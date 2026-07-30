@@ -3,7 +3,7 @@
 // snapshot-before-Clear-note → Restore round trip.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, typeInEditor, waitForToast, getShareUrl } from './helpers.js';
+import { createFreshRoom, typeInEditor, waitForToast, getShareUrl } from './helpers.js';
 
 /** Open the Tools panel, then the Version History panel from inside it. */
 async function openHistoryPanel(page) {
@@ -20,14 +20,14 @@ async function openHistoryPanel(page) {
 
 test.describe('Version history', () => {
   test('opening the panel on a fresh room shows the empty state', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openHistoryPanel(page);
     await expect(page.locator('#history-empty')).toBeVisible();
     await expect(page.locator('#history-list .history-item')).toHaveCount(0);
   });
 
   test('clearing the note snapshots the prior content, which can then be restored', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     const original = 'Content that must survive a Clear.';
     await typeInEditor(page, original);
 
@@ -60,7 +60,7 @@ test.describe('Version history', () => {
   });
 
   test('the scrubber slider appears once a revision exists, defaulting to "Now"', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await typeInEditor(page, 'First version of the note.');
 
     const toolsPanel = page.locator('#tools-panel');
@@ -91,13 +91,13 @@ test.describe('Version history', () => {
   });
 
   test('the scrubber is hidden on a fresh room with no revisions yet', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await openHistoryPanel(page);
     await expect(page.locator('#history-scrubber')).toHaveClass(/hidden/);
   });
 
   test('Restore is hidden in read-only mode', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await typeInEditor(page, 'some content');
     await page.waitForTimeout(1200); // let the debounced save land before reload
 

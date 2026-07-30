@@ -268,9 +268,11 @@ test.describe('Markdown renderer', () => {
       const src = 'A claim.[^1] A repeat.[^1]\n\n[^1]: The *footnote* text.';
       return mod.renderMarkdown(src);
     });
-    expect(html).toContain('<sup id="fnref-1"><a href="#fn-1">1</a></sup>');
+    // data-footnote-ref/aria-expanded drive the click-to-preview popover
+    // (src/footnote-popover.js) — href stays a real, working no-JS fallback.
+    expect(html).toContain('<sup id="fnref-1"><a href="#fn-1" data-footnote-ref="1" aria-expanded="false">1</a></sup>');
     // Second reference to the same id reuses the number, no duplicate id.
-    expect(html).toContain('<sup><a href="#fn-1">1</a></sup>');
+    expect(html).toContain('<sup><a href="#fn-1" data-footnote-ref="1" aria-expanded="false">1</a></sup>');
     expect(html).toContain('<li id="fn-1">');
     expect(html).toContain('<em>footnote</em>');
     expect(html).toContain('class="footnote-backref"');

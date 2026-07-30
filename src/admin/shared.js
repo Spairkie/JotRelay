@@ -201,6 +201,61 @@ export async function _deleteExpiredRoomsAndStorage() {
   return { error: null, count: deleted };
 }
 
+/**
+ * Debug-only, full-reset helper: deletes every room and its storage files,
+ * regardless of expiry — unlike _deleteExpiredRoomsAndStorage() above, which
+ * this otherwise mirrors closely. Deleting from syncpad_rooms cascades
+ * (on delete cascade, see the migrations) to syncpad_files/
+ * syncpad_room_comments/syncpad_room_revisions/syncpad_share_links/
+ * syncpad_room_codes/syncpad_room_seen_devices/syncpad_room_edit_tokens
+ * automatically. syncpad_room_reports has no FK to syncpad_rooms (rows
+ * survive a room delete on purpose, so a report stays reviewable after its
+ * room is gone) so it's cleared explicitly here, along with
+ * syncpad_rate_limit_log (not room-scoped, but resetting it is the whole
+ * point of a debug "start over" button). Deliberately does NOT touch
+ * syncpad_admins (would lock out admin access) or syncpad_admin_audit_logs
+ * (audit trail; its target_room_id FK is ON DELETE SET NULL, so it already
+ * survives on its own).
+ */
+export async function _resetEntireDatabase() {
+  const { rows: rooms, error: roomsErr } = await _selectAllPages((from, to) =>
+    state.sb.from('syncpad_rooms').select('room_id').order('room_id').range(from, to)
+  );
+  if (roomsErr) return { error: roomsErr, roomsDeleted: null };
+  const roomIds = rooms.map(r => r.room_id).filter(Boolean);
+
+  if (roomIds.length) {
+    const files = [];
+    for (const batch of _chunks(roomIds, ADMIN_QUERY_BATCH_SIZE)) {
+      const { rows, error } = await _selectAllPages((from, to) =>
+        state.sb.from('syncpad_files').select('file_path').in('room_id', batch).order('id').range(from, to)
+      );
+      if (error) return { error, roomsDeleted: null };
+      files.push(...rows);
+    }
+    const { error: storageErr } = await _removeStorageObjects(files.map(r => r.file_path));
+    if (storageErr) return { error: storageErr, roomsDeleted: null };
+
+    for (const batch of _chunks(roomIds, ADMIN_QUERY_BATCH_SIZE)) {
+      const { error } = await state.sb.from('syncpad_rooms').delete().in('room_id', batch);
+      if (error) return { error, roomsDeleted: null };
+    }
+  }
+
+  const { error: reportsErr } = await state.sb.from('syncpad_room_reports').delete().not('id', 'is', null);
+  if (reportsErr) return { error: reportsErr, roomsDeleted: roomIds.length };
+
+  // Best-effort — this table is optional (Phase 40's rate-limiting
+  // migration) and its absence shouldn't fail the whole reset.
+  try {
+    await state.sb.from('syncpad_rate_limit_log').delete().not('id', 'is', null);
+  } catch (e) {
+    console.error('[admin] failed to clear syncpad_rate_limit_log during full reset', e);
+  }
+
+  return { error: null, roomsDeleted: roomIds.length };
+}
+
 // ── Utility helpers ───────────────────────────────────────────────────────────
 
 export function _isExpired(expiresAt) {

@@ -1,6 +1,7 @@
 // SyncPad – ui/editor.js
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { escapeHtml } from '../utils.js';
+import { toggleFootnotePopover } from '../footnote-popover.js';
 
 // ── Editor helpers ────────────────────────────────────────────────────────────
 
@@ -112,6 +113,16 @@ export function setMonospace(on) {
 // font/padding/wrapping, holding the text up to the caret, whose trailing
 // marker's offsetTop gives the same line-wrapped position the browser
 // itself would use, then adjusted by the textarea's own scroll position.
+
+// Code-block line numbers — a body-level flag (like read-only-mode) rather
+// than something threaded through each renderer, since it must apply
+// identically to whichever surface (static preview, Live/Split CM6) happens
+// to be showing a code block at the time, without either renderer needing
+// to know the setting exists. Pure CSS (counter-reset/counter-increment on
+// each block's own lines) drives the actual numbering — see styles/editor.css.
+export function setCodeLineNumbers(on) {
+  document.body.classList.toggle('code-line-numbers', on);
+}
 
 let _focusModeOn = false;
 
@@ -344,7 +355,13 @@ export function setFileHandlers(onFilesSelected) {
       e.preventDefault();
       _edDragDepth = 0;
       edOverlay?.classList.remove('visible');
-      const files = Array.from(e.dataTransfer?.files || []);
+      // editor-behavior.js's own #note-editor drop handler already claimed
+      // (uploaded + inserted) any image files in this same drop before it
+      // bubbled here — exclude those so a mixed image+non-image drop
+      // doesn't upload the images a second time, while still picking up
+      // whatever else was dropped alongside them.
+      const handled = e._syncpadHandledFiles;
+      const files = Array.from(e.dataTransfer?.files || []).filter((f) => !handled || !handled.has(f));
       if (files.length) onFilesSelected(files);
     });
   }
@@ -414,13 +431,13 @@ export function setMarkdownMode(mode, renderFn, { live = false, syncScroll = tru
     editor.classList.add('hidden');
     showPane(live && livePane ? 'live' : 'preview');
     wrap?.classList.add('mode-preview');
-    if (!(live && livePane) && renderFn) { preview.innerHTML = renderFn(); _prismHighlight(preview); _injectTocNav(preview); _resolveFileImages(preview); }
+    if (!(live && livePane) && renderFn) { preview.innerHTML = renderFn(); _prismHighlight(preview); _injectTocNav(preview); _resolveFileImages(preview); _wireInternalAnchorScroll(preview); }
   } else if (mode === 'split') {
     editor.classList.remove('hidden');
     showPane(live && livePane ? 'live' : 'preview');
     wrap?.classList.add('mode-split');
     if (!(live && livePane) && renderFn) {
-      preview.innerHTML = renderFn(); _prismHighlight(preview); _injectTocNav(preview); _resolveFileImages(preview);
+      preview.innerHTML = renderFn(); _prismHighlight(preview); _injectTocNav(preview); _resolveFileImages(preview); _wireInternalAnchorScroll(preview);
       if (syncScroll) _wireScrollSync(editor, preview); else unwireScrollSync();
     }
   } else {
@@ -452,6 +469,21 @@ function _resolveFileImages(container) {
     }).catch(() => {
       img.classList.add('img-broken');
       img.alt = img.alt ? `${img.alt} (image unavailable)` : 'Image unavailable';
+    });
+  });
+  // Non-image file references (markdown.js's _renderLink, syncpad-file:
+  // branch) — same resolver, just landing on href/target/rel instead of src.
+  container.querySelectorAll('a[data-syncpad-file]').forEach((a) => {
+    const filePath = a.dataset.syncpadFile;
+    if (!filePath) return;
+    _fileImageResolver(filePath).then((url) => {
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.removeAttribute('data-syncpad-file');
+    }).catch(() => {
+      a.classList.add('syncpad-file-link-broken');
+      a.title = 'File unavailable';
     });
   });
 }
@@ -487,9 +519,14 @@ function _injectTocNav(preview) {
 // ── Scroll synchronisation (split mode) ──────────────────────────────────────
 let _scrollSyncWired = false;
 let _scrollSync = null; // { editor, preview, onEditorScroll, onPreviewScroll }
-/** Reset the scroll-sync guard so _wireScrollSync can re-attach on the next split-mode entry.
- *  Must be called from teardownRealtimeSession so the guard doesn't persist across rooms. */
-export function resetScrollSync() { _scrollSyncWired = false; }
+/** Detach any active scroll-sync listeners and reset the guard so
+ *  _wireScrollSync can re-attach fresh on the next split-mode entry. Must be
+ *  called from teardownRealtimeSession — previously this only reset the
+ *  guard, leaving the old room's listeners (and _scrollSync reference)
+ *  attached; entering Split in the next room then wired a second pair on
+ *  top, so toggling Sync Scroll off later only removed the newest pair
+ *  while the leaked one kept syncing. */
+export function resetScrollSync() { unwireScrollSync(); }
 function _wireScrollSync(editor, preview) {
   if (_scrollSyncWired) return;
   _scrollSyncWired = true;
@@ -545,7 +582,7 @@ export function refreshPreview(renderFn) {
   const preview = document.getElementById('note-preview');
   if (!preview || preview.classList.contains('hidden')) return;
   preview.innerHTML = renderFn ? renderFn() : '';
-  if (renderFn) { _prismHighlight(preview); _injectTocNav(preview); _resolveFileImages(preview); }
+  if (renderFn) { _prismHighlight(preview); _injectTocNav(preview); _resolveFileImages(preview); _wireInternalAnchorScroll(preview); }
 }
 
 /** Call Prism.js syntax highlighting if it is loaded. */
@@ -553,6 +590,44 @@ function _prismHighlight(container) {
   try {
     if (typeof Prism !== 'undefined') Prism.highlightAllUnder(container);
   } catch {}
+}
+
+// Deliberately not CSS scroll-behavior:smooth (see the comment atop
+// .note-preview in styles/editor.css) — this scopes smoothness to exactly
+// the TOC/footnote-anchor-click interaction instead of every scrollTop
+// assignment, so the Split-mode sync handlers stay instant and jitter-free.
+let _internalAnchorScrollWired = false;
+function _wireInternalAnchorScroll(preview) {
+  if (_internalAnchorScrollWired) return;
+  _internalAnchorScrollWired = true;
+  preview.addEventListener('click', (e) => {
+    // A footnote reference (<sup><a href="#fn-id" data-footnote-ref="id">)
+    // is also an "a[href^=#]" — checked first so clicking one opens the
+    // inline popover instead of jumping all the way to the references
+    // section at the bottom (the href is still a real, working no-JS
+    // fallback for anyone reading with scripts off).
+    const fnRef = e.target.closest('a[data-footnote-ref]');
+    if (fnRef) {
+      e.preventDefault();
+      const id = fnRef.dataset.footnoteRef;
+      const def = preview.querySelector(`#fn-${CSS.escape(id)}`);
+      if (!def) return;
+      const clone = def.cloneNode(true);
+      clone.querySelector('.footnote-backref')?.remove();
+      toggleFootnotePopover(fnRef, clone.innerHTML);
+      return;
+    }
+    const a = e.target.closest('a[href^="#"]');
+    if (!a) return;
+    const id = a.getAttribute('href').slice(1);
+    if (!id) return;
+    const target = document.getElementById(id);
+    if (!target) return;
+    e.preventDefault();
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    location.hash = id;
+  });
 }
 
 // ── Slash-command quick-insert menu ────────────────────────────────────────────

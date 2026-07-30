@@ -325,6 +325,11 @@ function _renderInlineFallback(fragmentText, _unusedOuterText, ctx) {
  */
 function _slugifyHeading(rawText, usedIds) {
   const base = String(rawText)
+    // A heading's HTML comment renders as invisible (see the Comment/
+    // CommentBlock cases in _renderInlineNode/_renderNode) — its words must
+    // not leak into the anchor id/URL either, or the "hidden" text is still
+    // exposed via the address bar after a TOC/anchor navigation.
+    .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/[*_`~=]/g, '')
     .toLowerCase()
     .trim()
@@ -385,7 +390,17 @@ function _renderNode(node, text, ctx) {
       // after the first in that case. Collect and join all of them.
       const textNodes = _children(node).filter((c) => c.type.name === 'CodeText');
       const body = textNodes.map((n) => text.slice(n.from, n.to)).join('');
-      return `<pre><code${lang ? ` class="language-${escapeHtml(lang)}" data-lang="${escapeHtml(lang)}"` : ''}>${escapeHtml(body)}</code></pre>`;
+      // A sibling gutter, not part of <code> itself — Prism.highlightAllUnder()
+      // (ui/editor.js's _prismHighlight) reads <code>'s plain text and
+      // replaces its *entire* innerHTML with its own tokenized markup, so
+      // any per-line wrapper spans living inside <code> would just get
+      // silently destroyed for every language it recognizes. A separate,
+      // empty-span-per-line overlay (same technique Prism's own official
+      // line-numbers plugin uses) sidesteps that entirely; only shown when
+      // the opt-in "Code line numbers" setting is on (styles/editor.css).
+      const lineCount = body.replace(/\n$/, '').split('\n').length;
+      const gutter = `<span class="code-line-numbers-gutter" aria-hidden="true">${'<span></span>'.repeat(lineCount)}</span>`;
+      return `<pre class="code-block">${gutter}<code${lang ? ` class="language-${escapeHtml(lang)}" data-lang="${escapeHtml(lang)}"` : ''}>${escapeHtml(body)}</code></pre>`;
     }
 
     // Deliberately NOT rendered as code — this renderer doesn't support
@@ -712,14 +727,22 @@ function _renderLink(node, text, ctx) {
   const urlNode = node.getChild('URL');
   if (!urlNode) return _renderUnresolvedShortcut(node, text, ctx);
   const url = text.slice(urlNode.from, urlNode.to);
-  if (!/^(?:https?:|mailto:)/i.test(url)) return escapeHtml(text.slice(node.from, node.to));
-  const titleNode = node.getChild('LinkTitle');
-  const titleAttr = titleNode ? ` title="${escapeHtml(_stripQuotes(text.slice(titleNode.from, titleNode.to)))}"` : '';
   const marks = _children(node).filter((c) => c.type.name === 'LinkMark');
   const labelStart = marks[0]?.to ?? node.from;
   const labelEnd = marks.length > 1 ? marks[1].from : (urlNode.from);
   const rawLabel = text.slice(labelStart, labelEnd);
   const label = _unwrapRedundantAnchor(_renderInlineFallback(rawLabel, text, ctx));
+  // A link to an uploaded file (private Storage bucket, no baked-in URL —
+  // same syncpad-file: pseudo-scheme _renderImage already handles). Resolved
+  // client-side to a real signed URL by ui/editor.js's _resolveFileImages()
+  // after this HTML is inserted, mirroring the img[data-syncpad-file] path.
+  const fileMatch = /^syncpad-file:(.+)$/i.exec(url);
+  if (fileMatch) {
+    return `<a href="#" data-syncpad-file="${escapeHtml(fileMatch[1])}" class="syncpad-file-link">${label}</a>`;
+  }
+  if (!/^(?:https?:|mailto:)/i.test(url)) return escapeHtml(text.slice(node.from, node.to));
+  const titleNode = node.getChild('LinkTitle');
+  const titleAttr = titleNode ? ` title="${escapeHtml(_stripQuotes(text.slice(titleNode.from, titleNode.to)))}"` : '';
   return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener noreferrer">${label}</a>`;
 }
 
@@ -759,7 +782,11 @@ function _renderUnresolvedShortcut(node, text, ctx) {
     const isFirstRef = n === -1;
     if (isFirstRef) { ctx.footnoteOrder.push(id); n = ctx.footnoteOrder.length - 1; }
     const anchor = isFirstRef ? ` id="fnref-${id}"` : '';
-    return `<sup${anchor}><a href="#fn-${id}">${n + 1}</a></sup>`;
+    // href="#fn-<id>" is a real, working no-JS fallback (jumps to the
+    // references section); data-footnote-ref is what _wireFootnotePopovers()
+    // (src/ui/editor.js) intercepts to show the text inline instead, without
+    // leaving the reading position — see src/footnote-popover.js.
+    return `<sup${anchor}><a href="#fn-${escapeHtml(id)}" data-footnote-ref="${escapeHtml(id)}" aria-expanded="false">${n + 1}</a></sup>`;
   }
   return escapeHtml(raw);
 }
