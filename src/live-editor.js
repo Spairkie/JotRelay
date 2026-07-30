@@ -24,6 +24,8 @@ import {
 import { escapeHtml } from './utils.js';
 import { highlightExtension } from './markdown-highlight-extension.js';
 import { parseTableAlignments } from './markdown-table-utils.js';
+import { renderMarkdown } from './markdown.js';
+import { toggleFootnotePopover } from './footnote-popover.js';
 
 let _view             = null;
 let _onChange         = null;
@@ -128,7 +130,12 @@ function _quoteLineForDepth(depth) {
   }
   return deco;
 }
-const _codeLine      = Decoration.line({ class: 'cm-md-codeblock' });
+// cm-md-codeblock-content marks only the lines strictly between the opening
+// and closing fence — i.e. the actual code, not the ``` delimiter lines
+// themselves (which also carry the plain cm-md-codeblock box-styling class,
+// via -first/-last below, but shouldn't count as "line 1"/get a trailing
+// blank numbered row when line numbers are on).
+const _codeLine      = Decoration.line({ class: 'cm-md-codeblock cm-md-codeblock-content' });
 const _codeFirstLine = Decoration.line({ class: 'cm-md-codeblock cm-md-codeblock-first' });
 const _codeLastLine  = Decoration.line({ class: 'cm-md-codeblock cm-md-codeblock-last' });
 
@@ -220,15 +227,48 @@ class _AlertLabelWidget extends WidgetType {
 // enough visual distinction that neither form reads as stray bracket noise.
 const _FOOTNOTE_RE = /^\[\^([^\]]+)\]$/;
 
+/** Find "[^label]: text" anywhere in the document — the reference widget
+ *  needs the definition's text to show in its popover, but the two can be
+ *  arbitrarily far apart (definitions are conventionally kept at the bottom
+ *  while references are inline), so this can't just look at nearby lines. */
+function _findFootnoteDefText(doc, label) {
+  const re = new RegExp(`^\\[\\^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]:[ \\t]?(.*)$`);
+  for (let n = 1; n <= doc.lines; n++) {
+    const m = re.exec(doc.line(n).text);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 class _FootnoteRefWidget extends WidgetType {
-  constructor(label) { super(); this.label = label; }
-  eq(other) { return other.label === this.label; }
+  // defText is null for a reference with no matching definition anywhere in
+  // the document — rendered inert (no popover) rather than crashing or
+  // showing an empty box, same "gracefully do nothing" shape as a broken
+  // image thumbnail elsewhere in this app.
+  constructor(label, defText) { super(); this.label = label; this.defText = defText; }
+  eq(other) { return other.label === this.label && other.defText === this.defText; }
   toDOM() {
     const sup = document.createElement('sup');
     sup.className = 'cm-md-footnote-ref';
     sup.textContent = this.label;
+    if (this.defText != null) {
+      sup.classList.add('cm-md-footnote-ref-interactive');
+      sup.tabIndex = 0;
+      sup.setAttribute('role', 'button');
+      sup.setAttribute('aria-expanded', 'false');
+      sup.setAttribute('aria-label', `Footnote ${this.label}`);
+      const open = (evt) => {
+        evt.preventDefault();
+        toggleFootnotePopover(sup, renderMarkdown(this.defText));
+      };
+      sup.addEventListener('mousedown', open);
+      sup.addEventListener('keydown', (evt) => {
+        if (evt.key === 'Enter' || evt.key === ' ') { evt.preventDefault(); open(evt); }
+      });
+    }
     return sup;
   }
+  ignoreEvent() { return true; }
 }
 
 class _FootnoteDefMarkerWidget extends WidgetType {
@@ -427,11 +467,20 @@ const _checklistProgressField = StateField.define({
 // scrolling in the first place), so this uses view.lineBlockAt(pos).top,
 // which is based on CM6's own height map/oracle and works for undrawn
 // positions too — confirmed reliable via direct testing.
-function _scrollPosIntoView(view, pos, { center = true } = {}) {
+// `smooth` defaults to false: this is also the mechanism the Split-mode
+// proportional sync handlers rely on indirectly (they set scrollTop
+// directly, not through here, but share the same scroller) — an animated
+// scroll here is fine since it's a one-off user-initiated jump, but callers
+// that want it (currently only the [TOC] widget's own click) must ask for
+// it explicitly rather than it being a blanket default.
+function _scrollPosIntoView(view, pos, { center = true, smooth = false } = {}) {
   const scroller = view.scrollDOM;
   const block = view.lineBlockAt(Math.min(pos, view.state.doc.length));
   const target = center ? block.top - scroller.clientHeight / 2 : block.top - 40;
-  scroller.scrollTop = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
+  const top = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
+  const reduceMotion = smooth && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (smooth && !reduceMotion) scroller.scrollTo({ top, behavior: 'smooth' });
+  else scroller.scrollTop = top;
 }
 
 // Typora-style [TOC] marker: a line containing only "[TOC]" gets a rendered
@@ -468,15 +517,37 @@ class _TocWidget extends WidgetType {
       const a = document.createElement('a');
       a.href = '#';
       a.textContent = e.text || 'section';
+      const navigate = () => {
+        const pos = Math.min(e.pos, view.state.doc.length);
+        view.dispatch({ selection: { anchor: pos } });
+        _scrollPosIntoView(view, pos, { smooth: true });
+        view.focus();
+      };
       a.addEventListener('mousedown', (evt) => {
         // mousedown (not click) so this fires before the editor would
         // otherwise steal focus/selection on the way to a click.
         evt.preventDefault();
-        const pos = Math.min(e.pos, view.state.doc.length);
-        view.dispatch({ selection: { anchor: pos } });
-        _scrollPosIntoView(view, pos);
-        view.focus();
+        navigate();
       });
+      // A real <a href> is natively Tab-focusable, and a keyboard Enter/Space
+      // on a focused link only ever fires 'click' — never 'mousedown' — so
+      // without this, keyboard users could Tab to an entry but activating it
+      // would do nothing (the preventDefault below would still block the
+      // native "#" navigation, but never actually jump anywhere either). A
+      // real mouse click also fires 'click' right after 'mousedown', which
+      // already navigated — evt.detail is 0 only for a keyboard-synthesized
+      // click, never a real pointer one, so this only re-runs it once, not
+      // twice, for a mouse user.
+      a.addEventListener('click', (evt) => {
+        evt.preventDefault();
+        if (evt.detail === 0) navigate();
+      });
+      // preventDefault() on mousedown stops CM6's own click-to-position
+      // handling, but a real browser still fires the subsequent click event
+      // and follows this <a>'s own href="#" afterward unless that's also
+      // suppressed — left unhandled, it appends a bare "#" to the URL and
+      // fights the scroll dispatched above.
+      a.addEventListener('click', (evt) => evt.preventDefault());
       li.appendChild(a);
       ul.appendChild(li);
     }
@@ -505,16 +576,29 @@ function _computeTocBadges(state) {
   for (let n = 1; n <= state.doc.lines; n++) {
     const line = state.doc.line(n);
     if (!/^\[toc\]$/i.test(line.text.trim())) continue;
-    ranges.push(Decoration.widget({
+    // Reveal the raw "[TOC]" marker while the cursor is actually on it (same
+    // pattern as every other hideable construct in this file) — otherwise
+    // there's no way to select/delete the line without leaving Live mode.
+    if (_selectionTouches(state, line.from, line.to)) continue;
+    // A *replace*, not an insertion: this was previously Decoration.widget()
+    // (additive), which left the literal "[TOC]" text sitting right below
+    // the rendered Contents box instead of being hidden by it — the one
+    // seamless-editing construct in this file that didn't actually replace
+    // its own source text.
+    ranges.push(Decoration.replace({
       widget: new _TocWidget(headings), side: -1, block: true,
-    }).range(line.from));
+    }).range(line.from, line.to));
   }
   return Decoration.set(ranges, true);
 }
 
 const _tocField = StateField.define({
   create: (state) => _computeTocBadges(state),
-  update(value, tr) { return tr.docChanged ? _computeTocBadges(tr.state) : value.map(tr.changes); },
+  // Recomputed on every transaction, not just docChanged — whether the
+  // marker line renders as the widget or reveals its raw "[TOC]" text now
+  // depends on the *selection* too (reveal-while-touched, same as
+  // Image/HorizontalRule/_tableField below).
+  update(value, tr) { return _computeTocBadges(tr.state); },
   provide: (f) => EditorView.decorations.from(f),
 });
 
@@ -649,8 +733,11 @@ export function setCommentAnchors(comments) {
   });
 }
 
-// Extract a Link node's destination for ctrl/cmd+click opening. Only http(s)
-// destinations open — same policy as the markdown renderer.
+// Extract a Link node's destination for ctrl/cmd+click opening — either a
+// real http(s) URL to open directly, or an uploaded file's storage path
+// (syncpad-file: scheme, same as _renderLink/_renderImage in markdown.js)
+// that needs an async signed-URL resolve first. Anything else (unresolved
+// schemes) doesn't open, same policy as the static markdown renderer.
 function _linkUrlAt(state, pos) {
   let node = syntaxTree(state).resolveInner(pos, 1);
   while (node && node.name !== 'Link') node = node.parent;
@@ -658,7 +745,10 @@ function _linkUrlAt(state, pos) {
   const urlNode = node.getChild('URL');
   if (!urlNode) return null;
   const url = state.doc.sliceString(urlNode.from, urlNode.to);
-  return /^https?:\/\//i.test(url) ? url : null;
+  if (/^https?:\/\//i.test(url)) return { type: 'http', url };
+  const fileMatch = /^syncpad-file:(.+)$/i.exec(url);
+  if (fileMatch) return { type: 'file', path: fileMatch[1] };
+  return null;
 }
 
 const _seamless = ViewPlugin.fromClass(class {
@@ -755,7 +845,9 @@ const _seamless = ViewPlugin.fromClass(class {
               const isDefinition = parent?.name === 'Paragraph' && nodeRef.from === parent.from &&
                 state.doc.sliceString(nodeRef.to, nodeRef.to + 1) === ':';
               if (!_selectionTouches(state, nodeRef.from, nodeRef.to)) {
-                const widget = isDefinition ? new _FootnoteDefMarkerWidget(fnMatch[1]) : new _FootnoteRefWidget(fnMatch[1]);
+                const widget = isDefinition
+                  ? new _FootnoteDefMarkerWidget(fnMatch[1])
+                  : new _FootnoteRefWidget(fnMatch[1], _findFootnoteDefText(state.doc, fnMatch[1]));
                 // A definition's own marker widget already renders "1." —
                 // the raw ":" right after [^1] is still literal source text,
                 // not part of the matched node, so it must be folded in here
@@ -926,6 +1018,24 @@ export function coordsAtPos(pos) {
 }
 
 /**
+ * Viewport Y for a document offset, same as coordsAtPos()'s .y but works
+ * even when the position isn't currently drawn (coordsAtPos returns null
+ * for those — the same CM6 behavior _scrollPosIntoView above works around).
+ * No X — callers needing a precise caret X (e.g. the floating comment
+ * composer, which only ever opens at the current, necessarily-visible
+ * selection) should keep using coordsAtPos(); this is for comment margin
+ * dots, which only need a Y and can tolerate lineBlockAt's height-map
+ * estimate for anchors outside the current viewport instead of silently
+ * losing their dot entirely.
+ */
+export function estimateViewportY(pos) {
+  if (!_view || !Number.isFinite(pos) || pos < 0 || pos > _view.state.doc.length) return null;
+  const scroller = _view.scrollDOM;
+  const block = _view.lineBlockAt(pos);
+  return scroller.getBoundingClientRect().top + (block.top - scroller.scrollTop);
+}
+
+/**
  * Mount the surface into `container` (idempotent — remounts if called while
  * already mounted). `onChange(text)` fires only for edits made in this
  * surface, never for syncFromText() applications.
@@ -964,10 +1074,14 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
             if (!(e.ctrlKey || e.metaKey)) return false;
             const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
             if (pos == null) return false;
-            const url = _linkUrlAt(view.state, pos);
-            if (!url) return false;
+            const target = _linkUrlAt(view.state, pos);
+            if (!target) return false;
             e.preventDefault();
-            window.open(url, '_blank', 'noopener');
+            if (target.type === 'http') {
+              window.open(target.url, '_blank', 'noopener');
+            } else if (target.type === 'file' && _fileImageResolver) {
+              _fileImageResolver(target.path).then((url) => window.open(url, '_blank', 'noopener')).catch(() => {});
+            }
             return true;
           },
           paste: (e) => {

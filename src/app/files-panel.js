@@ -20,6 +20,26 @@ function _updateBulkBar() {
   if (deleteEl) deleteEl.disabled   = n === 0;
 }
 
+/**
+ * Escape Markdown-significant characters in a filename before interpolating
+ * it as a link/image label — an uploaded file's name is arbitrary user
+ * input (e.g. "photo].png" or "a [draft] copy.pdf"), and without this a
+ * bracket in the name breaks the generated `[label](url)`/`![label](url)`
+ * reference, rendering as literal source text instead of the link/image.
+ */
+function _escapeMdLabel(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+}
+
+/**
+ * The identifier embedded in a syncpad-file: reference — the short per-room
+ * number (see 0011_short_file_references.sql) when it's present, or the full
+ * legacy storage path for a row from before that migration was applied.
+ */
+function _fileRefId(file) {
+  return file.file_no != null ? file.file_no : file.file_path;
+}
+
 function _sortFiles(files) {
   const arr = [...files];
   switch (state.filesSort) {
@@ -59,7 +79,7 @@ export async function _uploadAndInsertImages(files) {
     if (toUpload.length > 1) UI.setUploadingState(true, `Uploading image ${i + 1} of ${toUpload.length}…`);
     try {
       const record = await uploadFile(state.roomId, toUpload[i]);
-      _insertTextAtActiveCursor(`![${record.filename}](syncpad-file:${record.file_path})\n`);
+      _insertTextAtActiveCursor(`![${_escapeMdLabel(record.filename)}](syncpad-file:${_fileRefId(record)})\n`);
       succeeded++;
     } catch { failed++; }
   }
@@ -124,11 +144,21 @@ export async function refreshFiles() {
         else         state.selectedFiles.delete(file.id);
         _updateBulkBar();
       },
-      onInsert: canEdit() ? (file) => {
+      onInsert: (canEdit() && !state.room?.downloads_disabled) ? (file) => {
         const isImage = _isImage(file.mime_type, _ext(file.filename));
-        const ref = `${isImage ? '!' : ''}[${file.filename}](syncpad-file:${file.file_path})\n`;
+        const label = _escapeMdLabel(file.filename);
+        const refId = _fileRefId(file);
+        const ref = `${isImage ? '!' : ''}[${label}](syncpad-file:${refId})\n`;
         _insertTextAtActiveCursor(ref);
-        UI.showToast(`Inserted "${file.filename}".`, 'success');
+        UI.showToast(`Inserted "${file.filename}" (syncpad-file:${refId}).`, 'success');
+      } : null,
+      // Gated the same as onInsert — a copied reference is only useful
+      // pasted back into this same note, which already requires edit
+      // access, and it exposes the same file-access capability Insert does
+      // (so it must respect downloads_disabled too).
+      onCopyRef: (canEdit() && !state.room?.downloads_disabled) ? async (file) => {
+        const ok = await copyToClipboard(`syncpad-file:${_fileRefId(file)}`);
+        UI.showToast(ok ? 'Reference copied — paste it anywhere in the note.' : 'Could not copy reference.', ok ? 'success' : 'error');
       } : null,
       onPreview: async (file) => {
         try {

@@ -138,8 +138,16 @@
   background: var(--bg-surface); color: var(--text-primary);
   font-size: 15px; line-height: 1.7; letter-spacing: 0.01em;
   font-family: var(--font-ui); overflow-y: auto;
-  /* Smooth same-page jumps for TOC/footnote anchor links. */
-  scroll-behavior: smooth;
+  /* Deliberately no blanket scroll-behavior:smooth here — it would animate
+     *every* scrollTop assignment, including the Split-mode proportional
+     sync handlers' (ui/editor.js's _wireScrollSync), whose intermediate
+     animation-frame scroll events fire after the handler's re-entrancy lock
+     has already cleared and get fed back into the opposite pane as if they
+     were user scrolling — reintroducing the exact jitter the sync handlers
+     are meant to prevent. TOC/footnote anchor clicks get their smoothness
+     explicitly instead, via a dedicated click handler (see
+     _wireInternalAnchorScroll in ui/editor.js) that calls
+     scrollIntoView({behavior:'smooth'}) only for that one interaction. */
 }
 .note-preview.monospace { font-family: var(--font-mono); font-size: 14px; }
 .note-preview.hidden    { display: none; }
@@ -162,14 +170,11 @@
 }
 .note-live.hidden { display: none; }
 .note-live .cm-editor { height: 100%; }
-/* Smooth same-page jumps for the [TOC] widget's own Contents links — the
-   real scrolling element here is CM6's own .cm-scroller, not .note-live
-   (which is overflow:hidden above). */
-.note-live .cm-scroller { scroll-behavior: smooth; }
-
-@media (prefers-reduced-motion: reduce) {
-  .note-preview, .note-live .cm-scroller { scroll-behavior: auto; }
-}
+/* No blanket scroll-behavior:smooth here either, for the same reason as
+   .note-preview above — this scroller is also driven by the Split-mode
+   sync handlers (live-editor.js's wireScrollSync). The [TOC] widget's own
+   click handler opts into smooth scrolling explicitly and only for itself
+   (see _scrollPosIntoView's `smooth` option). */
 .note-live .cm-md-inlinecode {
   font-family: var(--font-mono); font-size: 0.9em;
   background: var(--bg-elevated); border-radius: 4px; padding: 1px 3px;
@@ -197,11 +202,13 @@
 .note-live .cm-md-blockquote-4 { padding-left: 3.2em; }
 /* Fenced code block — background box matching .note-preview pre, applied
    per-line since this surface styles lines rather than wrapping a <pre>
-   around the block (the lines stay individually editable). */
+   around the block (the lines stay individually editable). No left/right
+   border on purpose (see the blockquote-combination rules below) — a
+   background band plus top/bottom caps on the first/last line reads just
+   as clearly as a boxed border, without a border-left to fight over when
+   the block is nested inside a blockquote/alert. */
 .note-live .cm-md-codeblock {
   background: var(--bg-surface);
-  border-left: 1px solid var(--border);
-  border-right: 1px solid var(--border);
   padding-left: 16px; padding-right: 16px;
   font-family: var(--font-mono); font-size: 0.9em;
 }
@@ -214,6 +221,34 @@
   border-bottom: 1px solid var(--border);
   border-bottom-left-radius: var(--radius-md); border-bottom-right-radius: var(--radius-md);
   padding-bottom: 10px;
+}
+/* A fenced code block nested inside a blockquote (or GFM alert) carries
+   both the quote's own line class and the codeblock's — since both are
+   single-class rules, plain cascade order would let whichever is declared
+   last simply clobber the other's padding-left/border-left instead of the
+   two combining (confirmed: this is what broke it before this fix). These
+   higher-specificity combined selectors make the codeblock's own indent
+   additive on top of the quote's, so the block still reads as "inside" the
+   quote (its colored left border) while keeping its own background band. */
+.note-live .cm-md-blockquote.cm-md-codeblock { padding-left: calc(0.8em + 16px); }
+.note-live .cm-md-blockquote-2.cm-md-codeblock { padding-left: calc(1.6em + 16px); }
+.note-live .cm-md-blockquote-3.cm-md-codeblock { padding-left: calc(2.4em + 16px); }
+.note-live .cm-md-blockquote-4.cm-md-codeblock { padding-left: calc(3.2em + 16px); }
+.note-live .cm-md-alert.cm-md-codeblock { padding-left: calc(0.8em + 16px); }
+/* Opt-in code-block line numbers — each fenced-code line is already its own
+   real .cm-line element here (unlike the static preview, which needs a
+   separate gutter overlay to stay Prism-safe — see styles/editor.css's
+   .code-line-numbers-gutter), so a plain inline ::before counter is enough:
+   no absolute positioning, it just flows before the line's own text. */
+body.code-line-numbers .note-live .cm-md-codeblock-first { counter-reset: codeline; }
+body.code-line-numbers .note-live .cm-md-codeblock { padding-left: 0; }
+/* Only content lines get a visible number — the fence-delimiter lines
+   (first/last) keep the box styling but stay un-numbered (see
+   cm-md-codeblock-content in live-editor.js). */
+body.code-line-numbers .note-live .cm-md-codeblock-content::before {
+  counter-increment: codeline; content: counter(codeline);
+  display: inline-block; width: 2em; padding-left: 16px; margin-right: 12px;
+  text-align: right; color: var(--text-muted); user-select: none;
 }
 .note-live .cm-md-bullet { color: var(--text-secondary); margin-right: 0.35em; }
 .note-live .cm-md-checkbox {
@@ -270,8 +305,30 @@
 .note-live .cm-md-footnote-ref {
   font-size: 0.75em; color: var(--accent); font-weight: 600;
 }
+.note-live .cm-md-footnote-ref-interactive { cursor: pointer; border-radius: 3px; }
+.note-live .cm-md-footnote-ref-interactive:hover { text-decoration: underline; }
 .note-live .cm-md-footnote-def-marker {
   font-size: 0.85em; font-weight: 600; color: var(--text-secondary);
+}
+
+/* Footnote preview popover (src/footnote-popover.js) — click/tap a
+   reference to read its text inline instead of jumping to the bottom.
+   Shared between the static preview and the Live surface; appended
+   directly to <body> (position: absolute against the page, not either
+   editor pane) so it isn't clipped by a scrollable pane's overflow. */
+.footnote-popover {
+  position: absolute; z-index: 50;
+  max-width: min(360px, calc(100vw - 24px));
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 10px 12px;
+  box-shadow: var(--shadow-md); font-size: 13px; line-height: 1.5;
+  animation: footnote-popover-in 0.12s ease;
+}
+.footnote-popover p:first-child { margin-top: 0; }
+.footnote-popover p:last-child { margin-bottom: 0; }
+@keyframes footnote-popover-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .footnote-popover { animation: none; }
 }
 
 /* Remote collaborator carets (Google-Docs style) */
@@ -316,6 +373,9 @@
   min-height: 2.4em; min-width: 4em; background: var(--bg-elevated);
   border: 1px dashed var(--border); box-sizing: border-box;
 }
+.note-preview a.syncpad-file-link-broken {
+  color: var(--text-muted); text-decoration: line-through; cursor: default;
+}
 .note-preview li > ul, .note-preview li > ol { margin: 0.2em 0; }
 .note-preview code {
   font-family: var(--font-mono); font-size: 0.9em;
@@ -324,6 +384,30 @@
 .note-preview pre {
   background: var(--bg-surface); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: 14px 16px; overflow-x: auto; margin: 0.8em 0;
+  position: relative; /* anchors the line-numbers gutter below, when shown */
+}
+/* Opt-in code-block line numbers (Settings > Editor preferences). A gutter
+   *sibling* to <code>, not wrapper spans inside it — Prism.highlightAllUnder()
+   replaces <code>'s entire innerHTML with its own tokenized markup for any
+   language it recognizes, which would silently destroy per-line wrappers
+   living inside it. Hidden by default; toggled on via a body-level class
+   the same way read-only-mode is (see src/ui/editor.js's setCodeLineNumbers). */
+.note-preview .code-line-numbers-gutter { display: none; }
+body.code-line-numbers .note-preview .code-line-numbers-gutter {
+  display: block; position: absolute; top: 0; left: 0; bottom: 0;
+  width: 2.4em; padding-top: 14px; text-align: right; padding-right: 10px;
+  color: var(--text-muted); font-family: var(--font-mono); font-size: 0.85em;
+  user-select: none; counter-reset: codeline;
+  border-right: 1px solid var(--border);
+}
+body.code-line-numbers .note-preview .code-line-numbers-gutter span {
+  display: block; line-height: 1.55; counter-increment: codeline;
+}
+body.code-line-numbers .note-preview .code-line-numbers-gutter span::before {
+  content: counter(codeline);
+}
+body.code-line-numbers .note-preview pre.code-block code {
+  display: block; padding-left: calc(2.4em + 10px + 10px);
 }
 
 /* Table of contents — auto-generated from the note's own headings */
@@ -379,7 +463,14 @@
 .note-live .cm-md-inline-toc strong { color: var(--text-secondary); }
 .note-live .cm-md-inline-toc ul { list-style: none; margin: 0.6em 0 0; padding: 0; }
 .note-live .cm-md-inline-toc li { margin: 0.3em 0; }
-.note-live .cm-md-inline-toc a { color: var(--text-primary); text-decoration: none; pointer-events: none; }
+/* pointer-events was previously "none" here, which silently killed every
+   Contents entry's click-to-navigate — _TocWidget's own mousedown listener
+   (live-editor.js) never fired since the click never reached the <a> at
+   all. These links are meant to be the one interactive part of an otherwise
+   inert widget (ignoreEvent() returns true for everything else), so they
+   need real pointer events, not none. */
+.note-live .cm-md-inline-toc a { color: var(--text-primary); text-decoration: none; cursor: pointer; }
+.note-live .cm-md-inline-toc a:hover { color: var(--accent); text-decoration: underline; }
 .note-preview pre code { background: none; padding: 0; font-size: 0.85em; line-height: 1.55; }
 .note-preview blockquote { border-left: 3px solid var(--accent); padding-left: 14px; margin: 0.8em 0; color: var(--text-secondary); }
 .md-checklist-progress {
@@ -553,15 +644,21 @@ body.lock-mode .md-toolbar { opacity: 0.4; pointer-events: none; }
   font-size: 12.5px; line-height: 1.4;
   /* Own keyframe (not shared with .comment-floating-composer, which animates
      a different transform) so this bubble's `forwards` fill lands back on
-     its own translateY(-50%) instead of the composer's translate(-8px,-100%).
-     `top` transitions separately so navigating prev/next slides the same
-     element to its new anchor instead of jumping. */
+     its own translateY(-50%) instead of the composer's translate(-8px,-100%). */
   animation: comment-bubble-in 0.15s ease forwards;
-  transition: top 0.18s ease;
 }
+/* `top` only transitions for an explicit Prev/Next navigation (see the
+   `animate` flag in ui/collab.js's renderFloatingComments) — the bubble's
+   position is also recalculated on every plain scroll/resize, and
+   transitioning unconditionally made it visibly lag behind its anchor
+   during ordinary scrolling instead of only animating on navigation. */
+.comment-floating-bubble.comment-bubble-navigating { transition: top 0.18s ease; }
 @keyframes comment-bubble-in { from { opacity: 0; transform: translateY(-50%) scale(0.97); } to { opacity: 1; transform: translateY(-50%) scale(1); } }
 @media (prefers-reduced-motion: reduce) {
-  .comment-floating-bubble { transition: none; animation: none; }
+  /* The compound .comment-floating-bubble.comment-bubble-navigating selector
+     is more specific than plain .comment-floating-bubble above, so it must
+     be named explicitly here too or it'd win over this override. */
+  .comment-floating-bubble, .comment-floating-bubble.comment-bubble-navigating { transition: none; animation: none; }
 }
 .comment-floating-bubble-meta {
   font-size: 10.5px; font-weight: 650; color: var(--text-secondary); margin-bottom: 3px;

@@ -2,7 +2,7 @@
 // Room load error states, retry button, and read-only share link handling.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, goToLanding, roomIdFromUrl, supabaseAvailable, typeInEditor, getEditorContent } from './helpers.js';
+import { createRoom, createFreshRoom, goToLanding, roomIdFromUrl, supabaseAvailable, typeInEditor, getEditorContent } from './helpers.js';
 
 test.describe('Room load retry button', () => {
   test('loading screen retry button is hidden on normal load', async ({ page }) => {
@@ -107,12 +107,16 @@ test.describe('Room creation and navigation', () => {
 
 test.describe('Multi-room navigation', () => {
   test('navigating between two rooms loads each correctly', async ({ page }) => {
-    const roomA = await createRoom(page);
+    // Needs two genuinely distinct rooms, unlike most of this suite — the
+    // shared reused fixture createRoom() gives every test would make roomA
+    // and roomB the same room, so this one deliberately uses
+    // createFreshRoom() (real "Create Room" clicks) for both instead.
+    const roomA = await createFreshRoom(page);
     expect(roomA.length).toBeGreaterThan(0);
 
     // Navigate to a second room
     await goToLanding(page);
-    const roomB = await createRoom(page);
+    const roomB = await createFreshRoom(page);
     expect(roomB.length).toBeGreaterThan(0);
     expect(roomB).not.toBe(roomA);
 

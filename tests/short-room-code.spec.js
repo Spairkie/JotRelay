@@ -3,11 +3,11 @@
 // editable room link, generated on demand in the share modal.
 
 import { test, expect } from '@playwright/test';
-import { closePanels, createRoom } from './helpers.js';
+import { closePanels, createFreshRoom } from './helpers.js';
 
 test.describe('Short room codes', () => {
   test('the share modal shows a generated code for the room owner', async ({ page }) => {
-    await createRoom(page);
+    await createFreshRoom(page);
     await closePanels(page);
     await page.locator('#btn-share').click();
     const codeField = page.locator('#share-code-text');
@@ -17,7 +17,7 @@ test.describe('Short room codes', () => {
 
   test('copying the code uses the clipboard button', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await createRoom(page);
+    await createFreshRoom(page);
     await closePanels(page);
     await page.locator('#btn-share').click();
     const codeField = page.locator('#share-code-text');
@@ -30,7 +30,7 @@ test.describe('Short room codes', () => {
   });
 
   test('the code section is hidden in a read-only session', async ({ page }) => {
-    const roomId = await createRoom(page);
+    const roomId = await createFreshRoom(page);
     await page.goto(`/SyncPad/${roomId}?mode=read`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
     await closePanels(page);

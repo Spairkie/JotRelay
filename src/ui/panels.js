@@ -57,6 +57,12 @@ export function openPanel(id) {
   _panelFocusTrap = { trigger, onKey };
 
   requestAnimationFrame(() => {
+    // Don't override a focus target the caller already set explicitly right
+    // after calling openPanel() (e.g. the Find & Replace shortcut focusing
+    // #search-input specifically, rather than whatever's first in the
+    // panel's DOM order) — only fall back to focusing the first focusable
+    // item when nothing in the panel has focus yet.
+    if (panel.contains(document.activeElement)) return;
     const items = _panelFocusables(panel);
     (items[0] || panel).focus();
   });
@@ -254,6 +260,7 @@ export function renderFilesList(files, onDownload, onDelete, opts = {}) {
   const onPreview         = opts.onPreview         || null;
   const onCopyLink        = opts.onCopyLink        || null;
   const onInsert          = opts.onInsert          || null;
+  const onCopyRef         = opts.onCopyRef         || null;
   const selectMode        = !!opts.selectMode;
   const selectedIds       = opts.selectedIds        || new Set();
   const onSelectionChange = opts.onSelectionChange  || null;
@@ -266,7 +273,11 @@ export function renderFilesList(files, onDownload, onDelete, opts = {}) {
       <div class="file-emoji" aria-hidden="true">${fileEmoji(file.mime_type, file.filename)}</div>
       <div class="file-info">
         <div class="file-name">${escapeHtml(file.filename)}</div>
-        <div class="file-meta">${formatFileSize(file.file_size)} · ${formatTimestamp(file.uploaded_at)}</div>
+        <div class="file-meta">${formatFileSize(file.file_size)} · ${formatTimestamp(file.uploaded_at)}${
+          (!selectMode && onCopyRef && file.file_no != null)
+            ? ` · <button class="file-ref-badge" type="button" title="Copy reference: syncpad-file:${file.file_no} — type this directly into the note to link this file, no need to open this panel" aria-label="Copy reference for ${escapeHtml(file.filename)}">#${file.file_no}</button>`
+            : ''
+        }</div>
       </div>
       <div class="file-actions">
         ${(!selectMode && onInsert) ? `<button class="file-action-btn insert" title="Insert ${escapeHtml(file.filename)} into note" aria-label="Insert ${escapeHtml(file.filename)} into note">${getIcon('paste', 15)}</button>` : ''}
@@ -286,7 +297,22 @@ export function renderFilesList(files, onDownload, onDelete, opts = {}) {
       });
     }
     if (!selectMode) {
-      if (onInsert) item.querySelector('.insert').addEventListener('click', () => onInsert(file));
+      if (onInsert) {
+        const insertBtn = item.querySelector('.insert');
+        // In Split mode, the default mousedown-focus-steal would move focus
+        // off the CM6 Live surface before the click handler runs —
+        // _insertTextAtActiveCursor() only chooses Live when
+        // LiveEditor.hasFocus() is still true at that point, so without
+        // this an image selected while editing the Live pane would insert
+        // into the textarea's separate, stale caret instead. Same pattern
+        // already used for the Settings-panel toggle buttons.
+        insertBtn.addEventListener('mousedown', (e) => e.preventDefault());
+        insertBtn.addEventListener('click', () => onInsert(file));
+      }
+      if (onCopyRef && file.file_no != null) {
+        const refBtn = item.querySelector('.file-ref-badge');
+        refBtn?.addEventListener('click', () => onCopyRef(file));
+      }
       if (canDownload && onPreview) item.querySelector('.preview').addEventListener('click', () => onPreview(file));
       if (canDownload && onCopyLink) {
         const copyBtn = item.querySelector('.copy-link');

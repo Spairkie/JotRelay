@@ -252,8 +252,11 @@ export function renderCommentsList(comments, { onDelete, onJump, canDelete = tru
  * @param {(id: string) => void} [opts.onDelete]
  * @param {(direction: 1|-1) => void} [opts.onNavigate]
  * @param {boolean} [opts.canDelete]
+ * @param {boolean} [opts.animate] - true only for an explicit Prev/Next
+ *   navigation, so the bubble slides to its new anchor; plain scroll/resize-
+ *   triggered repositioning (the vast majority of calls) stays instant.
  */
-export function renderFloatingComments(dots, { activeId, onToggle, onDelete, onNavigate, canDelete = true } = {}) {
+export function renderFloatingComments(dots, { activeId, onToggle, onDelete, onNavigate, canDelete = true, animate = false } = {}) {
   const layer = document.getElementById('comment-margin-layer');
   if (!layer) return;
 
@@ -287,7 +290,10 @@ export function renderFloatingComments(dots, { activeId, onToggle, onDelete, onN
   // "entering" animation on every click — only a genuinely new bubble
   // (first open, or reopened after being closed) gets that entrance.
   const bubble = existingBubble || document.createElement('div');
-  bubble.className = 'comment-floating-bubble';
+  // The transition-enabling class is only ever present for the specific
+  // render call that asked for it — reset fresh here rather than toggled,
+  // so a later scroll-triggered refresh (animate: false) never inherits it.
+  bubble.className = `comment-floating-bubble${animate ? ' comment-bubble-navigating' : ''}`;
   bubble.style.top = `${active.y}px`;
   const bodyHtml = active.text == null
     ? '<span class="comment-text-locked">🔒 Encrypted — open with the passphrase to view</span>'

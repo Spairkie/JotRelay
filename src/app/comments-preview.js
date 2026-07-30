@@ -126,7 +126,7 @@ export function _navigateComment(direction) {
   if (!next) return;
   _scrollAndSelectComment(next);
   state.activeCommentId = next.id;
-  _refreshFloatingComments();
+  _refreshFloatingComments(true);
 }
 
 export async function _refreshComments() {
@@ -176,7 +176,7 @@ export async function _refreshComments() {
 // converted here to .editor-wrap-relative since that's what the dots/bubble
 // are positioned against (see .comment-margin-layer's CSS).
 
-export function _refreshFloatingComments() {
+export function _refreshFloatingComments(animate = false) {
   const wrap = document.querySelector('.editor-wrap');
   if (!wrap || !state.lastComments.length) { UI.renderFloatingComments([]); return; }
 
@@ -186,8 +186,14 @@ export function _refreshFloatingComments() {
   const dots = state.lastComments
     .map((c) => {
       if (!Number.isFinite(c.anchor_from)) return null;
-      const coords = live ? LiveEditor.coordsAtPos(c.anchor_from) : UI.getCaretViewportCoords(c.anchor_from);
-      if (!coords) return null;
+      // coordsAtPos() only resolves a position that's currently drawn —
+      // fall back to the height-map-based estimate for a comment anchored
+      // outside the current viewport, or its dot would silently vanish
+      // instead of just showing (approximately) where scrolling would land.
+      const coords = live
+        ? (LiveEditor.coordsAtPos(c.anchor_from) || { y: LiveEditor.estimateViewportY(c.anchor_from) })
+        : UI.getCaretViewportCoords(c.anchor_from);
+      if (!coords || !Number.isFinite(coords.y)) return null;
       return {
         id: c.id, y: coords.y - wrapTop, preview: c._anchorPreview || '',
         author: c.device_name, createdAt: c.created_at, text: c._preview,
@@ -210,6 +216,7 @@ export function _refreshFloatingComments() {
 
   UI.renderFloatingComments(dots, {
     activeId: state.activeCommentId,
+    animate,
     onToggle: _toggleCommentBubble,
     onDelete: (id) => {
       const c = state.lastComments.find((x) => x.id === id);

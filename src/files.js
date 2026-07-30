@@ -41,6 +41,19 @@ const _urlCache         = new Map(); // filePath → { url: string, expiresAt: n
 const _downloadUrlCache = new Map(); // filePath → { url: string, expiresAt: number }
 const URL_TTL_MS = 55 * 60 * 1000; // 55 minutes in milliseconds
 
+// `room_id:file_no` → file row. Populated opportunistically by listFiles()
+// (whenever the Files panel has been loaded this session) so resolving a
+// syncpad-file: reference by its short number usually doesn't need its own
+// round trip — see resolveFileRef() below, which falls back to a direct
+// query on a cache miss (e.g. a reference to a file inserted by another
+// device, in a session where this device never opened the Files panel).
+const _fileByRoomAndNo = new Map();
+function _cacheFileRows(roomId, files) {
+  for (const f of files) {
+    if (f.file_no != null) _fileByRoomAndNo.set(`${roomId}:${f.file_no}`, f);
+  }
+}
+
 // Both caches are only pruned reactively (on lookup/delete), not on a timer —
 // a room with many distinct files previewed over a long session would
 // otherwise accumulate expired entries indefinitely for the life of the tab.
@@ -191,7 +204,43 @@ export async function listFiles(roomId) {
     .from(TABLE).select('*').eq('room_id', roomId)
     .order('uploaded_at', { ascending: false });
   if (error) { logSupabaseError('listFiles', error, { room_id: roomId }); throw error; }
+  _cacheFileRows(roomId, data || []);
   return data || [];
+}
+
+/**
+ * Look up a file by its short per-room number (see 0011_short_file_references.sql).
+ * Checks the listFiles() cache first; falls back to a direct query for a
+ * reference this device hasn't seen yet (e.g. someone else inserted it, and
+ * the Files panel hasn't been opened this session).
+ * @returns {Promise<object|null>}
+ */
+export async function getFileByNo(roomId, fileNo) {
+  const key = `${roomId}:${fileNo}`;
+  if (_fileByRoomAndNo.has(key)) return _fileByRoomAndNo.get(key);
+  const { data, error } = await getSupabaseClient()
+    .from(TABLE).select('*').eq('room_id', roomId).eq('file_no', fileNo).maybeSingle();
+  if (error || !data) return null;
+  _fileByRoomAndNo.set(key, data);
+  return data;
+}
+
+/**
+ * Resolve a syncpad-file: reference (the part after the scheme) embedded in
+ * note content to a real, previewable/downloadable signed URL. Two shapes:
+ *   - a bare per-room file number ("3") — the short, human-typable form
+ *     every insert/paste/drop has produced since 0011_short_file_references.sql.
+ *   - anything else — a full legacy storage path (contains "/"), the only
+ *     shape that existed before file_no; resolved exactly as before so
+ *     notes written before this change keep working unmodified.
+ */
+export async function resolveFileRef(roomId, ref) {
+  if (/^\d+$/.test(ref)) {
+    const row = await getFileByNo(roomId, Number(ref));
+    if (!row) throw new Error('File not found.');
+    return getDownloadUrl(row.file_path);
+  }
+  return getDownloadUrl(ref);
 }
 
 export function subscribeToFiles(roomId, onFilesChange) {

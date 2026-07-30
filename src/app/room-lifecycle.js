@@ -38,6 +38,7 @@ import * as LiveEditor from '../live-editor.js';
 import { setPermissionContext, canEdit, canChangeSettings, editBlockedReason } from '../permissions.js';
 import { loadSavedTheme, THEMES, getSavedTheme, applyTheme } from '../theme.js';
 import { destroyShortcuts } from '../shortcuts.js';
+import { closeFootnotePopover } from '../footnote-popover.js';
 import * as UI from '../ui.js';
 import { initAdmin } from '../admin.js';
 import { state, BASE, EXPIRATION_TIMER_MAX_DELAY_MS, _resolveInitialEditorMode } from './state.js';
@@ -408,6 +409,7 @@ async function startApp() {
   UI.setMonospace(state.monospace);
   UI.setFocusMode(state.focusMode);
   UI.setTypewriterMode(state.typewriterMode);
+  UI.setCodeLineNumbers(state.codeLineNumbers);
   UI.setReadOnlyMode(state.isReadOnly);
   // Transient state for the loading screen only — safe before real content
   // exists because Write mode needs no content (Preview/Split mount the
@@ -918,6 +920,10 @@ export function teardownRealtimeSession() {
   destroyBroadcast();
   destroySync();
   UI.clearFloatingComments();
+  // A footnote popover isn't room-scoped state, but leaving one open across
+  // a navigation would point it at a trigger element that's about to be
+  // torn down/replaced.
+  closeFootnotePopover();
   // Clear any showing "X is typing…" banner and its auto-hide timer so it
   // can never bleed into the next room's loading screen.
   UI.hideTypingIndicator();
