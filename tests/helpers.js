@@ -3,10 +3,22 @@
 
 import { test, expect } from '@playwright/test';
 
-/** Navigate to the SyncPad root and wait for the landing screen. */
+/** Navigate to the SyncPad root (marketing landing page) and wait for it. */
 export async function goToLanding(page) {
   await page.goto('/SyncPad/');
   await page.waitForSelector('#landing-screen:not(.hidden)', { timeout: 10_000 });
+}
+
+/**
+ * Navigate to the bare create/join screen at /SyncPad/app/ and wait for it.
+ * The marketing page at `/` (goToLanding above) is copy-only — its CTAs are
+ * plain links to here. Anything that needs `.landing-create-btn`,
+ * `.landing-join-input`, `.landing-join-btn`, or `#landing-recent` must use
+ * this, not goToLanding().
+ */
+export async function goToAppLanding(page) {
+  await page.goto('/SyncPad/app/');
+  await page.waitForSelector('#app-landing-screen:not(.hidden)', { timeout: 10_000 });
 }
 
 /**
@@ -37,7 +49,7 @@ function _skipIfSupabaseUnavailable(sbAvail) {
  * @returns {string} The room path (e.g. "abc123")
  */
 export async function createFreshRoom(page) {
-  await goToLanding(page);
+  await goToAppLanding(page);
   const sbAvail = await page.evaluate(() => typeof window.supabase !== 'undefined');
   _skipIfSupabaseUnavailable(sbAvail);
   await page.click('.landing-create-btn');

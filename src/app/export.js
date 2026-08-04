@@ -67,7 +67,13 @@ export function _wireExportModal() {
 <title>SyncPad – ${escapeHtml(state.roomId)}</title>
 <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;color:#1a1a1a;line-height:1.7}
 pre{background:#f5f5f5;padding:1em;border-radius:4px;overflow:auto}code{background:#f5f5f5;padding:2px 4px;border-radius:2px}
-blockquote{border-left:3px solid #ccc;margin:0;padding-left:1em;color:#666}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:6px 10px}</style>
+blockquote{border-left:3px solid #ccc;margin:0;padding-left:1em;color:#666}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:6px 10px}
+/* An inline [TOC] marker in the note renders as a collapsed <details> in
+   the live app (src/markdown.js's _renderTocNav) — force it open here so a
+   downloaded/exported .html file shows the full outline, not just "Contents". */
+details.md-inline-toc{border:1px solid #ddd;border-radius:6px;padding:0.6em 0.9em;margin:0 0 1.4em}
+details.md-inline-toc>summary{cursor:default;font-weight:600}
+details.md-inline-toc>ul{display:block!important;list-style:none;margin:0.6em 0 0;padding:0}</style>
 </head><body>${renderTocHtml(headings)}${resolvedBody}</body></html>`;
     _downloadBlob(html, `${state.roomId}.html`, 'text/html');
     UI.showToast('Downloaded .html', 'success');
@@ -114,6 +120,12 @@ blockquote{border-left:3px solid #ccc;margin:0;padding-left:1em;color:#666}table
   td, th { border: 1px solid #ddd; padding: 6px 10px; }
   img { max-width: 100%; }
   a { color: #0066cc; }
+  /* An inline [TOC] marker in the note renders as a collapsed <details> in
+     the live app (src/markdown.js's _renderTocNav) — force it open here so
+     the printed/PDF page shows the full outline, not just "Contents". */
+  details.md-inline-toc { border: 1px solid #ddd; border-radius: 6px; padding: 0.6em 0.9em; margin: 0 0 1.4em; }
+  details.md-inline-toc > summary { cursor: default; font-weight: 600; }
+  details.md-inline-toc > ul { display: block !important; list-style: none; margin: 0.6em 0 0; padding: 0; }
 </style>
 </head><body>${renderTocHtml(headings)}${resolvedHtml}</body></html>`);
     win.document.close();

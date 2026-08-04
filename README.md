@@ -69,7 +69,7 @@
 - **Templates Library v2** — 13 built-in templates (meeting, checklist, standup, bug report, code review, and more); searchable modal with two-column preview pane
 - **Custom templates** — save, rename, delete, export/import as JSON (localStorage-backed, up to 50 000 chars each)
 - **Find & Replace** — case-insensitive (toggle to case-sensitive) search with Prev / Next navigation, Replace, and Replace All
-- **Selection context menu** — right-click (or long-press) selected text, in either Source or Live mode, for quick formatting (bold/italic/strikethrough/highlight/code/link) or to add a comment, without navigating to the toolbar or Comments panel first
+- **Selection context menu** — right-click selected text, in either Source or Live mode, for cut/copy/paste/delete/select-all or to add a comment, without navigating to the toolbar or Comments panel first. On a touchscreen, long-press defers to the device's own native text-selection UI (selection handles, the OS Copy/Select All/Share callout) instead of opening this menu
 - **Inline comments** — anchor a comment to a text range from the Comments panel, the selection context menu, or the floating add-comment button (bottom-right of the editor, or `Ctrl/⌘ + Shift + /`) which opens a composer right at your selection/caret; a small dot in the editor's margin marks each comment's anchor line — click to expand it into a floating bubble with the full text and Prev/Next navigation between comments, without needing to open the panel; requires the optional `supabase/migrations/0003_room_comments.sql` migration
 - **Version History** — browse and restore past snapshots of a room's content, including a scrubbable time-slider; requires the optional `supabase/migrations/0004_version_history.sql` migration
 - **Command palette** — `Ctrl/⌘ + K` (or the More menu) opens a searchable list of every app action — modes, panels, sharing, export, themes, and more — filter by typing, navigate with arrow keys, run with Enter
@@ -316,6 +316,8 @@ See [`docs/architecture.md`](docs/architecture.md) for the full module-by-module
 | [`docs/architecture.md`](docs/architecture.md) | Module responsibilities, data flow, state management |
 | [`docs/security.md`](docs/security.md) | Security model, encryption, XSS mitigations, known limitations |
 | [`docs/playwright.md`](docs/playwright.md) | Running and writing Playwright tests |
+| [`docs/marketing-site.md`](docs/marketing-site.md) | How the landing page and `presskit/` are built and maintained |
+| [`presskit/README.md`](presskit/README.md) | Press/media kit — logos, screenshots, fact sheet |
 | [`CHANGELOG.md`](CHANGELOG.md) | Change history |
 | [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) | Pre-release verification checklist |
 | [`CLAUDE.md`](CLAUDE.md) | Development guide for AI coding assistants |

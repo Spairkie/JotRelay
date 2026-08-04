@@ -52,7 +52,7 @@ import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debounc
 import { _closeSlashMenu, _focusActiveEditorSurface } from './editor-behavior.js';
 import { _selectExpirationPreset } from './panels.js';
 import { wireEvents } from './wiring.js';
-import { wireLandingEvents, wireContactEvents } from './landing.js';
+import { wireLandingEvents, wireContactEvents, wireMarketingPageEvents } from './landing.js';
 
 async function _emptyContentForCurrentEncryption() {
   return state.encKey ? await encryptContent('', state.encKey) : '';
@@ -118,6 +118,12 @@ export async function boot() {
     }
 
     UI.showScreen('landing');
+    wireMarketingPageEvents();
+    return;
+  }
+
+  if (route.type === 'app-landing') {
+    UI.showScreen('app-landing');
     wireLandingEvents();
     return;
   }

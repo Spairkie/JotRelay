@@ -69,6 +69,46 @@ test.describe('Editor selection context menu', () => {
     await expect(page.locator('#editor-context-menu')).not.toHaveClass(/visible/);
   });
 
+  test('a touchscreen long-press does not open the custom menu (defers to native selection UI)', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, 'hello selectable world');
+    const editor = page.locator('#note-editor');
+    // A real long-press fires `pointerdown` (pointerType: 'touch') before the
+    // browser synthesizes `contextmenu` — reproduce that ordering directly,
+    // since Playwright's synthetic contextmenu dispatch above doesn't carry
+    // pointer type information the app-level handler could read from the
+    // contextmenu event itself (see _wireEditorContextMenu, editor-behavior.js).
+    await editor.evaluate((el) => {
+      el.selectionStart = 0; el.selectionEnd = 5;
+      const rect = el.getBoundingClientRect();
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'touch', clientX: rect.x + 40, clientY: rect.y + 20 }));
+      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.x + 40, clientY: rect.y + 20 }));
+    });
+    await expect(page.locator('#editor-context-menu')).not.toHaveClass(/visible/);
+  });
+
+  test('a real mouse right-click after a touch interaction still opens the custom menu', async ({ page }) => {
+    // Guards against the pointerType tracker getting stuck on 'touch' after
+    // a hybrid device's touch interaction — a later genuine mouse
+    // right-click (which fires its own pointerdown with pointerType:
+    // 'mouse' before the contextmenu event, same as a real browser) must
+    // still open the menu.
+    await createRoom(page);
+    await typeInEditor(page, 'hello selectable world');
+    const editor = page.locator('#note-editor');
+    await editor.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'touch', clientX: rect.x + 10, clientY: rect.y + 10 }));
+    });
+    await editor.evaluate((el) => {
+      el.selectionStart = 0; el.selectionEnd = 5;
+      const rect = el.getBoundingClientRect();
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse', clientX: rect.x + 40, clientY: rect.y + 20 }));
+      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.x + 40, clientY: rect.y + 20 }));
+    });
+    await expect(page.locator('#editor-context-menu')).toHaveClass(/visible/);
+  });
+
   test('Add comment opens the floating composer at the selection', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page, 'another selection here');

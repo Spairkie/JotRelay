@@ -71,12 +71,16 @@ export async function _openShareModal() {
   UI.openModal('share-modal');
 }
 
-// ── Landing screen ────────────────────────────────────────────────────────────
+// ── Bare create/join screen (/app) ──────────────────────────────────────────────
+// This is the original landing screen, split out to its own route so the
+// marketing page at `/` can be pure marketing copy — its CTAs are plain links
+// to `${BASE}/app/` rather than wiring up a second copy of this form. See
+// docs/marketing-site.md for the full route/section map.
 
 export function wireLandingEvents() {
-  const createBtn = document.getElementById('landing-create-btn');
   const joinInput = document.getElementById('landing-join-input');
   const joinBtn   = document.getElementById('landing-join-btn');
+  const createBtn = document.getElementById('landing-create-btn');
 
   const handleCreateRoomClick = () => {
     const roomId = generateRoomId();
@@ -159,6 +163,74 @@ function _renderRecentRooms() {
       _renderRecentRooms();
     });
   });
+}
+
+// ── Marketing page (nav toggle, feature tabs, scroll-reveal) ───────────────────
+// Wiring for the `/` marketing page — separate from wireLandingEvents() above,
+// which now only runs for the bare create/join screen at `/app`. Purely
+// presentational; none of this touches room/session state, so unlike the rest
+// of app/*.js it doesn't need an entry in teardownRealtimeSession(). Guarded
+// the same way wireContactEvents is, in case boot() re-runs it in one session.
+let _marketingPageWired = false;
+
+export function wireMarketingPageEvents() {
+  if (_marketingPageWired) return;
+  _marketingPageWired = true;
+
+  // Mobile nav toggle
+  const navToggle = document.getElementById('lp-nav-toggle');
+  const navLinks  = document.getElementById('lp-nav-links');
+  navToggle?.addEventListener('click', () => {
+    const open = navLinks?.classList.toggle('open');
+    navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  navLinks?.querySelectorAll('a').forEach((a) => {
+    a.addEventListener('click', () => {
+      navLinks.classList.remove('open');
+      navToggle?.setAttribute('aria-expanded', 'false');
+    });
+  });
+
+  // Feature tabs
+  const tabsWrap = document.getElementById('lp-feature-tabs');
+  const panelsWrap = document.getElementById('lp-feature-panels');
+  tabsWrap?.addEventListener('click', (e) => {
+    const tab = e.target.closest('.lp-feature-tab');
+    if (!tab) return;
+    const key = tab.dataset.feature;
+    tabsWrap.querySelectorAll('.lp-feature-tab').forEach((t) => {
+      const active = t === tab;
+      t.classList.toggle('active', active);
+      t.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    panelsWrap?.querySelectorAll('.lp-feature-panel').forEach((p) => {
+      p.classList.toggle('active', p.dataset.featurePanel === key);
+    });
+  });
+
+  // Footer year
+  const yearEl = document.getElementById('lp-footer-year');
+  if (yearEl) yearEl.textContent = String(new Date().getFullYear());
+
+  // Scroll-reveal for section headers/cards — progressive enhancement only;
+  // everything already renders visible via CSS if this observer never runs.
+  const revealTargets = document.querySelectorAll(
+    '.lp-section-head, .lp-step, .lp-benefit-card, .lp-feature-shell, .lp-cta',
+  );
+  revealTargets.forEach((el) => el.classList.add('lp-reveal'));
+  if ('IntersectionObserver' in window && revealTargets.length) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('lp-in-view');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    revealTargets.forEach((el) => io.observe(el));
+  } else {
+    revealTargets.forEach((el) => el.classList.add('lp-in-view'));
+  }
 }
 
 // ── Contact form ──────────────────────────────────────────────────────────────

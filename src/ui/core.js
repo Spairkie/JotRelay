@@ -6,6 +6,7 @@ import { countWords, countChars, estimateReadingTime } from '../utils.js';
 
 export function showScreen(name) {
   document.getElementById('landing-screen')?.classList.toggle('hidden',    name !== 'landing');
+  document.getElementById('app-landing-screen')?.classList.toggle('hidden', name !== 'app-landing');
   document.getElementById('loading-screen')?.classList.toggle('hidden',    name !== 'loading');
   document.getElementById('passcode-screen')?.classList.toggle('hidden',   name !== 'passcode');
   document.getElementById('encryption-screen')?.classList.toggle('hidden', name !== 'encryption');

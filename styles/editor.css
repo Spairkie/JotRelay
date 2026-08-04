@@ -441,7 +441,11 @@ body.code-line-numbers .note-preview pre.code-block code {
 .note-toc-h6 { padding-left: 4.5em; }
 
 /* Inline [TOC] marker — Typora-style, rendered in document flow (not the
-   floating auto-nav above, which is .note-toc) */
+   floating auto-nav above, which is .note-toc). Same collapsed-by-default
+   <details>/<summary> pattern as .note-toc above — native keyboard/touch
+   support, no JS needed to toggle. Exported HTML/PDF (src/app/export.js)
+   carry their own override forcing the list visible regardless of [open],
+   since a collapsed <details> prints/exports empty. */
 .md-inline-toc {
   display: block;
   border: 1px solid var(--border);
@@ -451,7 +455,16 @@ body.code-line-numbers .note-preview pre.code-block code {
   padding: 0.6em 0.9em;
   font-size: 0.9em;
 }
-.md-inline-toc strong { color: var(--text-secondary); }
+.md-inline-toc summary {
+  cursor: pointer; font-weight: 600; color: var(--text-secondary);
+  list-style: none; user-select: none;
+}
+.md-inline-toc summary::-webkit-details-marker { display: none; }
+.md-inline-toc summary::before {
+  content: '▸'; display: inline-block; margin-right: 6px;
+  transition: transform 0.15s ease;
+}
+.md-inline-toc[open] summary::before { transform: rotate(90deg); }
 .md-inline-toc ul { list-style: none; margin: 0.6em 0 0; padding: 0; }
 .md-inline-toc li { margin: 0.3em 0; overflow-wrap: break-word; word-break: break-word; }
 .md-inline-toc a { color: var(--text-primary); text-decoration: none; }
@@ -460,7 +473,16 @@ body.code-line-numbers .note-preview pre.code-block code {
   display: block; border: 1px solid var(--border); border-radius: var(--radius-md);
   background: var(--bg-elevated); padding: 0.6em 0.9em; margin: 0 0 1em; font-size: 0.9em;
 }
-.note-live .cm-md-inline-toc strong { color: var(--text-secondary); }
+.note-live .cm-md-inline-toc summary {
+  cursor: pointer; font-weight: 600; color: var(--text-secondary);
+  list-style: none; user-select: none;
+}
+.note-live .cm-md-inline-toc summary::-webkit-details-marker { display: none; }
+.note-live .cm-md-inline-toc summary::before {
+  content: '▸'; display: inline-block; margin-right: 6px;
+  transition: transform 0.15s ease;
+}
+.note-live .cm-md-inline-toc[open] summary::before { transform: rotate(90deg); }
 .note-live .cm-md-inline-toc ul { list-style: none; margin: 0.6em 0 0; padding: 0; }
 .note-live .cm-md-inline-toc li { margin: 0.3em 0; }
 /* pointer-events was previously "none" here, which silently killed every
