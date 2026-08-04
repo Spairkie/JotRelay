@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Encrypted note</title>
+
+  <link rel="stylesheet" href="../../styles/base.css" />
+  <link rel="stylesheet" href="../../styles/landing.css" />
+  <link rel="stylesheet" href="../../styles/app-shell.css" />
+  <link rel="stylesheet" href="../../styles/editor.css" />
+  <link rel="stylesheet" href="../../styles/panels.css" />
+  <link rel="stylesheet" href="../../styles/modals.css" />
+  <link rel="stylesheet" href="../../styles/file-preview.css" />
+  <link rel="stylesheet" href="../../styles/room-tools.css" />
+
+<style>
+  body { overflow: visible !important; }
+  #app-screen { position: static !important; display: flex !important; }
+  .mockup-cursor {
+    position: absolute; display: flex; align-items: center; gap: 6px;
+    pointer-events: none; z-index: 50; transform: translateY(-2px);
+  }
+  .mockup-cursor .flag {
+    font-size: 11px; font-weight: 600; color: #0f0f11; padding: 2px 8px;
+    border-radius: 20px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  }
+  .mockup-cursor .bar { width: 2px; height: 20px; border-radius: 2px; }
+  
+</style>
+</head>
+<body class="mockup-body">
+<div id="encryption-screen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-card-icon">🔐</div>
+    <h2>Encrypted Note</h2>
+    <p>This note text is encrypted. Enter the passphrase to decrypt it.</p>
+    <div class="room-badge" id="encryption-room-badge">quiet-harbor-42</div>
+    <input id="encryption-input" class="auth-input" type="password"
+           placeholder="Enter passphrase…" autocomplete="current-password"
+           aria-label="Encryption passphrase" />
+    <div class="auth-error" id="encryption-error" role="alert" aria-live="assertive"></div>
+    <button id="encryption-submit-btn" class="auth-btn">Decrypt &amp; Open</button>
+  </div>
+
+    
+</body>
+</html>

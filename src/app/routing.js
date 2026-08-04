@@ -129,7 +129,7 @@ window.addEventListener('popstate', () => {
   location.reload();
 });
 
-export const RESERVED_ROOM_PATHS = new Set(['admin', 'contact', 'privacy', 'terms', 'share', 'assets', 'src', 'styles', 'docs']);
+export const RESERVED_ROOM_PATHS = new Set(['admin', 'contact', 'privacy', 'terms', 'share', 'assets', 'src', 'styles', 'docs', 'presskit', 'scripts']);
 
 // A bare 6-character code from the short-code alphabet (see
 // supabase/migrations/0002_short_room_codes.sql) — distinct enough from

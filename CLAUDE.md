@@ -67,6 +67,8 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 
 See [`docs/architecture.md`](docs/architecture.md) for the full module-by-module breakdown (including the `src/app/*.js`, `src/ui/*.js`, and `src/admin/*.js` per-file splits) and data-flow diagrams.
 
+The app root (`/SyncPad/`) doubles as the product's marketing landing page — `#landing-screen` in `index.html`, styled by `styles/landing.css`, wired up by `src/app/landing.js`. A press kit lives in `presskit/` (logos, screenshots, fact sheet). See [`docs/marketing-site.md`](docs/marketing-site.md) for the section map, the asset-generation scripts in `scripts/`, and how to swap in real screenshots/video later.
+
 ### Data Flow
 
 1. `app.js` detects route changes and calls module init functions.

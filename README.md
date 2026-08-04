@@ -316,6 +316,8 @@ See [`docs/architecture.md`](docs/architecture.md) for the full module-by-module
 | [`docs/architecture.md`](docs/architecture.md) | Module responsibilities, data flow, state management |
 | [`docs/security.md`](docs/security.md) | Security model, encryption, XSS mitigations, known limitations |
 | [`docs/playwright.md`](docs/playwright.md) | Running and writing Playwright tests |
+| [`docs/marketing-site.md`](docs/marketing-site.md) | How the landing page and `presskit/` are built and maintained |
+| [`presskit/README.md`](presskit/README.md) | Press/media kit — logos, screenshots, fact sheet |
 | [`CHANGELOG.md`](CHANGELOG.md) | Change history |
 | [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) | Pre-release verification checklist |
 | [`CLAUDE.md`](CLAUDE.md) | Development guide for AI coding assistants |

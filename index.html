@@ -3,13 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="SyncPad — Temporary shared notepad. Real-time sync across all your devices." />
+  <meta name="description" content="SyncPad is a real-time shared notepad you can open and use in seconds — no account needed. Sync notes and files instantly, share read-only links, and encrypt what matters." />
   <meta name="theme-color" content="#0f0f11" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="SyncPad" />
-  <title>SyncPad</title>
+  <title>SyncPad — Real-time shared notepad, no account needed</title>
+
+  <!-- Social preview (Open Graph / Twitter). og:image points at a presskit
+       screenshot — swap for a dedicated 1200×630 social card if you make
+       one; see docs/marketing-site.md. -->
+  <meta property="og:type"        content="website" />
+  <meta property="og:site_name"   content="SyncPad" />
+  <meta property="og:title"       content="SyncPad — Real-time shared notepad, no account needed" />
+  <meta property="og:description" content="Create a room, share the link, and start syncing notes and files instantly. No sign-up, no install — encrypted notes and read-only sharing included." />
+  <meta property="og:url"         content="https://spairkie.github.io/SyncPad/" />
+  <meta property="og:image"       content="https://spairkie.github.io/SyncPad/presskit/screenshot/desktop-editor.png" />
+  <meta name="twitter:card"        content="summary_large_image" />
+  <meta name="twitter:title"       content="SyncPad — Real-time shared notepad, no account needed" />
+  <meta name="twitter:description" content="Create a room, share the link, and start syncing notes and files instantly. No sign-up, no install." />
+  <meta name="twitter:image"       content="https://spairkie.github.io/SyncPad/presskit/screenshot/desktop-editor.png" />
 
   <!-- PWA -->
   <link rel="manifest"         href="/SyncPad/manifest.json" />
@@ -86,45 +100,291 @@
 ═══════════════════════════════════════════════════════════════ -->
 <div id="landing-screen" class="hidden">
   <div class="landing-glow-bg"></div>
-  <div class="landing-inner">
-    <div class="landing-logo">Sync<span>Pad</span></div>
-    <p class="landing-tagline">A temporary shared notepad for fast&nbsp;handoff between devices.</p>
 
-    <button class="landing-create-btn" id="landing-create-btn">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Create Room
-    </button>
-
-    <div class="landing-or">or join existing</div>
-
-    <div class="landing-join">
-      <input id="landing-join-input" class="landing-join-input"
-             type="text" name="syncpad-room-lookup"
-             placeholder="Paste room link, ID, or short code…"
-             aria-label="Room link, ID, or short code to join"
-             autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
-             data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" />
-      <button id="landing-join-btn" class="landing-join-btn">Join</button>
+  <!-- ── Sticky marketing nav ─────────────────────────────────── -->
+  <nav class="lp-nav">
+    <div class="lp-nav-inner">
+      <a class="lp-nav-logo" href="#lp-top">Sync<span>Pad</span></a>
+      <div class="lp-nav-links" id="lp-nav-links">
+        <a href="#lp-features">Features</a>
+        <a href="#lp-how">How it works</a>
+        <a href="#lp-trust">Why SyncPad</a>
+        <a href="/SyncPad/presskit/README.md">Presskit</a>
+        <a href="https://github.com/Spairkie/SyncPad" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </div>
+      <div class="lp-nav-actions">
+        <button class="lp-nav-cta landing-create-trigger" type="button">Create a Room</button>
+        <button class="lp-nav-toggle" id="lp-nav-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="lp-nav-links">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+      </div>
     </div>
+  </nav>
 
-    <!-- Populated by app.js from a local (this-device-only) list of recently
-         visited rooms — hidden entirely when the list is empty. -->
-    <div class="landing-recent hidden" id="landing-recent">
-      <div class="landing-recent-title">Recent rooms</div>
-      <div class="landing-recent-list" id="landing-recent-list"></div>
-    </div>
+  <div class="lp-scroll" id="lp-top">
 
-    <div class="landing-chips">
-      <span class="landing-chip">No account needed</span>
-      <span class="landing-chip">Realtime sync</span>
-      <span class="landing-chip">Read-only sharing</span>
-      <span class="landing-chip">File handoff</span>
-    </div>
-    <nav class="legal-links landing-legal-links" aria-label="Legal links">
-      <a href="/SyncPad/contact">Contact</a>
-      <a href="/SyncPad/privacy">Privacy</a>
-      <a href="/SyncPad/terms">Terms</a>
-    </nav>
+    <!-- ── Hero ───────────────────────────────────────────────── -->
+    <section class="lp-hero">
+      <div class="lp-hero-copy">
+        <span class="lp-eyebrow">No account. No setup. Just sync.</span>
+        <h1 class="lp-h1">Your notes and files, <span class="lp-grad">synced instantly</span> — across every device.</h1>
+        <p class="lp-sub">Open a room, share the link, and start writing together in real time. SyncPad is ready the moment you open it — no sign-up, no install, nothing to configure.</p>
+
+        <div class="lp-hero-ctas">
+          <button class="landing-create-btn" id="landing-create-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Create a Room
+          </button>
+          <a class="lp-btn-secondary" href="#lp-how">See how it works</a>
+        </div>
+
+        <div class="landing-or">or join an existing room</div>
+
+        <div class="landing-join">
+          <input id="landing-join-input" class="landing-join-input"
+                 type="text" name="syncpad-room-lookup"
+                 placeholder="Paste room link, ID, or short code…"
+                 aria-label="Room link, ID, or short code to join"
+                 autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" />
+          <button id="landing-join-btn" class="landing-join-btn">Join</button>
+        </div>
+
+        <!-- Populated by app.js from a local (this-device-only) list of recently
+             visited rooms — hidden entirely when the list is empty. -->
+        <div class="landing-recent hidden" id="landing-recent">
+          <div class="landing-recent-title">Recent rooms</div>
+          <div class="landing-recent-list" id="landing-recent-list"></div>
+        </div>
+
+        <div class="landing-chips">
+          <span class="landing-chip">No account needed</span>
+          <span class="landing-chip">Realtime sync</span>
+          <span class="landing-chip">Read-only sharing</span>
+          <span class="landing-chip">File handoff</span>
+        </div>
+      </div>
+
+      <div class="lp-hero-visual">
+        <div class="lp-video-shell">
+          <!-- Autoplay demo video slot. Replace the empty <video> below with:
+               <video class="lp-demo-video" autoplay muted loop playsinline
+                      poster="/SyncPad/presskit/screenshot/desktop-editor.png">
+                 <source src="/SyncPad/presskit/video/demo.mp4" type="video/mp4">
+               </video>
+               See presskit/video/README.md for the expected filename/format. -->
+          <video class="lp-demo-video" muted loop playsinline preload="none"
+                 poster="/SyncPad/presskit/screenshot/desktop-editor.png" aria-label="SyncPad product demo (coming soon)">
+          </video>
+          <div class="lp-video-badge">Demo video coming soon</div>
+        </div>
+        <img class="lp-hero-float" src="/SyncPad/presskit/screenshot/mobile-responsive.png" alt="SyncPad on mobile" loading="lazy" width="430" height="932" />
+      </div>
+    </section>
+
+    <!-- ── Feature storytelling ──────────────────────────────────── -->
+    <section class="lp-features" id="lp-features">
+      <div class="lp-section-head">
+        <span class="lp-eyebrow">Feature tour</span>
+        <h2>Everything you need, nothing you don't</h2>
+        <p>Six features carry the whole product. Each one works the moment you open a room — no setup screens in between.</p>
+      </div>
+
+      <div class="lp-feature-shell">
+        <div class="lp-feature-tabs" role="tablist" aria-label="SyncPad features" id="lp-feature-tabs">
+          <button class="lp-feature-tab active" role="tab" id="lp-tab-sync" aria-controls="lp-panel-sync" aria-selected="true" data-feature="sync" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            <span>Real-time sync</span>
+          </button>
+          <button class="lp-feature-tab" role="tab" id="lp-tab-encryption" aria-controls="lp-panel-encryption" aria-selected="false" data-feature="encryption" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>Encryption</span>
+          </button>
+          <button class="lp-feature-tab" role="tab" id="lp-tab-files" aria-controls="lp-panel-files" aria-selected="false" data-feature="files" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span>File handoff</span>
+          </button>
+          <button class="lp-feature-tab" role="tab" id="lp-tab-rooms" aria-controls="lp-panel-rooms" aria-selected="false" data-feature="rooms" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <span>Room management</span>
+          </button>
+          <button class="lp-feature-tab" role="tab" id="lp-tab-readonly" aria-controls="lp-panel-readonly" aria-selected="false" data-feature="readonly" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span>Read-only sharing</span>
+          </button>
+          <button class="lp-feature-tab" role="tab" id="lp-tab-instant" aria-controls="lp-panel-instant" aria-selected="false" data-feature="instant" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <span>Accountless &amp; instant</span>
+          </button>
+        </div>
+
+        <div class="lp-feature-panels" id="lp-feature-panels">
+          <div class="lp-feature-panel active" id="lp-panel-sync" role="tabpanel" aria-labelledby="lp-tab-sync" tabindex="0" data-feature-panel="sync">
+            <div class="lp-feature-panel-copy">
+              <h3>Type together, see it land instantly</h3>
+              <p>Every keystroke broadcasts over Supabase Realtime in well under a second, with a durable save to Postgres a beat behind it. Open the same room on two devices and watch them stay in lockstep — presence, typing indicators, and cursor position included.</p>
+            </div>
+            <img src="/SyncPad/presskit/screenshot/live-collaboration.png" alt="Two people editing a SyncPad room live, with presence and a typing indicator visible" loading="lazy" width="1440" height="900" />
+          </div>
+          <div class="lp-feature-panel" id="lp-panel-encryption" role="tabpanel" aria-labelledby="lp-tab-encryption" tabindex="0" data-feature-panel="encryption">
+            <div class="lp-feature-panel-copy">
+              <h3>Lock a note behind a passphrase only you hold</h3>
+              <p>Turn on AES-256-GCM encryption and SyncPad encrypts the note client-side before it ever leaves your browser. The passphrase is never sent or stored — forget it, and the note can't be recovered by anyone, including us.</p>
+            </div>
+            <img src="/SyncPad/presskit/screenshot/encrypted-note.png" alt="SyncPad's encrypted-note passphrase prompt" loading="lazy" width="1280" height="800" />
+          </div>
+          <div class="lp-feature-panel" id="lp-panel-files" role="tabpanel" aria-labelledby="lp-tab-files" tabindex="0" data-feature-panel="files">
+            <div class="lp-feature-panel-copy">
+              <h3>Hand off files as easily as text</h3>
+              <p>Drag a file into the room and it's ready to download on every connected device in seconds — up to 10&nbsp;MB each, multiple files at once, with signed links that expire on their own.</p>
+            </div>
+            <img src="/SyncPad/presskit/screenshot/file-handoff.png" alt="SyncPad's file panel showing several uploaded files ready for handoff" loading="lazy" width="1440" height="900" />
+          </div>
+          <div class="lp-feature-panel" id="lp-panel-rooms" role="tabpanel" aria-labelledby="lp-tab-rooms" tabindex="0" data-feature-panel="rooms">
+            <div class="lp-feature-panel-copy">
+              <h3>Every room, exactly as open as you want it</h3>
+              <p>Set a passcode, lock editing across every device, put an expiry on the room, or cap it to a fixed number of devices — all from the Settings panel, no account required to configure any of it.</p>
+            </div>
+            <div class="lp-mini-mock" aria-hidden="true">
+              <div class="lp-mini-mock-row"><span>Passcode</span><span class="lp-mini-pill on">Enabled</span></div>
+              <div class="lp-mini-mock-row"><span>Editing lock</span><span class="lp-mini-pill">Off</span></div>
+              <div class="lp-mini-mock-row"><span>Auto-expire</span><span class="lp-mini-pill on">24 hours</span></div>
+              <div class="lp-mini-mock-row"><span>Device limit</span><span class="lp-mini-pill on">6 devices</span></div>
+            </div>
+          </div>
+          <div class="lp-feature-panel" id="lp-panel-readonly" role="tabpanel" aria-labelledby="lp-tab-readonly" tabindex="0" data-feature-panel="readonly">
+            <div class="lp-feature-panel-copy">
+              <h3>Share the read, keep the write</h3>
+              <p>Generate a read-only link or a short spoken code that lets anyone view the room without editing a word — perfect for sending a draft to a client or a stakeholder who just needs to look.</p>
+            </div>
+            <img src="/SyncPad/presskit/screenshot/room-sharing.png" alt="SyncPad's share modal with editable link, read-only link, and short code" loading="lazy" width="1440" height="900" />
+          </div>
+          <div class="lp-feature-panel" id="lp-panel-instant" role="tabpanel" aria-labelledby="lp-tab-instant" tabindex="0" data-feature-panel="instant">
+            <div class="lp-feature-panel-copy">
+              <h3>Zero sign-up, zero friction</h3>
+              <p>There's no login, no email, no password to create. Open SyncPad, hit Create a Room, and you're writing — the room link itself is the only credential you need.</p>
+            </div>
+            <img src="/SyncPad/presskit/screenshot/desktop-editor.png" alt="A SyncPad room open and ready to write in, moments after creation" loading="lazy" width="1440" height="900" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── How it works ──────────────────────────────────────────── -->
+    <section class="lp-how" id="lp-how">
+      <div class="lp-section-head">
+        <span class="lp-eyebrow">Workflow</span>
+        <h2>From blank room to shared workspace in seconds</h2>
+      </div>
+      <div class="lp-steps">
+        <div class="lp-step">
+          <span class="lp-step-num">01</span>
+          <h3>Create a room</h3>
+          <p>Hit Create a Room and a private space spins up instantly — no forms, no setup screen.</p>
+        </div>
+        <div class="lp-step">
+          <span class="lp-step-num">02</span>
+          <h3>Share the link</h3>
+          <p>Send the editable link for full collaboration, or a read-only link when you just want eyes on it.</p>
+        </div>
+        <div class="lp-step">
+          <span class="lp-step-num">03</span>
+          <h3>Collaborate instantly</h3>
+          <p>Everyone typing sees changes land in real time, with presence and typing indicators so you always know who's there.</p>
+        </div>
+        <div class="lp-step">
+          <span class="lp-step-num">04</span>
+          <h3>Hand off &amp; close out</h3>
+          <p>Drop in files, lock the room when you're done, or let it expire on its own — nothing lingers you didn't mean to keep.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Trust / benefits ──────────────────────────────────────── -->
+    <section class="lp-trust" id="lp-trust">
+      <div class="lp-section-head">
+        <span class="lp-eyebrow">Why SyncPad</span>
+        <h2>Built for fast, low-friction handoff</h2>
+      </div>
+      <div class="lp-benefit-grid">
+        <div class="lp-benefit-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+          <h3>No account needed</h3>
+          <p>Create and join rooms with nothing but a link. No email, no password, no profile to manage.</p>
+        </div>
+        <div class="lp-benefit-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <h3>Encrypted notes</h3>
+          <p>AES-256-GCM encryption, derived and applied entirely in your browser before anything is sent.</p>
+        </div>
+        <div class="lp-benefit-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <h3>Read-only sharing</h3>
+          <p>Send a link that lets people view without ever editing, and lock a room's editing entirely, server-enforced, when you need to freeze it.</p>
+        </div>
+        <div class="lp-benefit-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <h3>Fast handoff</h3>
+          <p>Files up to 10&nbsp;MB, ready to download the moment they finish uploading — no separate transfer tool needed.</p>
+        </div>
+        <div class="lp-benefit-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <h3>Works instantly</h3>
+          <p>No install, no build, no loading spinner marathon. Open the link and you're already synced.</p>
+        </div>
+        <div class="lp-benefit-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <h3>Effortless collaboration</h3>
+          <p>Presence, typing indicators, and live cursors mean you always know who else is in the room with you.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Final CTA ─────────────────────────────────────────────── -->
+    <section class="lp-cta">
+      <h2>Open a room. Start syncing.</h2>
+      <p>One click, no sign-up — your next shared note is thirty seconds away.</p>
+      <div class="lp-cta-actions">
+        <button class="landing-create-btn landing-create-trigger" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create a Room
+        </button>
+        <button class="lp-btn-secondary landing-join-trigger" type="button">Join a room</button>
+      </div>
+    </section>
+
+    <!-- ── Footer ────────────────────────────────────────────────── -->
+    <footer class="lp-footer">
+      <div class="lp-footer-top">
+        <div class="lp-footer-brand">
+          <div class="landing-logo lp-footer-logo">Sync<span>Pad</span></div>
+          <p>A temporary shared notepad for fast handoff between devices.</p>
+        </div>
+        <div class="lp-footer-col">
+          <h4>Product</h4>
+          <a href="#lp-features">Features</a>
+          <a href="#lp-how">How it works</a>
+          <a href="#lp-trust">Why SyncPad</a>
+        </div>
+        <div class="lp-footer-col">
+          <h4>Resources</h4>
+          <a href="https://github.com/Spairkie/SyncPad" target="_blank" rel="noopener noreferrer">GitHub repo</a>
+          <a href="/SyncPad/presskit/README.md">Presskit</a>
+          <a href="https://github.com/Spairkie/SyncPad/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+        </div>
+        <div class="lp-footer-col">
+          <h4>Legal</h4>
+          <a href="/SyncPad/contact">Contact</a>
+          <a href="/SyncPad/privacy">Privacy</a>
+          <a href="/SyncPad/terms">Terms</a>
+        </div>
+      </div>
+      <div class="lp-footer-bottom">
+        <span>&copy; <span id="lp-footer-year">2026</span> SyncPad. A personal project — see the Terms page before you rely on it.</span>
+        <span>Press &amp; media: use the <a href="/SyncPad/contact">contact form</a>.</span>
+      </div>
+    </footer>
+
   </div>
 </div>
 

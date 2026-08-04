@@ -5,13 +5,37 @@ import { test, expect } from '@playwright/test';
 import { goToLanding, roomIdFromUrl, supabaseAvailable } from './helpers.js';
 
 test.describe('Landing page', () => {
-  test('renders logo, tagline, and action buttons', async ({ page }) => {
+  test('renders nav logo, hero headline, and action buttons', async ({ page }) => {
     await goToLanding(page);
-    await expect(page.locator('.landing-logo')).toBeVisible();
-    await expect(page.locator('.landing-tagline')).toBeVisible();
-    await expect(page.locator('.landing-create-btn')).toBeVisible();
+    await expect(page.locator('.lp-nav-logo')).toBeVisible();
+    await expect(page.locator('.lp-h1')).toBeVisible();
+    await expect(page.locator('.lp-sub')).toBeVisible();
+    await expect(page.locator('#landing-create-btn')).toBeVisible();
     await expect(page.locator('.landing-join-input')).toBeVisible();
     await expect(page.locator('.landing-join-btn')).toBeVisible();
+  });
+
+  test('marketing sections and repeated Create-a-Room CTAs render', async ({ page }) => {
+    await goToLanding(page);
+    await expect(page.locator('#lp-features')).toBeAttached();
+    await expect(page.locator('#lp-how')).toBeAttached();
+    await expect(page.locator('#lp-trust')).toBeAttached();
+    await expect(page.locator('.lp-footer')).toBeAttached();
+    // Nav CTA + hero CTA + closing CTA band all share one click handler
+    // (see wireLandingEvents in src/app/landing.js) — every one of them
+    // must be present and clickable, not just the hero's #landing-create-btn.
+    await expect(page.locator('#landing-create-btn, .landing-create-trigger')).toHaveCount(3);
+  });
+
+  test('feature tabs switch the active panel', async ({ page }) => {
+    await goToLanding(page);
+    const encryptionTab = page.locator('.lp-feature-tab[data-feature="encryption"]');
+    await encryptionTab.scrollIntoViewIfNeeded();
+    await expect(page.locator('.lp-feature-panel[data-feature-panel="sync"]')).toHaveClass(/active/);
+    await encryptionTab.click();
+    await expect(encryptionTab).toHaveClass(/active/);
+    await expect(page.locator('.lp-feature-panel[data-feature-panel="encryption"]')).toHaveClass(/active/);
+    await expect(page.locator('.lp-feature-panel[data-feature-panel="sync"]')).not.toHaveClass(/active/);
   });
 
   test('"New room" creates a room and navigates to app screen', { timeout: 60_000 }, async ({ page }) => {

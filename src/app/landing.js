@@ -74,7 +74,6 @@ export async function _openShareModal() {
 // ── Landing screen ────────────────────────────────────────────────────────────
 
 export function wireLandingEvents() {
-  const createBtn = document.getElementById('landing-create-btn');
   const joinInput = document.getElementById('landing-join-input');
   const joinBtn   = document.getElementById('landing-join-btn');
 
@@ -84,6 +83,24 @@ export function wireLandingEvents() {
     UI.showScreen('loading');
     joinRoom(roomId, { isNewRoom: true });
   };
+
+  // The marketing landing page repeats the "Create a Room" CTA in the nav,
+  // the hero, and the closing CTA band — #landing-create-btn is the one
+  // wireContactEvents-style canonical id (hero), the rest share the
+  // `.landing-create-trigger` class so every entry point runs the exact
+  // same handler instead of drifting into separate copies.
+  document.querySelectorAll('#landing-create-btn, .landing-create-trigger')
+    .forEach((btn) => btn.addEventListener('click', handleCreateRoomClick));
+
+  // "Join a room" CTAs outside the hero (nav has none; the final CTA band
+  // does) just bring the real join field into view and focus it, rather
+  // than duplicating the join form itself.
+  document.querySelectorAll('.landing-join-trigger').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      joinInput?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      joinInput?.focus();
+    });
+  });
 
   const joinRoom_ = async () => {
     const raw = joinInput?.value?.trim();
@@ -123,11 +140,11 @@ export function wireLandingEvents() {
     joinRoom(id);
   };
 
-  createBtn?.addEventListener('click', handleCreateRoomClick);
   joinBtn?.addEventListener('click', joinRoom_);
   joinInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom_(); });
 
   _renderRecentRooms();
+  _wireMarketingChrome();
 }
 
 function _renderRecentRooms() {
@@ -159,6 +176,74 @@ function _renderRecentRooms() {
       _renderRecentRooms();
     });
   });
+}
+
+// ── Marketing page chrome (nav toggle, feature tabs, scroll-reveal) ────────────
+// Purely presentational wiring for the redesigned landing page — none of this
+// touches room/session state, so unlike the rest of app/*.js it doesn't need
+// an entry in teardownRealtimeSession(). Guarded the same way wireContactEvents
+// is, since boot() can re-run wireLandingEvents() if the landing screen is
+// shown more than once in a session (e.g. navigating back from a room).
+let _marketingChromeWired = false;
+
+function _wireMarketingChrome() {
+  if (_marketingChromeWired) return;
+  _marketingChromeWired = true;
+
+  // Mobile nav toggle
+  const navToggle = document.getElementById('lp-nav-toggle');
+  const navLinks  = document.getElementById('lp-nav-links');
+  navToggle?.addEventListener('click', () => {
+    const open = navLinks?.classList.toggle('open');
+    navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  navLinks?.querySelectorAll('a').forEach((a) => {
+    a.addEventListener('click', () => {
+      navLinks.classList.remove('open');
+      navToggle?.setAttribute('aria-expanded', 'false');
+    });
+  });
+
+  // Feature tabs
+  const tabsWrap = document.getElementById('lp-feature-tabs');
+  const panelsWrap = document.getElementById('lp-feature-panels');
+  tabsWrap?.addEventListener('click', (e) => {
+    const tab = e.target.closest('.lp-feature-tab');
+    if (!tab) return;
+    const key = tab.dataset.feature;
+    tabsWrap.querySelectorAll('.lp-feature-tab').forEach((t) => {
+      const active = t === tab;
+      t.classList.toggle('active', active);
+      t.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    panelsWrap?.querySelectorAll('.lp-feature-panel').forEach((p) => {
+      p.classList.toggle('active', p.dataset.featurePanel === key);
+    });
+  });
+
+  // Footer year
+  const yearEl = document.getElementById('lp-footer-year');
+  if (yearEl) yearEl.textContent = String(new Date().getFullYear());
+
+  // Scroll-reveal for section headers/cards — progressive enhancement only;
+  // everything already renders visible via CSS if this observer never runs.
+  const revealTargets = document.querySelectorAll(
+    '.lp-section-head, .lp-step, .lp-benefit-card, .lp-feature-shell, .lp-cta',
+  );
+  revealTargets.forEach((el) => el.classList.add('lp-reveal'));
+  if ('IntersectionObserver' in window && revealTargets.length) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('lp-in-view');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    revealTargets.forEach((el) => io.observe(el));
+  } else {
+    revealTargets.forEach((el) => el.classList.add('lp-in-view'));
+  }
 }
 
 // ── Contact form ──────────────────────────────────────────────────────────────
