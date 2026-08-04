@@ -88,17 +88,18 @@ href in JS) — nothing else to wire up.
 
 ## Scripts
 
-Three small Node scripts (`@playwright/test`'s bundled Chromium, no other
-dependencies) generate presskit assets. None of them touch the network or
-Supabase — everything is rendered from local HTML/SVG/CSS.
+Four small Node scripts (`@playwright/test`'s bundled Chromium, plus
+`ffmpeg` for the video) generate presskit assets. None of them touch the
+network or Supabase — everything is rendered from local HTML/SVG/CSS.
 
 | Script | What it does |
 |---|---|
 | `scripts/generate-icon-pngs.mjs` | Rasterizes `presskit/icon/icon.svg` and `icon-simple.svg` to the PNG sizes listed in `presskit/README.md#icon` |
 | `scripts/build-mockups.mjs` | Pulls real screens (header, editor, side panels, share modal, encryption gate) out of `index.html` by id (via `scripts/lib/extract-fragment.mjs`) and writes six standalone HTML files to `scripts/mockups/`, populated with realistic placeholder content |
 | `scripts/generate-screenshots.mjs` | Serves the repo with `tests/spa-server.js` and screenshots each `scripts/mockups/*.html` into `presskit/screenshot/` |
+| `scripts/generate-demo-video.mjs` | Drives the real app markup/CSS through a scripted ~25s sequence (type → live-render → simulated second device → Share modal → Files panel) and assembles it into `presskit/video/demo.mp4` + a poster frame — see `presskit/video/README.md` for why it captures frame-by-frame instead of using Playwright's `recordVideo` |
 
-Regenerate everything after a visual change to the app shell, editor, or
+Regenerate screenshots after a visual change to the app shell, editor, or
 any panel/modal touched by the mockups:
 
 ```bash
@@ -111,7 +112,14 @@ Regenerate icons after editing either source SVG:
 npm run presskit:icons
 ```
 
-The same script (with the size list edited) also produced the app's own
+Regenerate the demo video after a visual change to the header, editor,
+Share modal, or Files panel (requires `ffmpeg` with `libx264` on `PATH`):
+
+```bash
+npm run presskit:video
+```
+
+The icon script (with the size list edited) also produced the app's own
 `assets/icon-192.png` and `assets/icon-512.png` — those are the real PWA
 icons referenced by `manifest.json`, kept in sync with the presskit mark
 so the installed app and the press assets match.
@@ -141,12 +149,14 @@ and `scripts/generate-screenshots.mjs` become optional once you're using
 real captures; keep them around for the next time the UI changes enough to
 need refreshed placeholders.
 
-### Real demo video
+### Upgrading the demo video
 
-See [`presskit/video/README.md`](../presskit/video/README.md) — drop
-`demo.mp4` into `presskit/video/` and swap the empty `<video>` element in
-the hero (search `index.html` for `lp-demo-video`) for the version in that
-file's comment, which re-adds `autoplay` and the `<source>` tag.
+The hero already plays a real (silent, screen-captured) `presskit/video/demo.mp4`
+— see [`presskit/video/README.md`](../presskit/video/README.md) for how it
+was made, `presskit/video/narration-script.md` for a script sized to hand
+off to a voiceover/editing tool, and the "Upgrading to a produced/narrated
+cut" section there for the swap-in steps. Replacing the file (same name) is
+enough — nothing in `index.html` needs to change unless you rename it.
 
 ### Custom domain
 

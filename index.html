@@ -150,16 +150,13 @@
 
       <div class="lp-hero-visual">
         <div class="lp-video-shell">
-          <!-- Autoplay demo video slot. Replace the empty <video> below with:
-               <video class="lp-demo-video" autoplay muted loop playsinline
-                      poster="/SyncPad/presskit/screenshot/desktop-editor.png">
-                 <source src="/SyncPad/presskit/video/demo.mp4" type="video/mp4">
-               </video>
-               See presskit/video/README.md for the expected filename/format. -->
-          <video class="lp-demo-video" muted loop playsinline preload="none"
-                 poster="/SyncPad/presskit/screenshot/desktop-editor.png" aria-label="SyncPad product demo (coming soon)">
+          <!-- Screen-captured product demo — see presskit/video/README.md
+               for how it was generated and how to swap in a produced/
+               narrated cut later (scripts/generate-demo-video.mjs). -->
+          <video class="lp-demo-video" autoplay muted loop playsinline preload="auto"
+                 poster="/SyncPad/presskit/screenshot/demo-video-poster.png" aria-label="SyncPad product demo">
+            <source src="/SyncPad/presskit/video/demo.mp4" type="video/mp4">
           </video>
-          <div class="lp-video-badge">Demo video coming soon</div>
         </div>
         <img class="lp-hero-float" src="/SyncPad/presskit/screenshot/mobile-responsive.png" alt="SyncPad on mobile" loading="lazy" width="430" height="932" />
       </div>

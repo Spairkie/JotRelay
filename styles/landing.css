@@ -146,13 +146,6 @@
   filter: blur(18px); opacity: 0.7;
 }
 .lp-demo-video { width: 100%; height: 100%; object-fit: cover; display: block; background: var(--bg-elevated); }
-.lp-video-badge {
-  position: absolute; left: 14px; bottom: 14px;
-  font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
-  color: var(--text-primary); background: color-mix(in srgb, var(--bg-base) 62%, transparent);
-  backdrop-filter: blur(8px); border: 1px solid var(--border);
-  padding: 6px 12px; border-radius: 20px;
-}
 .lp-hero-float {
   position: absolute; right: 2%; bottom: -9%;
   width: clamp(84px, 12vw, 118px); aspect-ratio: 9 / 19.5;
