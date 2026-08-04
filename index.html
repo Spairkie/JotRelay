@@ -30,6 +30,13 @@
   <link rel="icon"             href="/SyncPad/assets/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="/SyncPad/assets/icon-192.png" />
 
+  <!-- Google Fonts as <link> tags (not base.css's old @import) so the browser's
+       preloader discovers and starts fetching them immediately, in parallel
+       with the local stylesheets below, instead of only after base.css has
+       already downloaded and been parsed. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" />
 
   <script>
     try {
@@ -150,16 +157,21 @@
 
       <div class="lp-hero-visual">
         <div class="lp-video-shell">
-          <!-- Autoplay demo video slot. Replace the empty <video> below with:
-               <video class="lp-demo-video" autoplay muted loop playsinline
-                      poster="/SyncPad/presskit/screenshot/desktop-editor.png">
-                 <source src="/SyncPad/presskit/video/demo.mp4" type="video/mp4">
-               </video>
-               See presskit/video/README.md for the expected filename/format. -->
-          <video class="lp-demo-video" muted loop playsinline preload="none"
-                 poster="/SyncPad/presskit/screenshot/desktop-editor.png" aria-label="SyncPad product demo (coming soon)">
+          <!-- Screen-captured product demo — see presskit/video/README.md
+               for how it was generated and how to swap in a produced/
+               narrated cut later (scripts/generate-demo-video.mjs).
+               autoplay is dropped at runtime (src/app/landing.js) when the
+               visitor has prefers-reduced-motion set; #lp-video-toggle is
+               the WCAG 2.2.2 pause/stop control for everyone else, since
+               this loop runs well past the 5s "must be stoppable" threshold. -->
+          <video class="lp-demo-video" id="lp-demo-video" autoplay muted loop playsinline preload="auto"
+                 poster="/SyncPad/presskit/screenshot/demo-video-poster.png" aria-label="SyncPad product demo">
+            <source src="/SyncPad/presskit/video/demo.mp4" type="video/mp4">
           </video>
-          <div class="lp-video-badge">Demo video coming soon</div>
+          <button class="lp-video-toggle" id="lp-video-toggle" type="button" aria-label="Pause demo video" aria-pressed="false">
+            <svg class="lp-video-toggle-pause" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+            <svg class="lp-video-toggle-play hidden" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          </button>
         </div>
         <img class="lp-hero-float" src="/SyncPad/presskit/screenshot/mobile-responsive.png" alt="SyncPad on mobile" loading="lazy" width="430" height="932" />
       </div>
