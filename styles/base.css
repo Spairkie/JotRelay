@@ -3,9 +3,10 @@
    Theme variables (7 themes), reset, theme transitions, loading screen.
    First of several stylesheets — see index.html for load order, which
    mirrors the original single style.css's rule order exactly.
+   Google Fonts are loaded as <link> tags in index.html's <head>, not via
+   @import here — @import is render-blocking behind this file's own
+   download, delaying font discovery by a full extra round trip.
    ============================================================ */
-
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap');
 
 /* ── Default theme variables (Charcoal Amber) ──────────────── */
 :root {

@@ -169,3 +169,33 @@ static HTML). That process is already documented in
 root" there. The one presskit-specific thing to update afterward: the
 `https://spairkie.github.io/SyncPad/` links in `presskit/README.md`'s fact
 sheet and contact section.
+
+### `robots.txt` / `sitemap.xml`
+
+Both live at the repo root, alongside `index.html`. `robots.txt` allow-lists
+only the static marketing/app-landing routes (`/`, `/app/`, `/privacy`,
+`/terms`, `/contact`, `/presskit/`) and disallows everything else, including
+room paths and `/share/` links — a room URL is a live write credential (see
+CLAUDE.md §5), so it should never end up indexed by a search engine.
+`sitemap.xml` lists the same allow-listed routes.
+
+One caveat: crawlers fetch `robots.txt` from the *origin* root
+(`https://spairkie.github.io/robots.txt`), not from `/SyncPad/robots.txt` —
+so on the current `spairkie.github.io/SyncPad/` project-page hosting, this
+file only takes effect for crawlers that happen to check it relative to the
+page they found (not guaranteed). It becomes fully effective automatically
+if the site ever moves to root hosting or a custom domain (see above) —
+both URLs in these two files hard-code `https://spairkie.github.io/SyncPad/`
+and need updating at the same time as the other custom-domain changes.
+
+### Font loading
+
+`index.html`'s `<head>` loads Google Fonts (DM Sans/DM Mono) via
+`<link rel="preconnect">` + `<link rel="stylesheet">` tags, not a CSS
+`@import` — `@import` only starts downloading once the stylesheet that
+contains it (`styles/base.css`) has itself finished downloading and been
+parsed, adding a full extra round trip before the browser even discovers
+the font request. The presskit generation scripts
+(`scripts/build-mockups.mjs`, `scripts/generate-demo-video.mjs`) load the
+same Google Fonts `<link>` in their own capture pages so screenshots/video
+keep matching font rendering.

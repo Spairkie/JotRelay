@@ -48,6 +48,7 @@ const filesPanel = extractElementById(html, 'files-panel');
 const shareModal = extractElementById(html, 'share-modal');
 
 const STYLES = `
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" />
   <link rel="stylesheet" href="../../styles/base.css" />
   <link rel="stylesheet" href="../../styles/landing.css" />
   <link rel="stylesheet" href="../../styles/app-shell.css" />

@@ -24,6 +24,7 @@ const MIME = {
   '.txt':  'text/plain',
   '.md':   'text/markdown',
   '.mp4':  'video/mp4',
+  '.xml':  'application/xml',
 };
 
 const SPA_INDEX = path.join(APP_ROOT, 'index.html');
