@@ -144,8 +144,27 @@ async function sampleTransition(count, stepMs) {
   }
 }
 
+// Logs the cumulative manifest duration at the moment each visual beat
+// *starts* — i.e. before that beat's own frames are captured. Run this
+// script and copy these numbers into presskit/video/narration-script.md
+// instead of hand-guessing timestamps; they drift every time a hold()/
+// sampleTransition() call above changes.
+function logBeat(label) {
+  const elapsedMs = manifest.reduce((sum, m) => sum + m.durationMs, 0);
+  console.log(`[beat] ${(elapsedMs / 1000).toFixed(2)}s — ${label}`);
+}
+
 await page.goto(`http://localhost:${PORT}/scripts/.tmp-video-capture/demo-capture.html`, { waitUntil: 'load' });
 await page.waitForTimeout(400);
+// Footer metadata starts blank/stale in the extracted fragment — drive it
+// with the app's real formatting logic so it reads correctly on screen
+// throughout the capture instead of showing placeholder text.
+await page.evaluate(async () => {
+  const { updateWordCount, updateFooterClock } = await import('/SyncPad/src/ui/core.js');
+  updateWordCount(document.getElementById('note-editor').value);
+  updateFooterClock();
+});
+logBeat('Empty note, cursor blinking');
 await hold(800);
 
 // ── Beat 1: type into Write mode, one real keystroke per frame ─────────────
@@ -156,12 +175,18 @@ async function typeLine(text, charDelayMs) {
     await capture(charDelayMs);
   }
 }
+logBeat('Typing the checklist');
 await typeLine('# Product Launch Checklist\n\n', 40);
 await typeLine('- [ ] Finalize pricing page\n', 34);
 await typeLine('- [ ] QA the onboarding flow\n', 34);
+await page.evaluate(async () => {
+  const { updateWordCount } = await import('/SyncPad/src/ui/core.js');
+  updateWordCount(document.getElementById('note-editor').value);
+});
 await hold(1000);
 
 // ── Beat 2: switch to Live — reveal the rendered version ───────────────────
+logBeat('Switches to Live, rendered checklist');
 await page.evaluate(async () => {
   const { renderMarkdown } = await import('/SyncPad/src/markdown.js');
   const src = document.getElementById('note-editor').value;
@@ -179,6 +204,7 @@ await page.evaluate(async () => {
 await hold(1600);
 
 // ── Beat 3: a second device joins and adds a line ───────────────────────────
+logBeat("Second device joins, typing indicator");
 await page.evaluate(() => {
   document.getElementById('device-count').textContent = '2 connected';
   const t = document.getElementById('typing-indicator');
@@ -186,20 +212,24 @@ await page.evaluate(() => {
   t.classList.remove('hidden');
 });
 await hold(1800);
+logBeat('Remote line arrives, flashes in');
 await page.evaluate(async () => {
   const { renderMarkdown } = await import('/SyncPad/src/markdown.js');
+  const { updateWordCount } = await import('/SyncPad/src/ui/core.js');
   const src = document.getElementById('note-editor').value + '- [ ] Confirm launch date with marketing\n';
   document.getElementById('note-editor').value = src;
   const preview = document.getElementById('note-preview');
   preview.innerHTML = renderMarkdown(src);
   preview.classList.add('demo-flash');
   document.getElementById('typing-indicator').classList.add('hidden');
+  updateWordCount(src);
 });
 await sampleTransition(6, 250); // flash fading out over ~1.5s
 await page.evaluate(() => document.getElementById('note-preview').classList.remove('demo-flash'));
 await hold(1100);
 
 // ── Beat 4: Share modal ──────────────────────────────────────────────────────
+logBeat('Share modal opens');
 await page.evaluate(() => {
   document.getElementById('share-modal-title').textContent = 'Share "Product Launch Checklist"';
   document.getElementById('share-editable-text').setAttribute('value', 'syncpad.app/product-launch-checklist');
@@ -214,6 +244,7 @@ await sampleTransition(5, 45);
 await hold(600);
 
 // ── Beat 5: Files panel — a file lands ───────────────────────────────────────
+logBeat('Files panel, upload, file lands');
 await page.evaluate(() => {
   document.getElementById('panel-backdrop-demo').classList.add('visible');
   document.getElementById('files-panel').classList.add('open');
@@ -252,6 +283,7 @@ await sampleTransition(6, 45);
 await hold(1300);
 
 // ── Beat 6: end card ──────────────────────────────────────────────────────────
+logBeat('End card');
 await page.evaluate(() => {
   const card = document.createElement('div');
   card.className = 'demo-endcard';

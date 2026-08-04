@@ -152,11 +152,19 @@
         <div class="lp-video-shell">
           <!-- Screen-captured product demo — see presskit/video/README.md
                for how it was generated and how to swap in a produced/
-               narrated cut later (scripts/generate-demo-video.mjs). -->
-          <video class="lp-demo-video" autoplay muted loop playsinline preload="auto"
+               narrated cut later (scripts/generate-demo-video.mjs).
+               autoplay is dropped at runtime (src/app/landing.js) when the
+               visitor has prefers-reduced-motion set; #lp-video-toggle is
+               the WCAG 2.2.2 pause/stop control for everyone else, since
+               this loop runs well past the 5s "must be stoppable" threshold. -->
+          <video class="lp-demo-video" id="lp-demo-video" autoplay muted loop playsinline preload="auto"
                  poster="/SyncPad/presskit/screenshot/demo-video-poster.png" aria-label="SyncPad product demo">
             <source src="/SyncPad/presskit/video/demo.mp4" type="video/mp4">
           </video>
+          <button class="lp-video-toggle" id="lp-video-toggle" type="button" aria-label="Pause demo video" aria-pressed="false">
+            <svg class="lp-video-toggle-pause" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+            <svg class="lp-video-toggle-play hidden" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          </button>
         </div>
         <img class="lp-hero-float" src="/SyncPad/presskit/screenshot/mobile-responsive.png" alt="SyncPad on mobile" loading="lazy" width="430" height="932" />
       </div>

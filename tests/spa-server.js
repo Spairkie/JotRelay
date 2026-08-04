@@ -48,12 +48,24 @@ http.createServer((req, res) => {
     // a Range request on the very first fetch (even for a small autoplay
     // loop) and aborts the whole load if the server ignores it and just
     // returns 200, so this matters for anything beyond plain text/JS/CSS.
+    // Per RFC 7233: a missing start is a suffix range (bytes=-N -> last N
+    // bytes, not "0 to N"), and an end past EOF is clamped to the last byte
+    // rather than rejected — only a start at/past EOF is truly unsatisfiable.
     const range = req.headers.range;
     const rangeMatch = range && /^bytes=(\d*)-(\d*)$/.exec(range);
     if (rangeMatch) {
-      const start = rangeMatch[1] ? parseInt(rangeMatch[1], 10) : 0;
-      const end = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : stat.size - 1;
-      if (start > end || end >= stat.size) {
+      const hasStart = rangeMatch[1] !== '';
+      const hasEnd = rangeMatch[2] !== '';
+      let start, end;
+      if (!hasStart && hasEnd) {
+        const suffixLength = parseInt(rangeMatch[2], 10);
+        start = Math.max(0, stat.size - suffixLength);
+        end = stat.size - 1;
+      } else {
+        start = hasStart ? parseInt(rangeMatch[1], 10) : 0;
+        end = hasEnd ? Math.min(parseInt(rangeMatch[2], 10), stat.size - 1) : stat.size - 1;
+      }
+      if (start >= stat.size || start > end) {
         res.writeHead(416, { 'Content-Range': `bytes */${stat.size}` });
         res.end();
         return true;
