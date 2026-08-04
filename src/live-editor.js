@@ -505,9 +505,15 @@ class _TocWidget extends WidgetType {
       other.entries.every((e, i) => e.level === this.entries[i].level && e.text === this.entries[i].text && e.pos === this.entries[i].pos);
   }
   toDOM(view) {
-    const nav = document.createElement('div');
+    // <details>/<summary> — same collapsed-by-default, native-toggle pattern
+    // as the static renderer's .md-inline-toc (src/markdown.js) and the
+    // floating .note-toc auto-nav, so all three "Contents" boxes behave
+    // identically. ignoreEvent() returning true below keeps CM6 from
+    // intercepting the <summary> click before the browser's native toggle
+    // runs.
+    const nav = document.createElement('details');
     nav.className = 'cm-md-inline-toc';
-    const label = document.createElement('strong');
+    const label = document.createElement('summary');
     label.textContent = 'Contents';
     nav.appendChild(label);
     const ul = document.createElement('ul');

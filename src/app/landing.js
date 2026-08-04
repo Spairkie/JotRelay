@@ -71,11 +71,16 @@ export async function _openShareModal() {
   UI.openModal('share-modal');
 }
 
-// ── Landing screen ────────────────────────────────────────────────────────────
+// ── Bare create/join screen (/app) ──────────────────────────────────────────────
+// This is the original landing screen, split out to its own route so the
+// marketing page at `/` can be pure marketing copy — its CTAs are plain links
+// to `${BASE}/app/` rather than wiring up a second copy of this form. See
+// docs/marketing-site.md for the full route/section map.
 
 export function wireLandingEvents() {
   const joinInput = document.getElementById('landing-join-input');
   const joinBtn   = document.getElementById('landing-join-btn');
+  const createBtn = document.getElementById('landing-create-btn');
 
   const handleCreateRoomClick = () => {
     const roomId = generateRoomId();
@@ -83,24 +88,6 @@ export function wireLandingEvents() {
     UI.showScreen('loading');
     joinRoom(roomId, { isNewRoom: true });
   };
-
-  // The marketing landing page repeats the "Create a Room" CTA in the nav,
-  // the hero, and the closing CTA band — #landing-create-btn is the one
-  // wireContactEvents-style canonical id (hero), the rest share the
-  // `.landing-create-trigger` class so every entry point runs the exact
-  // same handler instead of drifting into separate copies.
-  document.querySelectorAll('#landing-create-btn, .landing-create-trigger')
-    .forEach((btn) => btn.addEventListener('click', handleCreateRoomClick));
-
-  // "Join a room" CTAs outside the hero (nav has none; the final CTA band
-  // does) just bring the real join field into view and focus it, rather
-  // than duplicating the join form itself.
-  document.querySelectorAll('.landing-join-trigger').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      joinInput?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      joinInput?.focus();
-    });
-  });
 
   const joinRoom_ = async () => {
     const raw = joinInput?.value?.trim();
@@ -140,11 +127,11 @@ export function wireLandingEvents() {
     joinRoom(id);
   };
 
+  createBtn?.addEventListener('click', handleCreateRoomClick);
   joinBtn?.addEventListener('click', joinRoom_);
   joinInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom_(); });
 
   _renderRecentRooms();
-  _wireMarketingChrome();
 }
 
 function _renderRecentRooms() {
@@ -178,17 +165,17 @@ function _renderRecentRooms() {
   });
 }
 
-// ── Marketing page chrome (nav toggle, feature tabs, scroll-reveal) ────────────
-// Purely presentational wiring for the redesigned landing page — none of this
-// touches room/session state, so unlike the rest of app/*.js it doesn't need
-// an entry in teardownRealtimeSession(). Guarded the same way wireContactEvents
-// is, since boot() can re-run wireLandingEvents() if the landing screen is
-// shown more than once in a session (e.g. navigating back from a room).
-let _marketingChromeWired = false;
+// ── Marketing page (nav toggle, feature tabs, scroll-reveal) ───────────────────
+// Wiring for the `/` marketing page — separate from wireLandingEvents() above,
+// which now only runs for the bare create/join screen at `/app`. Purely
+// presentational; none of this touches room/session state, so unlike the rest
+// of app/*.js it doesn't need an entry in teardownRealtimeSession(). Guarded
+// the same way wireContactEvents is, in case boot() re-runs it in one session.
+let _marketingPageWired = false;
 
-function _wireMarketingChrome() {
-  if (_marketingChromeWired) return;
-  _marketingChromeWired = true;
+export function wireMarketingPageEvents() {
+  if (_marketingPageWired) return;
+  _marketingPageWired = true;
 
   // Mobile nav toggle
   const navToggle = document.getElementById('lp-nav-toggle');

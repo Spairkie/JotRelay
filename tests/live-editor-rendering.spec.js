@@ -147,4 +147,22 @@ test.describe('Live/Split surface rendering', () => {
     const bodyColor = await page.locator('.note-live').first().evaluate((el) => getComputedStyle(el).color);
     expect(color).toBe(bodyColor);
   });
+
+  test('[TOC] renders as a collapsed <details> that expands to reveal working links', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, '# Title\n\n[TOC]\n\n## Section A\n\n## Section B\n');
+    await setEditorMode(page, 'preview');
+    await page.keyboard.press('Control+End');
+
+    const toc = page.locator('.note-live .cm-md-inline-toc');
+    await expect(toc).toBeVisible();
+    await expect(toc).toHaveJSProperty('open', false);
+    await expect(toc.locator('a').first()).toBeHidden();
+
+    await toc.locator('summary').click();
+    await expect(toc).toHaveJSProperty('open', true);
+    const links = toc.locator('a');
+    await expect(links.first()).toBeVisible();
+    expect(await links.count()).toBe(3);
+  });
 });

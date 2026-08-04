@@ -42,6 +42,17 @@
   transition: border-color var(--transition), color var(--transition), background var(--transition);
 }
 .lp-btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.lp-btn-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 14px 24px; border-radius: var(--radius-lg);
+  background: var(--accent); color: var(--text-inverse);
+  font-size: 15px; font-weight: 600;
+  box-shadow: 0 4px 20px var(--accent-glow);
+  transition: opacity var(--transition), transform var(--transition);
+}
+.lp-btn-primary:hover  { opacity: 0.92; transform: translateY(-1px); }
+.lp-btn-primary:active { transform: scale(0.98); }
+.lp-btn-primary svg { width: 18px; height: 18px; }
 
 /* ── Sticky nav ─────────────────────────────────────────────── */
 .lp-nav {
@@ -115,11 +126,12 @@
 }
 .lp-sub { font-size: clamp(1rem, 1.3vw, 1.14rem); line-height: 1.6; color: var(--text-secondary); max-width: 46ch; }
 .lp-hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
-.lp-hero .landing-create-btn { margin-bottom: 0; }
-.lp-hero .landing-or { max-width: 440px; margin-top: 14px; }
-.lp-hero .landing-join { max-width: 440px; }
-.lp-hero .landing-recent { max-width: 440px; }
-.lp-hero .landing-chips { justify-content: flex-start; margin-top: 6px; }
+.lp-hero-join-link {
+  font-size: 13.5px; color: var(--text-secondary); font-weight: 500;
+  transition: color var(--transition);
+}
+.lp-hero-join-link:hover { color: var(--accent); text-decoration: none; }
+.lp-hero .landing-chips { justify-content: flex-start; margin-top: 10px; }
 
 .lp-hero-visual { position: relative; }
 .lp-video-shell {
@@ -154,7 +166,6 @@
   .lp-hero-copy { align-items: center; text-align: center; }
   .lp-h1, .lp-sub { max-width: 100%; }
   .lp-hero-ctas, .lp-hero .landing-chips { justify-content: center; }
-  .lp-hero .landing-or, .lp-hero .landing-join, .lp-hero .landing-recent { max-width: 460px; width: 100%; }
 }
 @media (max-width: 520px) {
   .lp-hero-float { display: none; }
@@ -275,7 +286,7 @@
   display: grid; grid-template-columns: 1.4fr repeat(3, minmax(0,1fr)); gap: 32px;
 }
 .lp-footer-brand p { font-size: 13.5px; color: var(--text-secondary); line-height: 1.6; max-width: 30ch; margin-top: 8px; }
-.lp-footer-logo { font-size: 20px; margin-bottom: 0; }
+.lp-footer-brand .landing-logo.lp-footer-logo { font-size: 20px; margin-bottom: 0; }
 .lp-footer-col { display: flex; flex-direction: column; gap: 10px; }
 .lp-footer-col h4 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 2px; }
 .lp-footer-col a { font-size: 13.5px; color: var(--text-secondary); transition: color var(--transition); }
@@ -294,13 +305,17 @@
   .lp-footer-top { grid-template-columns: 1fr; }
 }
 
-/* ── Shared landing widgets (create/join, recent rooms, chips) ────── */
+/* ── Shared landing widgets (create/join, recent rooms, chips) ────────────
+   Used on the bare /app screen below. `.landing-create-btn` is a full-width
+   block button there (single button in a narrow card); the marketing page's
+   own CTA buttons use `.lp-btn-primary`/`.lp-btn-secondary` instead — see
+   the sticky-nav section above. */
 .landing-create-btn {
-  width: auto; padding: 14px 24px;
+  width: 100%; padding: 15px 24px;
   background: var(--accent); color: var(--text-inverse);
   border-radius: var(--radius-lg);
   font-size: 15px; font-weight: 600;
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
   box-shadow: 0 4px 20px var(--accent-glow);
   margin-bottom: 18px;
 }
@@ -369,6 +384,50 @@
   font-size: 12px; color: var(--text-secondary);
   background: var(--bg-elevated); border: 1px solid var(--border);
   border-radius: 20px; padding: 4px 12px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   APP LANDING SCREEN (/app) — the original bare create/join screen.
+   Reuses the shared widgets above (.landing-create-btn, .landing-join,
+   .landing-recent*, .landing-chips) inside its own narrow centered card,
+   same layout the marketing page's #landing-screen used before its redesign.
+══════════════════════════════════════════════════════════════ */
+#app-landing-screen {
+  position: fixed; inset: 0; z-index: 900;
+  background: var(--bg-base);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; overflow-y: auto;
+}
+#app-landing-screen.hidden { display: none; }
+.app-landing-inner {
+  position: relative;
+  width: 100%; max-width: 420px;
+  display: flex; flex-direction: column;
+  align-items: center; gap: 0;
+  animation: app-landing-in 0.4s ease;
+}
+@keyframes app-landing-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.app-landing-back {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 500; color: var(--text-muted);
+  margin-bottom: 28px;
+  transition: color var(--transition);
+}
+.app-landing-back:hover { color: var(--accent); text-decoration: none; }
+.landing-logo {
+  font-size: 42px; font-weight: 600;
+  color: var(--text-primary); letter-spacing: -1.5px;
+  margin-bottom: 12px;
+}
+.landing-logo span { color: var(--accent); }
+.landing-tagline {
+  font-size: 15px; color: var(--text-secondary);
+  text-align: center; line-height: 1.6;
+  max-width: 300px; margin-bottom: 40px;
 }
 
 /* ── Auth Cards ────────────────────────────────────────────── */

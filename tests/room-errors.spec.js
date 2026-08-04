@@ -2,7 +2,7 @@
 // Room load error states, retry button, and read-only share link handling.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, createFreshRoom, goToLanding, roomIdFromUrl, supabaseAvailable, typeInEditor, getEditorContent } from './helpers.js';
+import { createRoom, createFreshRoom, goToLanding, goToAppLanding, roomIdFromUrl, supabaseAvailable, typeInEditor, getEditorContent } from './helpers.js';
 
 test.describe('Room load retry button', () => {
   test('loading screen retry button is hidden on normal load', async ({ page }) => {
@@ -10,7 +10,7 @@ test.describe('Room load retry button', () => {
       test.skip(true, 'Supabase JS CDN blocked — room creation requires network access');
       return;
     }
-    await goToLanding(page);
+    await goToAppLanding(page);
     await page.click('.landing-create-btn');
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
     // After successful load the retry button should be hidden
@@ -55,7 +55,7 @@ test.describe('Room creation and navigation', () => {
       test.skip(true, 'Supabase JS CDN blocked — room creation requires network access');
       return;
     }
-    await goToLanding(page);
+    await goToAppLanding(page);
     await page.click('.landing-create-btn');
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
     const roomId = roomIdFromUrl(page.url());
@@ -96,7 +96,7 @@ test.describe('Room creation and navigation', () => {
       test.skip(true, 'Supabase JS CDN blocked — room joining requires network access');
       return;
     }
-    await goToLanding(page);
+    await goToAppLanding(page);
     const testRoomId = `join-test-${Date.now()}`;
     await page.fill('.landing-join-input', testRoomId);
     await page.click('.landing-join-btn');
@@ -140,7 +140,7 @@ test.describe('Multi-room navigation', () => {
     await expect(page.locator('.editor-wrap')).toHaveClass(/mode-split/);
 
     // Navigate to second room
-    await goToLanding(page);
+    await goToAppLanding(page);
     await page.click('.landing-create-btn');
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
 

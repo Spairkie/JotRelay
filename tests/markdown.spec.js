@@ -342,6 +342,19 @@ test.describe('Table of contents', () => {
     await expect(links.nth(2)).toHaveAttribute('href', '#section-b');
   });
 
+  test('[TOC] renders collapsed by default and expands on click', async ({ page }) => {
+    const preview = await withPreview(page, '# Title\n\n[TOC]\n\n## Section A\n\n## Section B');
+    const inlineToc = preview.locator('.md-inline-toc');
+    // Native <details>/<summary> — no [open] attribute means collapsed, and
+    // its list of links isn't visible (though still present in the DOM).
+    await expect(inlineToc).toHaveJSProperty('open', false);
+    await expect(inlineToc.locator('a').first()).toBeHidden();
+
+    await inlineToc.locator('summary').click();
+    await expect(inlineToc).toHaveJSProperty('open', true);
+    await expect(inlineToc.locator('a').first()).toBeVisible();
+  });
+
   test('[TOC] is left as literal text when the note has fewer than 2 headings', async ({ page }) => {
     const preview = await withPreview(page, '[TOC]\n\n# Only heading');
     await expect(preview.locator('.md-inline-toc')).toHaveCount(0);

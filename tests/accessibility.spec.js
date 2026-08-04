@@ -164,8 +164,8 @@ test.describe('Accessibility & keyboard', () => {
   });
 
   test('landing join input has aria-label', async ({ page }) => {
-    await page.goto('/SyncPad/');
-    await page.waitForSelector('#landing-screen:not(.hidden)');
+    await page.goto('/SyncPad/app/');
+    await page.waitForSelector('#app-landing-screen:not(.hidden)');
     const input = page.locator('#landing-join-input');
     const ariaLabel = await input.getAttribute('aria-label');
     expect(ariaLabel).toBeTruthy();

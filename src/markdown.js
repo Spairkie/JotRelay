@@ -473,7 +473,13 @@ function _renderTocNav(ctx) {
   const items = entries.map((h) =>
     `<li class="note-toc-item note-toc-h${h.level}"><a href="#${h.id}">${escapeHtml(h.text)}</a></li>`
   ).join('');
-  return `<nav class="md-inline-toc" aria-label="Table of contents"><strong>Contents</strong><ul>${items}</ul></nav>`;
+  // <details>/<summary> gives native collapse/expand (keyboard- and
+  // touch-accessible, no JS needed) — collapsed by default so a long note's
+  // outline doesn't dominate the preview until asked for. Exported HTML/PDF
+  // (src/app/export.js) override this with a CSS rule forcing the list
+  // visible regardless of [open], since a collapsed <details> renders empty
+  // in print/PDF output.
+  return `<details class="md-inline-toc" aria-label="Table of contents"><summary>Contents</summary><ul>${items}</ul></details>`;
 }
 
 function _renderBlockquote(node, text, ctx) {

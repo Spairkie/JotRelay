@@ -3,12 +3,26 @@
 // read-only share links, reserved paths.
 
 import { test, expect } from '@playwright/test';
-import { supabaseAvailable } from './helpers.js';
+import { supabaseAvailable, goToAppLanding } from './helpers.js';
 
 test.describe('URL routing', () => {
-  test('/SyncPad/ shows landing screen', async ({ page }) => {
+  test('/SyncPad/ shows the marketing landing screen', async ({ page }) => {
     await page.goto('/SyncPad/');
     await expect(page.locator('#landing-screen')).not.toHaveClass(/hidden/);
+  });
+
+  test('/SyncPad/app/ shows the bare create/join screen', async ({ page }) => {
+    await goToAppLanding(page);
+    await expect(page.locator('#app-landing-screen')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#landing-create-btn')).toBeVisible();
+    await expect(page.locator('#landing-join-input')).toBeVisible();
+  });
+
+  test('marketing page CTAs link to /SyncPad/app/', async ({ page }) => {
+    await page.goto('/SyncPad/');
+    await expect(page.locator('.lp-nav-cta')).toHaveAttribute('href', '/SyncPad/app/');
+    await expect(page.locator('.lp-btn-primary').first()).toHaveAttribute('href', '/SyncPad/app/');
+    await expect(page.locator('.lp-hero-join-link')).toHaveAttribute('href', '/SyncPad/app/');
   });
 
   test('/SyncPad/admin shows admin screen', async ({ page }) => {
@@ -56,7 +70,7 @@ test.describe('URL routing', () => {
 
   test('only one screen is visible at a time', async ({ page }) => {
     await page.goto('/SyncPad/');
-    const screens = ['#landing-screen', '#loading-screen', '#passcode-screen',
+    const screens = ['#landing-screen', '#app-landing-screen', '#loading-screen', '#passcode-screen',
       '#encryption-screen', '#app-screen', '#info-screen', '#contact-screen',
       '#privacy-screen', '#terms-screen', '#admin-screen'];
     const visible = await Promise.all(
@@ -71,20 +85,20 @@ test.describe('URL routing', () => {
     expect(visibleCount).toBeLessThanOrEqual(1);
   });
 
-  test('navigating browser back to landing works', async ({ page }) => {
+  test('navigating browser back to the app-landing screen works', async ({ page }) => {
     if (!(await supabaseAvailable(page))) {
       test.skip(true, 'Supabase JS CDN blocked — room creation requires network access');
       return;
     }
-    await page.goto('/SyncPad/');
-    await page.waitForSelector('#landing-screen:not(.hidden)');
+    await goToAppLanding(page);
     await page.locator('.landing-create-btn').click();
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
     await page.goBack();
-    // Actually re-routes back to the landing screen, not just a URL-bar
-    // change with the app screen still frozen on-screen underneath it.
-    await page.waitForSelector('#landing-screen:not(.hidden)', { timeout: 5000 });
-    expect(page.url()).toContain('/SyncPad/');
+    // Actually re-routes back to the app-landing screen (the last real
+    // navigation before the room's pushState), not just a URL-bar change
+    // with the app screen still frozen on-screen underneath it.
+    await page.waitForSelector('#app-landing-screen:not(.hidden)', { timeout: 5000 });
+    expect(page.url()).toContain('/SyncPad/app');
   });
 
   test('browser Back/Forward triggers a real re-route via popstate (no Supabase needed)', async ({ page }) => {

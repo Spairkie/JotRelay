@@ -344,16 +344,22 @@ export function _wireEditorToolbarAndLifecycle() {
 }
 
 // ── Editor selection context menu ───────────────────────────────────────────
-// Right-click (or long-press, on touch) anywhere in either editor surface
-// (Source textarea or Live/Split's CM6 pane) for clipboard, selection, and
-// comment actions — modeled on the right-click menu in Typora/Obsidian:
-// always available (not just with an active selection), with items that
-// don't apply to the current state or permission level hidden rather than
-// shown disabled. Shift+right-click bypasses this entirely for the
-// browser's native menu (spell-check suggestions, "Inspect", etc.) — the
-// same escape hatch Gmail/Docs/Notion use. Formatting actions (bold/italic/
-// etc.) are deliberately not duplicated here — they're already one click
-// away on the always-visible toolbar (see _applyFormatToActiveSurface).
+// Right-click anywhere in either editor surface (Source textarea or
+// Live/Split's CM6 pane) for clipboard, selection, and comment actions —
+// modeled on the right-click menu in Typora/Obsidian: always available (not
+// just with an active selection), with items that don't apply to the
+// current state or permission level hidden rather than shown disabled.
+// Shift+right-click bypasses this entirely for the browser's native menu
+// (spell-check suggestions, "Inspect", etc.) — the same escape hatch
+// Gmail/Docs/Notion use. Formatting actions (bold/italic/etc.) are
+// deliberately not duplicated here — they're already one click away on the
+// always-visible toolbar (see _applyFormatToActiveSurface).
+//
+// Touch long-press does NOT open this menu (see the pointerType check in
+// _wireEditorContextMenu below) — it defers entirely to the OS's own
+// text-selection UI (selection handles, the native Copy/Select All/Share
+// callout), which is a strictly better "native" experience on a touchscreen
+// than reproducing a desktop menu's small hit targets would be.
 
 export function _closeEditorContextMenu() {
   document.getElementById('editor-context-menu')?.classList.remove('visible');
@@ -407,13 +413,33 @@ function _updateContextMenuAvailability(hasSelection) {
   });
 }
 
+// Which pointer type most recently went down inside the editor — a
+// `contextmenu` event is a plain MouseEvent with no pointerType of its own,
+// so this is the only way to tell "long-press on a touchscreen" apart from
+// "actual mouse right-click" when the handler below fires. Tracked at
+// module scope (not per-listener state) since pointerdown and contextmenu
+// are two separate listeners that need to agree on the same value.
+let _lastPointerType = 'mouse';
+
 export function _wireEditorContextMenu() {
   const menu = document.getElementById('editor-context-menu');
   const wrap = document.querySelector('.editor-wrap');
   if (!menu || !wrap) return;
 
+  wrap.addEventListener('pointerdown', (e) => { _lastPointerType = e.pointerType || 'mouse'; }, { capture: true });
+
   wrap.addEventListener('contextmenu', (e) => {
     if (e.shiftKey) return; // Shift+right-click → native browser menu
+    // A touchscreen long-press must not hijack the OS's own text-selection
+    // UI (selection handles, the native Copy/Select All/Share callout) —
+    // that's the actual "native copy/paste" experience on mobile, and it's
+    // a strictly better one than this menu's small, mouse-sized hit targets
+    // reproduce. Every action this menu offers already has a touch-friendly
+    // equivalent elsewhere: Cut/Copy/Paste/Select All are the native gesture
+    // itself, formatting lives on the always-visible toolbar, and Comment
+    // has its own floating button (#btn-add-comment-fab) — so deferring to
+    // the browser here on touch loses nothing.
+    if (_lastPointerType === 'touch' || _lastPointerType === 'pen') return;
     e.preventDefault();
     _updateContextMenuAvailability(_ctxHasSelection());
     _openEditorContextMenu(e.clientX, e.clientY);

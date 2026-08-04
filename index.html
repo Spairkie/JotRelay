@@ -113,7 +113,7 @@
         <a href="https://github.com/Spairkie/SyncPad" target="_blank" rel="noopener noreferrer">GitHub</a>
       </div>
       <div class="lp-nav-actions">
-        <button class="lp-nav-cta landing-create-trigger" type="button">Create a Room</button>
+        <a class="lp-nav-cta" href="/SyncPad/app/">Create a Room</a>
         <button class="lp-nav-toggle" id="lp-nav-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="lp-nav-links">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
@@ -131,31 +131,14 @@
         <p class="lp-sub">Open a room, share the link, and start writing together in real time. SyncPad is ready the moment you open it — no sign-up, no install, nothing to configure.</p>
 
         <div class="lp-hero-ctas">
-          <button class="landing-create-btn" id="landing-create-btn">
+          <a class="lp-btn-primary" href="/SyncPad/app/">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Create a Room
-          </button>
+          </a>
           <a class="lp-btn-secondary" href="#lp-how">See how it works</a>
         </div>
 
-        <div class="landing-or">or join an existing room</div>
-
-        <div class="landing-join">
-          <input id="landing-join-input" class="landing-join-input"
-                 type="text" name="syncpad-room-lookup"
-                 placeholder="Paste room link, ID, or short code…"
-                 aria-label="Room link, ID, or short code to join"
-                 autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
-                 data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" />
-          <button id="landing-join-btn" class="landing-join-btn">Join</button>
-        </div>
-
-        <!-- Populated by app.js from a local (this-device-only) list of recently
-             visited rooms — hidden entirely when the list is empty. -->
-        <div class="landing-recent hidden" id="landing-recent">
-          <div class="landing-recent-title">Recent rooms</div>
-          <div class="landing-recent-list" id="landing-recent-list"></div>
-        </div>
+        <a class="lp-hero-join-link" href="/SyncPad/app/">Already have a link or room code? Join a room →</a>
 
         <div class="landing-chips">
           <span class="landing-chip">No account needed</span>
@@ -345,11 +328,11 @@
       <h2>Open a room. Start syncing.</h2>
       <p>One click, no sign-up — your next shared note is thirty seconds away.</p>
       <div class="lp-cta-actions">
-        <button class="landing-create-btn landing-create-trigger" type="button">
+        <a class="lp-btn-primary" href="/SyncPad/app/">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Create a Room
-        </button>
-        <button class="lp-btn-secondary landing-join-trigger" type="button">Join a room</button>
+        </a>
+        <a class="lp-btn-secondary" href="/SyncPad/app/">Join a room</a>
       </div>
     </section>
 
@@ -385,6 +368,60 @@
       </div>
     </footer>
 
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     APP LANDING SCREEN (/app) — bare create/join screen
+     Reached via the marketing page's "Create a Room" / "Join a room"
+     CTAs. Kept deliberately minimal — no marketing copy, just the fast
+     path in and out. See docs/marketing-site.md for the route map.
+═══════════════════════════════════════════════════════════════ -->
+<div id="app-landing-screen" class="hidden">
+  <div class="landing-glow-bg"></div>
+  <div class="app-landing-inner">
+    <a class="app-landing-back" href="/SyncPad/">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back to SyncPad
+    </a>
+    <div class="landing-logo">Sync<span>Pad</span></div>
+    <p class="landing-tagline">A temporary shared notepad for fast&nbsp;handoff between devices.</p>
+
+    <button class="landing-create-btn" id="landing-create-btn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Create Room
+    </button>
+
+    <div class="landing-or">or join existing</div>
+
+    <div class="landing-join">
+      <input id="landing-join-input" class="landing-join-input"
+             type="text" name="syncpad-room-lookup"
+             placeholder="Paste room link, ID, or short code…"
+             aria-label="Room link, ID, or short code to join"
+             autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+             data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" />
+      <button id="landing-join-btn" class="landing-join-btn">Join</button>
+    </div>
+
+    <!-- Populated by app.js from a local (this-device-only) list of recently
+         visited rooms — hidden entirely when the list is empty. -->
+    <div class="landing-recent hidden" id="landing-recent">
+      <div class="landing-recent-title">Recent rooms</div>
+      <div class="landing-recent-list" id="landing-recent-list"></div>
+    </div>
+
+    <div class="landing-chips">
+      <span class="landing-chip">No account needed</span>
+      <span class="landing-chip">Realtime sync</span>
+      <span class="landing-chip">Read-only sharing</span>
+      <span class="landing-chip">File handoff</span>
+    </div>
+    <nav class="legal-links landing-legal-links" aria-label="Legal links">
+      <a href="/SyncPad/contact">Contact</a>
+      <a href="/SyncPad/privacy">Privacy</a>
+      <a href="/SyncPad/terms">Terms</a>
+    </nav>
   </div>
 </div>
 
@@ -1517,15 +1554,17 @@
   </div>
 </div>
 
-<!-- Selection context menu — right-click (or long-press) inside the editor
-     for clipboard, selection, and comment actions without navigating to the
-     Comments panel first. Formatting (bold/italic/etc.) lives on the
-     always-visible toolbar instead of being duplicated here. Item visibility
-     is recomputed on every open (see _updateContextMenuAvailability in
+<!-- Selection context menu — right-click inside the editor for clipboard,
+     selection, and comment actions without navigating to the Comments panel
+     first. Formatting (bold/italic/etc.) lives on the always-visible
+     toolbar instead of being duplicated here. Item visibility is
+     recomputed on every open (see _updateContextMenuAvailability in
      editor-behavior.js): clipboard/selection items adapt to whether there's
      a selection, and mutating items are hidden entirely for read-only
      viewers rather than shown disabled. Shift+right-click bypasses this for
-     the native menu. -->
+     the native menu — and on a touchscreen, long-press always defers to the
+     OS's own native text-selection UI instead of opening this menu at all
+     (see the pointerType check in _wireEditorContextMenu, editor-behavior.js). -->
 <div class="editor-context-menu" id="editor-context-menu" role="menu" aria-label="Editor actions">
   <button class="editor-context-item" data-ctx-action="cut" role="menuitem">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>

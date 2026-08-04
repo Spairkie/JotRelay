@@ -129,7 +129,7 @@ window.addEventListener('popstate', () => {
   location.reload();
 });
 
-export const RESERVED_ROOM_PATHS = new Set(['admin', 'contact', 'privacy', 'terms', 'share', 'assets', 'src', 'styles', 'docs', 'presskit', 'scripts']);
+export const RESERVED_ROOM_PATHS = new Set(['admin', 'app', 'contact', 'privacy', 'terms', 'share', 'assets', 'src', 'styles', 'docs', 'presskit', 'scripts']);
 
 // A bare 6-character code from the short-code alphabet (see
 // supabase/migrations/0002_short_room_codes.sql) — distinct enough from
@@ -148,6 +148,11 @@ export function _parseRoute() {
   if (cleaned === 'privacy') return { type: 'privacy' };
   if (cleaned === 'terms') return { type: 'terms' };
   if (cleaned === 'admin') return { type: 'admin' };
+  // The bare create/join screen — split out from the marketing landing page
+  // at `/` so the root can be pure marketing copy with CTAs linking here.
+  // Named 'app-landing' (not 'app') because showScreen('app') already means
+  // #app-screen, the room editor itself — see ui/core.js.
+  if (cleaned === 'app') return { type: 'app-landing' };
   if (cleaned === 'share') {
     return {
       type: 'info',
