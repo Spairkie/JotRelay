@@ -11,7 +11,6 @@ import { countWords, formatTimestamp, escapeHtml } from '../utils.js';
 // subscription (see comments.js/app.js) already shows new ones live to every
 // connected device, without a redundant broadcast channel.
 let _floatingComposerEl = null;
-let _floatingDiscarding = false;
 
 /**
  * @param {{x:number, y:number}} coords - viewport coordinates, e.g. from
@@ -24,7 +23,6 @@ export function openFloatingCommentComposer(coords, onSubmit) {
   closeFloatingCommentComposer();
   const layer = document.getElementById('comment-floating-layer');
   if (!layer) return;
-  _floatingDiscarding = false;
 
   const wrap = document.createElement('div');
   wrap.className = 'comment-floating-composer';
@@ -74,12 +72,12 @@ export function openFloatingCommentComposer(coords, onSubmit) {
       closeFloatingCommentComposer();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      _floatingDiscarding = true; // Escape discards even unsaved text — not a "save on blur" case
+      input.value = ''; // discard even unsaved text — not a "save on blur" case
       closeFloatingCommentComposer();
     }
   });
   input.addEventListener('blur', () => {
-    if (!_floatingDiscarding) trySubmit();
+    trySubmit();
     closeFloatingCommentComposer();
   });
 }
