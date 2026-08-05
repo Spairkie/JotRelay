@@ -11,6 +11,7 @@ import * as UI from '../ui.js';
 import { state, BASE, _stripBasePath } from './state.js';
 import { RESERVED_ROOM_PATHS, SHORT_CODE_RE, _loadRecentRooms, _forgetRecentRoom } from './routing.js';
 import { joinRoom } from './room-lifecycle.js';
+import { initLandingDemo } from './landing-demo.js';
 
 // ── Share modal ────────────────────────────────────────────────────────────────
 
@@ -208,31 +209,9 @@ export function wireMarketingPageEvents() {
     });
   });
 
-  // Hero demo video — pause/play toggle (WCAG 2.2.2: a loop running well
-  // past 5s needs a way to stop it) and no autoplay for prefers-reduced-motion.
-  const heroVideo = document.getElementById('lp-demo-video');
-  const videoToggle = document.getElementById('lp-video-toggle');
-  if (heroVideo && videoToggle) {
-    const pauseIcon = videoToggle.querySelector('.lp-video-toggle-pause');
-    const playIcon = videoToggle.querySelector('.lp-video-toggle-play');
-    const syncToggleState = () => {
-      const playing = !heroVideo.paused;
-      pauseIcon?.classList.toggle('hidden', !playing);
-      playIcon?.classList.toggle('hidden', playing);
-      videoToggle.setAttribute('aria-pressed', playing ? 'true' : 'false');
-      videoToggle.setAttribute('aria-label', playing ? 'Pause demo video' : 'Play demo video');
-    };
-    videoToggle.addEventListener('click', () => {
-      if (heroVideo.paused) heroVideo.play(); else heroVideo.pause();
-    });
-    heroVideo.addEventListener('play', syncToggleState);
-    heroVideo.addEventListener('pause', syncToggleState);
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      heroVideo.removeAttribute('autoplay');
-      heroVideo.pause();
-    }
-    syncToggleState();
-  }
+  // Coded hero demo (write/collaborate/review/share/handoff scene machine) —
+  // see src/app/landing-demo.js. Self-contained; safe to call unconditionally.
+  initLandingDemo();
 
   // Footer year
   const yearEl = document.getElementById('lp-footer-year');

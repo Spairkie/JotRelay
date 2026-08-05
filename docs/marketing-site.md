@@ -42,7 +42,7 @@ Inside `<div id="landing-screen">` in `index.html`:
 | Section | Class | Notes |
 |---|---|---|
 | Sticky nav | `.lp-nav` | Logo, anchor links, mobile hamburger, CTA linking to `/app/` |
-| Hero | `.lp-hero` | Headline, CTA buttons (`.lp-btn-primary`/`.lp-btn-secondary`) linking to `/app/`, video slot |
+| Hero | `.lp-hero` | Headline, CTA buttons (`.lp-btn-primary`/`.lp-btn-secondary`) linking to `/app/`, coded interactive demo (`.lp-demo`, see [below](#coded-hero-demo)) |
 | Feature tour | `.lp-features` | Six tabs (`.lp-feature-tab`) + panels (`.lp-feature-panel`) |
 | How it works | `.lp-how` | Four-step flow |
 | Trust / benefits | `.lp-trust` | Six-card grid |
@@ -83,6 +83,101 @@ button, plus the hero's own "Join a room" link. All of them are plain
 sync across entry points. Add a new CTA anywhere on the marketing page by
 linking it to `/SyncPad/app/` (or `${BASE}/app/` if you're generating the
 href in JS) — nothing else to wire up.
+
+### Coded hero demo
+
+The hero's visual is a coded, interactive five-scene product demo — not the
+autoplaying `presskit/video/demo.mp4` an earlier version of this page used
+(that file still exists; see [Upgrading the demo video](#upgrading-the-demo-video)
+below for its new role).
+
+**Where it lives:**
+
+| Piece | File |
+|---|---|
+| Markup | `index.html`, inside `.lp-hero-visual` (search "Coded, interactive product demo") |
+| Styles | `styles/landing-demo.css`, loaded after `styles/landing.css` |
+| Behavior | `src/app/landing-demo.js`, `initLandingDemo()` |
+| Tests | `tests/landing-demo.spec.js` |
+
+`wireMarketingPageEvents()` (`src/app/landing.js`) calls `initLandingDemo()`
+once, the same place it used to wire the old video's pause button — see that
+function for the full list of what else runs on the marketing route.
+
+**The story.** One continuous fictional scenario, told across five scenes a
+visitor can autoplay through or jump into directly: a room called "Product
+launch plan" — **Write** (a two-item checklist typed in) → **Collaborate**
+(a teammate, "Alex", joins with a live cursor and types a third line) →
+**Review** (that new line gets highlighted with an anchored comment,
+"Should this happen before final QA?") → **Share** (a simplified
+permissions/link panel) → **Handoff** (a file, "launch-assets.zip", flies
+from the desktop surface to a persistent overlapping mobile phone frame).
+
+**Scenes and timing.** `landing-demo.js` is a small explicit state machine,
+not a pile of unrelated `setTimeout()` calls: a single `_timer` is ever
+pending at once, and a `gen` counter is bumped on every scene change — every
+scheduled callback closes over the `gen` value active when it was scheduled
+and bails out if a manual click, a stop, or a fresh loop has since moved
+`gen` on. That's what keeps a stale scene's callback from reaching into a
+later scene's DOM. Autoplay only ever advances *sequentially* through
+`write → collaborate → review → share → handoff → (loop)`; per-scene
+durations sum to roughly 13s of active playback (spec target: 12–16s), and
+the Handoff scene holds its completed state for an extra ~4s before looping
+back to Write. A manual click on any scene tab stops autoplay outright and
+renders that scene's *settled* state instantly — the character-by-character
+typing and cursor-move animations only ever play as part of autoplay's
+forward progression, never on a manual jump, which sidesteps a lot of
+re-animate-on-click flicker for free.
+
+**Why it pauses.** Three independent conditions all have to hold for
+autoplay to run — `playing`, `visible` (an `IntersectionObserver` at 30%
+threshold), and `!tabHidden` (the `visibilitychange` event) — checked by a
+single `canAutoplay()` gate before any timer is (re)armed. Scroll the demo
+offscreen, switch tabs, or hit the Pause button, and the pending timer is
+cleared; scrolling back / returning / hitting Play resumes it. This also
+means the demo does no work (no timers, no animation) while nobody's
+looking at it, which matters for a piece of the page that runs continuously
+by design.
+
+**Reduced motion.** `prefers-reduced-motion: reduce` is checked once at
+init and on every `change` event. When set: autoplay never starts, the
+per-character typing effect and the file's flight animation are both
+skipped entirely (their JS paths short-circuit to setting final text/state
+directly), the pointer-tilt listener is never attached, and
+`styles/landing-demo.css`'s own `@media (prefers-reduced-motion: reduce)`
+block removes the card's tilt transform and turns every scene-transition
+`transition` into a fast, uniform 0.12s linear crossfade. Manual scene
+navigation still works exactly as normal (it was already instant/untyped by
+default) — reduced motion only removes *autoplay* and the two per-scene
+animations (typing, file flight), not the feature.
+
+**Why it makes no backend calls.** Every scene's content is hard-coded
+markup toggled by class/attribute — same reasoning as the presskit
+screenshots and the old demo video generator (see
+[Why mockups instead of live screenshots](#why-mockups-instead-of-live-screenshots)):
+this is a marketing page any visitor loads before ever creating a room, so
+it must never touch Supabase, CodeMirror, realtime channels, file upload
+APIs, room creation, the comments system, or the real sharing/permissions
+APIs. `tests/landing-demo.spec.js` asserts this directly (no Supabase
+project requests, no `demo.mp4` request, on page load). The whole demo
+stage is also `aria-hidden="true"` — it's a scripted illustration, not real
+content, so nothing in it needs to behave like actual app UI; the scene
+tabs, Play/Pause button, and the caption below the stage are the real,
+operable, accessible surface.
+
+**Testing/maintaining both going forward:**
+- Changing the coded demo's copy, timing, or scenes: edit `index.html`'s
+  markup and `landing-demo.js`'s `DURATIONS`/`FULL_TEXT`/`PERM_EXPLAIN`
+  constants together, then run `npx playwright test tests/landing-demo.spec.js`.
+- Changing the *recorded* video: unchanged — see
+  [Upgrading the demo video](#upgrading-the-demo-video) and
+  `presskit/video/README.md`. `scripts/generate-demo-video.mjs` and
+  `npm run presskit:video` still work exactly as before; the only thing
+  that changed is that the hero no longer autoloads the file it produces.
+- Both are deliberately kept independent — the coded demo doesn't read
+  `demo.mp4`'s content or timing, and regenerating the video doesn't
+  require touching the coded demo. Update `narration-script.md` only when
+  you change the *video's* generator script, not the hero's.
 
 ---
 
@@ -151,12 +246,16 @@ need refreshed placeholders.
 
 ### Upgrading the demo video
 
-The hero already plays a real (silent, screen-captured) `presskit/video/demo.mp4`
-— see [`presskit/video/README.md`](../presskit/video/README.md) for how it
-was made, `presskit/video/narration-script.md` for a script sized to hand
-off to a voiceover/editing tool, and the "Upgrading to a produced/narrated
-cut" section there for the swap-in steps. Replacing the file (same name) is
-enough — nothing in `index.html` needs to change unless you rename it.
+The hero itself no longer plays this file automatically — see
+[Coded hero demo](#coded-hero-demo) above for what replaced it. A real
+(silent, screen-captured) `presskit/video/demo.mp4` still exists as a
+presskit/social-media asset and via the hero's "Watch recorded demo" link —
+see [`presskit/video/README.md`](../presskit/video/README.md) for how it was
+made, `presskit/video/narration-script.md` for a script sized to hand off to
+a voiceover/editing tool, and the "Upgrading to a produced/narrated cut"
+section there for the swap-in steps. Replacing the file (same name) is
+enough — nothing in `index.html` needs to change unless you rename it, in
+which case update the watch-link's `href`.
 
 ### Custom domain
 

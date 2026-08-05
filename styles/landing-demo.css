@@ -1,0 +1,295 @@
+/* ══════════════════════════════════════════════════════════════
+   LANDING PAGE — coded hero demo (replaces the autoplaying MP4)
+   Everything here is namespaced `lp-demo-` and lives entirely inside
+   #landing-screen's hero. Markup: index.html (search "Coded, interactive
+   product demo"). State machine: src/app/landing-demo.js. See
+   docs/marketing-site.md#coded-hero-demo for the full architecture writeup.
+
+   The demo stage (#lp-demo) is aria-hidden — it's a scripted illustration,
+   not real content — so nothing in this file needs to worry about text
+   contrast for "real" reading; it only needs to look right. The tab
+   controls and caption below the stage are the accessible, operable part
+   and use the same tokens/focus styles as the rest of the site.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Stage + 2.5D surfaces ─────────────────────────────────────── */
+.lp-demo {
+  position: relative;
+  aspect-ratio: 16 / 11;
+  width: 100%;
+  perspective: 1600px;
+}
+.lp-demo-desktop {
+  position: absolute; inset: 0;
+  border-radius: var(--radius-xl); overflow: hidden;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column;
+  transform: rotateX(1deg) rotateY(-2deg) translateZ(0deg);
+  transform-style: preserve-3d;
+  transition: transform 0.4s ease;
+}
+.lp-demo-desktop::before {
+  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit;
+  background: linear-gradient(135deg, var(--accent-glow), transparent 60%);
+  filter: blur(18px); opacity: 0.7;
+}
+
+/* ── Chrome bar ─────────────────────────────────────────────────── */
+.lp-demo-chrome {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  padding: 10px 14px; background: var(--bg-surface); border-bottom: 1px solid var(--border);
+}
+.lp-demo-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.lp-demo-room { font-size: 12.5px; font-weight: 500; font-family: var(--font-mono); color: var(--text-secondary); }
+.lp-demo-presence {
+  display: flex; align-items: center; gap: 6px; margin-left: auto;
+  font-size: 12px; color: var(--text-secondary); font-weight: 500;
+  opacity: 0; transform: translateX(4px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.lp-demo[data-scene="collaborate"] .lp-demo-presence,
+.lp-demo[data-scene="review"]      .lp-demo-presence,
+.lp-demo[data-scene="share"]       .lp-demo-presence,
+.lp-demo[data-scene="handoff"]     .lp-demo-presence { opacity: 1; transform: none; }
+.lp-demo-avatar {
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: var(--text-inverse);
+  background: var(--blue);
+}
+
+/* ── Stage body: doc / share / handoff views share the same slot ─── */
+.lp-demo-stage { position: relative; flex: 1; min-height: 0; }
+.lp-demo-doc-view,
+.lp-demo-share-view,
+.lp-demo-handoff-view {
+  position: absolute; inset: 0;
+  opacity: 0; visibility: hidden;
+  transition: opacity 0.35s ease;
+}
+.lp-demo[data-scene="write"]       .lp-demo-doc-view,
+.lp-demo[data-scene="collaborate"] .lp-demo-doc-view,
+.lp-demo[data-scene="review"]      .lp-demo-doc-view { opacity: 1; visibility: visible; }
+.lp-demo[data-scene="share"]   .lp-demo-share-view   { opacity: 1; visibility: visible; }
+.lp-demo[data-scene="handoff"] .lp-demo-handoff-view { opacity: 1; visibility: visible; }
+
+/* ── Doc view: the "note" itself ───────────────────────────────── */
+.lp-demo-doc { padding: 18px 20px; font-family: var(--font-mono); font-size: clamp(11.5px, 1.35vw, 13.5px); line-height: 1.85; }
+.lp-demo-line { color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-demo-h1 { font-size: 1.28em; font-weight: 700; margin-bottom: 0.5em; letter-spacing: -0.01em; }
+.lp-demo-task { display: flex; align-items: baseline; gap: 9px; color: var(--text-secondary); }
+/* min-width:0 overrides the flex item default (content-based auto minimum)
+   so long checklist text can actually shrink and ellipsize instead of
+   forcing the row wider than the card at narrow viewports. */
+.lp-demo-task span:not(.lp-demo-check) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-demo-check {
+  width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0;
+  border: 1.5px solid var(--border); margin-top: 0.15em;
+}
+.lp-demo-highlight-target {
+  border-radius: 3px; transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+.lp-demo[data-scene="review"] .lp-demo-highlight-target {
+  background: var(--accent-dim); box-shadow: 0 0 0 1px var(--accent-glow);
+}
+
+/* Both flow inline right after line 3's text, whatever its length — an
+   earlier absolutely-positioned version used a hardcoded `top` guess that
+   didn't track the actual line, landing on top of line 1 instead; a
+   version after that used an absolutely-positioned "flag" tooltip above
+   the caret, which turned out to paint invisibly behind line 2 in some
+   browsers because line 2 is a later flex sibling with an implicit higher
+   paint order at the same (auto) stacking level as the flag's ancestor.
+   Plain in-flow siblings sidestep both problems. */
+.lp-demo-remote-cursor {
+  display: inline-block; width: 2px; height: 0.9em; margin-left: 2px; vertical-align: text-bottom;
+  background: var(--blue);
+  opacity: 0; transition: opacity 0.25s ease;
+  animation: lp-demo-caret-blink 1s step-end infinite;
+}
+.lp-demo-remote-name {
+  display: inline-block; margin-left: 4px;
+  font-size: 9.5px; font-weight: 600; color: var(--text-inverse); background: var(--blue);
+  border-radius: 4px; padding: 1px 5px; white-space: nowrap; vertical-align: middle;
+  opacity: 0; transition: opacity 0.25s ease;
+}
+.lp-demo[data-scene="collaborate"] .lp-demo-remote-cursor,
+.lp-demo[data-scene="collaborate"] .lp-demo-remote-name { opacity: 1; }
+@keyframes lp-demo-caret-blink { 50% { opacity: 0.15; } }
+
+.lp-demo-comment {
+  position: absolute; left: 16px; right: 16px; bottom: 14px; z-index: 3;
+  display: flex; gap: 8px; padding: 9px 11px;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  opacity: 0; transform: translateY(8px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.lp-demo[data-scene="review"] .lp-demo-comment { opacity: 1; transform: none; }
+.lp-demo-comment-avatar {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: var(--text-inverse); background: var(--blue);
+}
+.lp-demo-comment-text { font-size: 11.5px; line-height: 1.4; min-width: 0; }
+.lp-demo-comment-text strong { color: var(--text-primary); font-weight: 600; }
+.lp-demo-comment-text p { color: var(--text-secondary); margin-top: 1px; }
+
+/* ── Share view ─────────────────────────────────────────────────── */
+.lp-demo-share-view { display: flex; flex-direction: column; gap: 12px; padding: 20px; }
+.lp-demo-share-head { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+.lp-demo-perms { display: flex; gap: 6px; }
+.lp-demo-perm {
+  flex: 1; padding: 7px 4px; border-radius: var(--radius-sm);
+  background: var(--bg-input); border: 1px solid var(--border);
+  color: var(--text-secondary); font-size: 11px; font-weight: 600;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.lp-demo-perm.active { background: var(--accent-dim); border-color: var(--accent-glow); color: var(--accent); }
+.lp-demo-perm-explain { font-size: 11.5px; color: var(--text-secondary); }
+.lp-demo-share-url-row {
+  display: flex; align-items: center; gap: 8px; margin-top: auto;
+  /* Right margin keeps the Copy button clear of the persistent overlapping
+     mobile surface (.lp-demo-mobile sits bottom-right of the card at every
+     scene) — this row is the one part of the Share scene that otherwise
+     reaches the card's full width. */
+  margin-right: clamp(70px, 22%, 120px);
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 8px 10px;
+}
+.lp-demo-share-url { flex: 1; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-demo-copy-btn {
+  flex-shrink: 0; padding: 5px 11px; border-radius: var(--radius-sm);
+  background: var(--accent); color: var(--text-inverse); font-size: 11px; font-weight: 600;
+  transition: opacity var(--transition);
+}
+.lp-demo-copy-btn.copied { background: var(--green); }
+
+/* ── Handoff view ───────────────────────────────────────────────── */
+.lp-demo-handoff-view { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px; text-align: center; }
+.lp-demo-file-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border-radius: var(--radius-lg);
+  background: var(--bg-elevated); border: 1px solid var(--border); box-shadow: var(--shadow-md);
+  transition: opacity 0.3s ease;
+}
+.lp-demo[data-scene="handoff"].lp-demo-sending .lp-demo-file-chip { opacity: 0.35; }
+.lp-demo-file-icon { font-size: 18px; }
+.lp-demo-file-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.lp-demo-file-meta { font-size: 11px; color: var(--text-muted); }
+.lp-demo-file-status { font-size: 11.5px; color: var(--text-secondary); }
+.lp-demo-flying-file {
+  position: absolute; left: 0; top: 0; z-index: 5;
+  font-size: 20px; pointer-events: none;
+  opacity: 0;
+}
+.lp-demo-flying-file.flying { opacity: 1; }
+
+/* ── Persistent overlapping mobile surface ─────────────────────── */
+/* Overlaps the card's own bottom-right corner (stays within .lp-demo's box,
+   per the "mobile device can overlap slightly" brief) rather than
+   protruding below it — .lp-demo-panel's scene tabs sit right below the
+   card, and an earlier version with a negative `bottom` here reached far
+   enough past the card's edge to collide with that tab row. */
+.lp-demo-mobile {
+  position: absolute; right: 3%; bottom: 3%; z-index: 4;
+  width: clamp(78px, 11vw, 108px); aspect-ratio: 9 / 19.5;
+  border-radius: 16px; border: 2px solid var(--border-soft);
+  background: var(--bg-base); box-shadow: var(--shadow-lg);
+  transform: rotate(3deg);
+  transition: opacity 0.3s ease, filter 0.3s ease;
+  overflow: hidden;
+}
+.lp-demo-mobile-notch {
+  position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
+  width: 28%; height: 4px; border-radius: 3px; background: var(--border);
+}
+.lp-demo-mobile-screen { position: absolute; inset: 10px 6px 6px; display: flex; flex-direction: column; gap: 6px; }
+.lp-demo-mobile-room { font-size: 6.5px; font-family: var(--font-mono); color: var(--text-muted); text-align: center; }
+.lp-demo-mobile-body {
+  flex: 1; display: flex; align-items: center; justify-content: center; text-align: center;
+  border-radius: 8px; background: var(--bg-surface);
+  padding: 4px; opacity: 0.55; filter: saturate(0.6);
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+.lp-demo[data-scene="handoff"] .lp-demo-mobile-body { opacity: 1; filter: none; }
+.lp-demo-mobile-hint { font-size: 6px; color: var(--text-muted); line-height: 1.4; }
+.lp-demo-mobile-file { font-size: 15px; }
+.lp-demo-mobile-file-name { font-size: 5.5px; color: var(--text-primary); font-weight: 600; margin-top: 2px; }
+.lp-demo-mobile-file-check { font-size: 5px; color: var(--green); margin-top: 1px; }
+
+/* ── Controls panel below the stage ────────────────────────────── */
+.lp-demo-panel { margin-top: 14px; }
+.lp-demo-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.lp-demo-tab {
+  padding: 7px 13px; border-radius: 20px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-secondary); font-size: 12.5px; font-weight: 600;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.lp-demo-tab:hover { border-color: var(--accent); color: var(--text-primary); }
+.lp-demo-tab.active { background: var(--accent-dim); border-color: var(--accent-glow); color: var(--accent); }
+.lp-demo-playpause {
+  margin-left: auto; width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-primary); background: var(--bg-elevated); border: 1px solid var(--border);
+  transition: background var(--transition), border-color var(--transition);
+}
+.lp-demo-playpause:hover { border-color: var(--accent); }
+.lp-demo-playpause .hidden { display: none; }
+.lp-demo-tab:focus-visible,
+.lp-demo-playpause:focus-visible,
+.lp-demo-watch-link:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.lp-demo-desc { margin-top: 10px; font-size: 12.5px; line-height: 1.55; color: var(--text-secondary); max-width: 46ch; }
+.lp-demo-watch-link {
+  display: inline-block; margin-top: 6px; font-size: 12.5px; font-weight: 500;
+  color: var(--text-secondary); transition: color var(--transition);
+}
+.lp-demo-watch-link:hover { color: var(--accent); text-decoration: none; }
+
+/* ── Pointer tilt (desktop-with-mouse only; JS sets the custom props) ── */
+@media (hover: hover) and (pointer: fine) {
+  .lp-demo-desktop { transform: rotateX(calc(1deg + var(--lp-tilt-y, 0deg))) rotateY(calc(-2deg + var(--lp-tilt-x, 0deg))); }
+}
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 980px) {
+  .lp-demo { max-width: 560px; margin: 0 auto; }
+}
+@media (max-width: 768px) {
+  .lp-demo-desktop { transform: none !important; }
+  .lp-demo-doc { padding: 14px 16px; }
+  .lp-demo-share-view, .lp-demo-handoff-view { padding: 16px; }
+}
+@media (max-width: 520px) {
+  .lp-demo { aspect-ratio: 16 / 13; }
+  .lp-demo-mobile { display: none; }
+  .lp-demo-comment { left: 10px; right: 10px; bottom: 10px; padding: 7px 9px; }
+  /* .lp-demo-mobile is gone at this width, so the Share URL row's clearance
+     margin for it is no longer needed. */
+  .lp-demo-share-url-row { margin-right: 0; }
+}
+@media (max-width: 360px) {
+  .lp-demo-controls { gap: 5px; }
+  .lp-demo-tab { padding: 6px 10px; font-size: 11.5px; }
+}
+.lp-demo-tab, .lp-demo-playpause { min-height: 32px; }
+@media (max-width: 520px) {
+  .lp-demo-tab, .lp-demo-playpause { min-height: 44px; }
+  .lp-demo-playpause { width: 44px; height: 44px; }
+}
+
+/* ── Reduced motion: no tilt, no caret blink, instant crossfades ─── */
+@media (prefers-reduced-motion: reduce) {
+  .lp-demo-desktop { transform: none !important; transition: none; }
+  .lp-demo-remote-cursor { animation: none; opacity: 0 !important; }
+  .lp-demo-doc-view, .lp-demo-share-view, .lp-demo-handoff-view,
+  .lp-demo-presence, .lp-demo-comment, .lp-demo-mobile-body,
+  .lp-demo-highlight-target, .lp-demo-file-chip {
+    transition: opacity 0.12s linear !important;
+  }
+  .lp-demo-flying-file { display: none !important; }
+}

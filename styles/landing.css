@@ -134,43 +134,17 @@
 .lp-hero .landing-chips { justify-content: flex-start; margin-top: 10px; }
 
 .lp-hero-visual { position: relative; }
-.lp-video-shell {
-  position: relative; aspect-ratio: 16 / 10.4; width: 100%;
-  border-radius: var(--radius-xl); overflow: hidden;
-  background: var(--bg-surface); border: 1px solid var(--border);
-  box-shadow: var(--shadow-lg);
-}
-.lp-video-shell::before {
-  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit;
-  background: linear-gradient(135deg, var(--accent-glow), transparent 60%);
-  filter: blur(18px); opacity: 0.7;
-}
-.lp-demo-video { width: 100%; height: 100%; object-fit: cover; display: block; background: var(--bg-elevated); }
-.lp-video-toggle {
-  position: absolute; right: 14px; bottom: 14px; z-index: 2;
-  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
-  color: var(--text-primary); background: color-mix(in srgb, var(--bg-base) 62%, transparent);
-  backdrop-filter: blur(8px); border: 1px solid var(--border); border-radius: 50%;
-  transition: background var(--transition), border-color var(--transition);
-}
-.lp-video-toggle:hover { background: color-mix(in srgb, var(--bg-base) 80%, transparent); border-color: var(--accent); }
-.lp-video-toggle .hidden { display: none; }
-.lp-hero-float {
-  position: absolute; right: 2%; bottom: -9%;
-  width: clamp(84px, 12vw, 118px); aspect-ratio: 9 / 19.5;
-  border-radius: 16px; border: 2px solid var(--border-soft); box-shadow: var(--shadow-lg);
-  transform: rotate(3deg); background: var(--bg-elevated);
-  object-fit: cover; object-position: top center;
-}
+/* The coded demo itself (.lp-demo*) lives in styles/landing-demo.css,
+   loaded right after this file — see index.html's <head>. Headline/CTA
+   copy stays first in both DOM and visual order at this width (no `order`
+   swap on .lp-hero-visual) — on tablet/mobile the headline and CTA must
+   appear before the demo, not after it. */
 @media (max-width: 980px) {
   .lp-hero { grid-template-columns: 1fr; }
-  .lp-hero-visual { order: -1; max-width: 560px; margin: 0 auto; }
+  .lp-hero-visual { max-width: 560px; margin: 0 auto; }
   .lp-hero-copy { align-items: center; text-align: center; }
   .lp-h1, .lp-sub { max-width: 100%; }
   .lp-hero-ctas, .lp-hero .landing-chips { justify-content: center; }
-}
-@media (max-width: 520px) {
-  .lp-hero-float { display: none; }
 }
 
 /* ── Section scaffolding ───────────────────────────────────────── */

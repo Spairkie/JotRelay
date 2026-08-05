@@ -239,7 +239,7 @@ The optional `supabase/functions/syncpad-cleanup` Edge Function runs with a serv
 
 ## 11. CSS Architecture
 
-Styles are split across several plain CSS files under `styles/`, loaded via ordered `<link>` tags in `index.html` (later files override earlier ones at equal specificity, mirroring the original single style.css's rule order): `base.css` (theme variables, reset, loading screen) → `landing.css` → `app-shell.css` (header) → `editor.css` → `panels.css` (side panels) → `modals.css` → `file-preview.css` → `room-tools.css`. `admin.css` is lazy-loaded by `admin.js` only on the `/admin` route. There is no preprocessor, no CSS-in-JS, no utility framework, and no build/bundling step — every file is served as-is.
+Styles are split across several plain CSS files under `styles/`, loaded via ordered `<link>` tags in `index.html` (later files override earlier ones at equal specificity, mirroring the original single style.css's rule order): `base.css` (theme variables, reset, loading screen) → `landing.css` → `landing-demo.css` (the marketing page's coded hero demo — see `docs/marketing-site.md#coded-hero-demo`) → `app-shell.css` (header) → `editor.css` → `panels.css` (side panels) → `modals.css` → `file-preview.css` → `room-tools.css`. `admin.css` is lazy-loaded by `admin.js` only on the `/admin` route. There is no preprocessor, no CSS-in-JS, no utility framework, and no build/bundling step — every file is served as-is.
 
 ### Theming
 - Themes are defined as sets of CSS custom properties (`--color-bg`, `--color-text`, etc.) scoped to `[data-theme="<name>"]` selectors on `<html>`
