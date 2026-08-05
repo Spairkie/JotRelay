@@ -52,6 +52,7 @@
        order exactly. admin.css is lazy-loaded separately by admin.js. -->
   <link rel="stylesheet" href="/SyncPad/styles/base.css" />
   <link rel="stylesheet" href="/SyncPad/styles/landing.css" />
+  <link rel="stylesheet" href="/SyncPad/styles/landing-demo.css" />
   <link rel="stylesheet" href="/SyncPad/styles/app-shell.css" />
   <link rel="stylesheet" href="/SyncPad/styles/editor.css" />
   <link rel="stylesheet" href="/SyncPad/styles/panels.css" />
@@ -156,24 +157,87 @@
       </div>
 
       <div class="lp-hero-visual">
-        <div class="lp-video-shell">
-          <!-- Screen-captured product demo — see presskit/video/README.md
-               for how it was generated and how to swap in a produced/
-               narrated cut later (scripts/generate-demo-video.mjs).
-               autoplay is dropped at runtime (src/app/landing.js) when the
-               visitor has prefers-reduced-motion set; #lp-video-toggle is
-               the WCAG 2.2.2 pause/stop control for everyone else, since
-               this loop runs well past the 5s "must be stoppable" threshold. -->
-          <video class="lp-demo-video" id="lp-demo-video" autoplay muted loop playsinline preload="auto"
-                 poster="/SyncPad/presskit/screenshot/demo-video-poster.png" aria-label="SyncPad product demo">
-            <source src="/SyncPad/presskit/video/demo.mp4" type="video/mp4">
-          </video>
-          <button class="lp-video-toggle" id="lp-video-toggle" type="button" aria-label="Pause demo video" aria-pressed="false">
-            <svg class="lp-video-toggle-pause" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-            <svg class="lp-video-toggle-play hidden" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-          </button>
+        <!-- Coded, interactive product demo — replaces the old autoplaying
+             MP4. Five scenes (write/collaborate/review/share/handoff) driven
+             by src/app/landing-demo.js's scene state machine; styles in
+             styles/landing-demo.css. The whole stage is aria-hidden (it's a
+             scripted illustration, not real content) — the tab controls,
+             Play/Pause button, and caption below are the operable/announced
+             parts. See docs/marketing-site.md#coded-hero-demo. The original
+             screen-captured demo.mp4 still exists for the presskit and social
+             use (scripts/generate-demo-video.mjs, npm run presskit:video) —
+             linked below via "Watch recorded demo", never autoloaded. -->
+        <div class="lp-demo" id="lp-demo" data-scene="write" aria-hidden="true">
+          <div class="lp-demo-desktop">
+            <div class="lp-demo-chrome">
+              <span class="lp-demo-status-dot"></span>
+              <span class="lp-demo-room">Product launch plan</span>
+              <span class="lp-demo-presence" id="lp-demo-presence"><span class="lp-demo-avatar">A</span>Alex</span>
+            </div>
+            <div class="lp-demo-stage">
+              <div class="lp-demo-doc-view" id="lp-demo-doc-view">
+                <div class="lp-demo-doc" id="lp-demo-doc">
+                  <div class="lp-demo-line lp-demo-h1">Product launch plan</div>
+                  <div class="lp-demo-line lp-demo-task" id="lp-demo-line-1"><span class="lp-demo-check"></span><span id="lp-demo-text-1">Finalize pricing page</span></div>
+                  <div class="lp-demo-line lp-demo-task" id="lp-demo-line-2"><span class="lp-demo-check"></span><span id="lp-demo-text-2">QA the onboarding flow</span></div>
+                  <div class="lp-demo-line lp-demo-task" id="lp-demo-line-3"><span class="lp-demo-check"></span><span class="lp-demo-highlight-target" id="lp-demo-text-3">Confirm launch date with marketing</span><span class="lp-demo-remote-cursor" id="lp-demo-remote-cursor"></span><span class="lp-demo-remote-name" id="lp-demo-remote-name">Alex</span></div>
+                </div>
+                <div class="lp-demo-comment" id="lp-demo-comment">
+                  <div class="lp-demo-comment-avatar">A</div>
+                  <div class="lp-demo-comment-text"><strong>Alex</strong><p>&ldquo;Should this happen before final QA?&rdquo;</p></div>
+                </div>
+              </div>
+              <div class="lp-demo-share-view" id="lp-demo-share-view">
+                <div class="lp-demo-share-head">Share &ldquo;Product launch plan&rdquo;</div>
+                <div class="lp-demo-perms" id="lp-demo-perms">
+                  <button type="button" class="lp-demo-perm active" data-perm="edit" tabindex="-1">Can edit</button>
+                  <button type="button" class="lp-demo-perm" data-perm="comment" tabindex="-1">Can comment</button>
+                  <button type="button" class="lp-demo-perm" data-perm="view" tabindex="-1">Can view</button>
+                </div>
+                <p class="lp-demo-perm-explain" id="lp-demo-perm-explain">Anyone with this link can edit the room.</p>
+                <div class="lp-demo-share-url-row">
+                  <span class="lp-demo-share-url">syncpad.app/product-launch-plan</span>
+                  <button type="button" class="lp-demo-copy-btn" id="lp-demo-copy-btn" tabindex="-1">Copy</button>
+                </div>
+              </div>
+              <div class="lp-demo-handoff-view" id="lp-demo-handoff-view">
+                <div class="lp-demo-file-chip" id="lp-demo-file-chip">
+                  <span class="lp-demo-file-icon" aria-hidden="true">&#128230;</span>
+                  <span class="lp-demo-file-name">launch-assets.zip</span>
+                  <span class="lp-demo-file-meta">2.4&nbsp;MB</span>
+                </div>
+                <div class="lp-demo-file-status" id="lp-demo-file-status">Ready to send to Alex&rsquo;s iPhone</div>
+              </div>
+              <div class="lp-demo-flying-file hidden" id="lp-demo-flying-file" aria-hidden="true">&#128230;</div>
+            </div>
+          </div>
+          <div class="lp-demo-mobile" id="lp-demo-mobile">
+            <div class="lp-demo-mobile-notch"></div>
+            <div class="lp-demo-mobile-screen">
+              <div class="lp-demo-mobile-room">Product launch plan</div>
+              <div class="lp-demo-mobile-body" id="lp-demo-mobile-body">
+                <span class="lp-demo-mobile-hint">Alex&rsquo;s iPhone</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <img class="lp-hero-float" src="/SyncPad/presskit/screenshot/mobile-responsive.png" alt="SyncPad on mobile" loading="lazy" width="430" height="932" />
+
+        <div class="lp-demo-panel">
+          <div class="lp-demo-controls" role="tablist" aria-label="Product demo scenes">
+            <button class="lp-demo-tab active" role="tab" id="lp-demo-tab-write" aria-controls="lp-demo" aria-selected="true" data-scene="write" type="button">Write</button>
+            <button class="lp-demo-tab" role="tab" id="lp-demo-tab-collaborate" aria-controls="lp-demo" aria-selected="false" data-scene="collaborate" type="button">Collaborate</button>
+            <button class="lp-demo-tab" role="tab" id="lp-demo-tab-review" aria-controls="lp-demo" aria-selected="false" data-scene="review" type="button">Review</button>
+            <button class="lp-demo-tab" role="tab" id="lp-demo-tab-share" aria-controls="lp-demo" aria-selected="false" data-scene="share" type="button">Share</button>
+            <button class="lp-demo-tab" role="tab" id="lp-demo-tab-handoff" aria-controls="lp-demo" aria-selected="false" data-scene="handoff" type="button">Handoff</button>
+            <button class="lp-demo-playpause" id="lp-demo-playpause" type="button" aria-pressed="true" aria-label="Pause demo animation">
+              <svg class="lp-demo-icon-pause" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+              <svg class="lp-demo-icon-play hidden" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+            </button>
+          </div>
+          <p class="lp-demo-desc" id="lp-demo-desc">A live look at SyncPad: write a checklist, collaborate with a teammate in real time, leave an anchored comment, share the room, and hand a file off to mobile.</p>
+          <a class="lp-demo-watch-link" href="/SyncPad/presskit/video/demo.mp4" target="_blank" rel="noopener noreferrer">Watch recorded demo &rarr;</a>
+          <span class="sr-only" id="lp-demo-sr-status" aria-live="polite"></span>
+        </div>
       </div>
     </section>
 
@@ -662,6 +726,10 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             <span class="more-item-label">Devices</span>
           </button>
+          <button class="more-item" id="btn-export" role="menuitem">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span class="more-item-label">Export</span>
+          </button>
           <div class="more-separator"></div>
           <button class="more-item" id="btn-settings" role="menuitem" data-readonly-hide>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -674,10 +742,6 @@
           <button class="more-item" id="btn-about" role="menuitem">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             <span class="more-item-label">About SyncPad</span>
-          </button>
-          <button class="more-item" id="btn-export" role="menuitem">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span class="more-item-label">Export</span>
           </button>
           <div class="more-separator"></div>
           <button class="more-item" id="btn-report-room" role="menuitem">

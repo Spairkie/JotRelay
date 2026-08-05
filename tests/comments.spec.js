@@ -218,3 +218,106 @@ test.describe('Comment navigation', () => {
     await expect(page.locator('.comment-floating-bubble')).toBeVisible();
   });
 });
+
+test.describe('Comment threads (renderCommentsList grouping)', () => {
+  // renderCommentsList() only touches static DOM (#comments-list lives in
+  // #app-screen, present in the page regardless of route) and takes plain
+  // objects — these exercise its grouping/rendering logic directly via
+  // module import, with no room or Supabase involved, so they run even
+  // when the CDN is blocked (unlike everything else in this file).
+  async function render(page, comments, opts = {}) {
+    await page.goto('/SyncPad/');
+    await page.evaluate(async ([items, options]) => {
+      const { renderCommentsList } = await import('/SyncPad/src/ui/collab.js');
+      renderCommentsList(items, options);
+    }, [comments, opts]);
+  }
+
+  const baseComment = (over) => ({
+    id: 'c1', created_at: new Date().toISOString(), device_name: 'Alice',
+    anchor_from: 0, anchor_to: 5, _preview: 'first', _anchorPreview: 'Hello',
+    ...over,
+  });
+
+  test('comments sharing an exact anchor render as one thread with stacked messages', async ({ page }) => {
+    await render(page, [
+      baseComment({ id: 'c1', _preview: 'first message' }),
+      baseComment({ id: 'c2', _preview: 'second message', device_name: 'Bob' }),
+    ]);
+    await expect(page.locator('.comment-thread')).toHaveCount(1);
+    await expect(page.locator('.comment-thread-message')).toHaveCount(2);
+    await expect(page.locator('.comment-thread-message').nth(0)).toContainText('first message');
+    await expect(page.locator('.comment-thread-message').nth(1)).toContainText('second message');
+  });
+
+  test('comments with different anchors render as separate threads', async ({ page }) => {
+    await render(page, [
+      baseComment({ id: 'c1', anchor_from: 0, anchor_to: 5 }),
+      baseComment({ id: 'c2', anchor_from: 10, anchor_to: 15, _anchorPreview: 'World' }),
+    ]);
+    await expect(page.locator('.comment-thread')).toHaveCount(2);
+  });
+
+  test('a thread reply calls onReply with the thread\'s anchor, not a fresh selection', async ({ page }) => {
+    // onReply can't cross the page.evaluate() boundary as a live function
+    // reference — stash the call args on window instead and assert on those.
+    await page.goto('/SyncPad/');
+    await page.evaluate(async () => {
+      const { renderCommentsList } = await import('/SyncPad/src/ui/collab.js');
+      window.__replyCalls = [];
+      renderCommentsList([{
+        id: 'c1', created_at: new Date().toISOString(), device_name: 'Alice',
+        anchor_from: 3, anchor_to: 9, _preview: 'first', _anchorPreview: 'anchor text',
+      }], { onReply: (text, anchor) => window.__replyCalls.push({ text, anchor }) });
+    });
+    await page.locator('.comment-thread-reply-input').fill('a reply');
+    await page.locator('.comment-thread-reply-input').press('Enter');
+    const calls = await page.evaluate(() => window.__replyCalls);
+    expect(calls).toEqual([{ text: 'a reply', anchor: { from: 3, to: 9 } }]);
+  });
+
+  test('reply input is not rendered when onReply is omitted (read-only)', async ({ page }) => {
+    await render(page, [baseComment()]);
+    await expect(page.locator('.comment-thread-reply-input')).toHaveCount(0);
+  });
+
+  test('blurring the reply input saves it, and a following Enter/click does not double-submit', async ({ page }) => {
+    await page.goto('/SyncPad/');
+    await page.evaluate(async () => {
+      const { renderCommentsList } = await import('/SyncPad/src/ui/collab.js');
+      window.__replyCalls = [];
+      renderCommentsList([{
+        id: 'c1', created_at: new Date().toISOString(), device_name: 'Alice',
+        anchor_from: 0, anchor_to: 5, _preview: 'first', _anchorPreview: 'Hello',
+      }], { onReply: (text, anchor) => window.__replyCalls.push({ text, anchor }) });
+    });
+    await page.locator('.comment-thread-reply-input').fill('save on blur');
+    // Blur alone should save the reply — no Enter press or explicit submit
+    // button involved. #comments-panel is never actually opened by this
+    // test (renderCommentsList() is called directly), so it's parked
+    // off-screen via CSS transform — .blur() sidesteps the on-screen
+    // actionability a .click() on some other element would need here.
+    await page.locator('.comment-thread-reply-input').evaluate((el) => el.blur());
+    const calls = await page.evaluate(() => window.__replyCalls);
+    expect(calls).toEqual([{ text: 'save on blur', anchor: { from: 0, to: 5 } }]);
+    // The input is drained on submit, so refocusing and pressing Enter again
+    // (or any other stray blur) must not resend the same text.
+    await expect(page.locator('.comment-thread-reply-input')).toHaveValue('');
+  });
+
+  test('Escape in the reply input discards instead of saving', async ({ page }) => {
+    await page.goto('/SyncPad/');
+    await page.evaluate(async () => {
+      const { renderCommentsList } = await import('/SyncPad/src/ui/collab.js');
+      window.__replyCalls = [];
+      renderCommentsList([{
+        id: 'c1', created_at: new Date().toISOString(), device_name: 'Alice',
+        anchor_from: 0, anchor_to: 5, _preview: 'first', _anchorPreview: 'Hello',
+      }], { onReply: (text, anchor) => window.__replyCalls.push({ text, anchor }) });
+    });
+    await page.locator('.comment-thread-reply-input').fill('never sent');
+    await page.locator('.comment-thread-reply-input').press('Escape');
+    const calls = await page.evaluate(() => window.__replyCalls);
+    expect(calls).toEqual([]);
+  });
+});

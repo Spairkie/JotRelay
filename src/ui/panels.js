@@ -2,6 +2,7 @@
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { formatFileSize, fileEmoji, formatTimestamp, escapeHtml } from '../utils.js';
 import { getIcon } from '../icons.js';
+import { previewTheme, getSavedTheme } from '../theme.js';
 
 /** Return a human-readable "in X" string for an ISO expiry date. */
 function _expiresIn(isoDate) {
@@ -519,8 +520,10 @@ export function setViewOnceConsumedPanel({
 // ── Theme picker ──────────────────────────────────────────────────────────────
 
 /**
- * Render the theme picker in #theme-picker.
- * @param {Array<{id,label,swatch}>} themes
+ * Render the theme picker in #theme-picker, grouped into Dark/Light sections.
+ * Hovering (or focusing) a swatch previews it live via theme.js's
+ * previewTheme() without persisting; leaving reverts to the saved theme.
+ * @param {Array<{id,label,swatch,bg,elevated,dark}>} themes
  * @param {string}   currentId
  * @param {Function} onSelect  – called with theme id
  */
@@ -528,28 +531,52 @@ export function renderThemePicker(themes, currentId, onSelect) {
   const container = document.getElementById('theme-picker');
   if (!container) return;
   container.innerHTML = '';
-  themes.forEach(t => {
-    const btn = document.createElement('button');
-    const isActive = t.id === currentId;
-    btn.className = `theme-option${isActive ? ' active' : ''}`;
-    btn.dataset.themeId = t.id;
-    btn.title = t.label;
-    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-    // Dual-swatch: background color + accent color gives a realistic preview
-    const bgColor     = escapeHtml(t.bg     || '#1c1c1e');
-    const accentColor = escapeHtml(t.swatch || '#f5a623');
-    btn.innerHTML = `
-      <span class="theme-preview" aria-hidden="true">
-        <span class="theme-preview-bg"  style="background:${bgColor}"></span>
-        <span class="theme-preview-dot" style="background:${accentColor}"></span>
-      </span>
-      <span class="theme-label">${escapeHtml(t.label)}</span>
-      <span class="theme-check">${getIcon('check', 13)}</span>`;
-    btn.addEventListener('click', () => {
-      onSelect(t.id);
-      renderThemePicker(themes, t.id, onSelect);
+
+  const groups = [
+    { label: 'Dark',  items: themes.filter(t => t.dark) },
+    { label: 'Light', items: themes.filter(t => !t.dark) },
+  ];
+
+  groups.forEach(group => {
+    if (!group.items.length) return;
+
+    const heading = document.createElement('div');
+    heading.className = 'theme-section-title';
+    heading.textContent = group.label;
+    container.appendChild(heading);
+
+    const grid = document.createElement('div');
+    grid.className = 'theme-picker-grid';
+    group.items.forEach(t => {
+      const btn = document.createElement('button');
+      const isActive = t.id === currentId;
+      btn.className = `theme-option${isActive ? ' active' : ''}`;
+      btn.dataset.themeId = t.id;
+      btn.title = t.label;
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      // Triple-swatch: base / elevated / accent gives a realistic preview
+      const bgColor       = escapeHtml(t.bg       || '#1c1c1e');
+      const elevatedColor = escapeHtml(t.elevated || t.bg || '#222228');
+      const accentColor   = escapeHtml(t.swatch   || '#f5a623');
+      btn.innerHTML = `
+        <span class="theme-preview" aria-hidden="true">
+          <span class="theme-preview-bg"       style="background:${bgColor}"></span>
+          <span class="theme-preview-elevated" style="background:${elevatedColor}"></span>
+          <span class="theme-preview-dot"      style="background:${accentColor}"></span>
+        </span>
+        <span class="theme-label">${escapeHtml(t.label)}</span>
+        <span class="theme-check">${getIcon('check', 13)}</span>`;
+      btn.addEventListener('mouseenter', () => previewTheme(t.id));
+      btn.addEventListener('mouseleave', () => previewTheme(getSavedTheme()));
+      btn.addEventListener('focus', () => previewTheme(t.id));
+      btn.addEventListener('blur', () => previewTheme(getSavedTheme()));
+      btn.addEventListener('click', () => {
+        onSelect(t.id);
+        renderThemePicker(themes, t.id, onSelect);
+      });
+      grid.appendChild(btn);
     });
-    container.appendChild(btn);
+    container.appendChild(grid);
   });
 }
 

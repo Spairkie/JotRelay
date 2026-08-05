@@ -19,13 +19,14 @@ function _clickById(id) {
   return () => document.getElementById(id)?.click();
 }
 
+// Groups appear in this order in the empty-query (browse) state — filterCommands()
+// returns the array unchanged when there's no search text, so this order is
+// what a visitor sees before typing anything. Panels first (opening
+// somewhere is the single most common reason to reach for the palette),
+// then View/Room/Edit (things you *do*), Appearance, Help last (reference,
+// least urgent).
 function _paletteCommands() {
   return [
-    { id: 'mode-write',   label: 'Source mode (hide preview)',        group: 'View', run: () => _applyMarkdownMode('write') },
-    { id: 'mode-preview', label: 'Toggle Live preview mode',          group: 'View', shortcut: 'Ctrl Shift P', keywords: ['preview'], run: () => _applyMarkdownMode(state.markdownMode === 'preview' ? 'write' : 'preview') },
-    { id: 'mode-split',   label: 'Toggle Split view',                 group: 'View', shortcut: 'Ctrl Shift S', run: () => _applyMarkdownMode(state.markdownMode === 'split' ? 'write' : 'split') },
-    { id: 'monospace',    label: state.monospace ? 'Turn off monospace font' : 'Turn on monospace font', group: 'View', shortcut: 'Ctrl Shift M', keywords: ['font'], run: () => _toggleMonospace() },
-
     { id: 'panel-tools',    label: 'Open Tools panel',    group: 'Panels', keywords: ['clear', 'import', 'download'], run: () => UI.togglePanel('tools-panel') },
     { id: 'panel-files',    label: 'Open Files panel',    group: 'Panels', keywords: ['attachments', 'upload'], run: () => UI.togglePanel('files-panel') },
     { id: 'panel-devices',  label: 'Open Devices panel',  group: 'Panels', keywords: ['presence', 'collaborators'], run: () => UI.togglePanel('presence-panel') },
@@ -34,6 +35,11 @@ function _paletteCommands() {
     { id: 'panel-history',  label: 'Open Version History', group: 'Panels', keywords: ['revisions', 'restore'], run: () => _openHistoryPanel() },
     { id: 'panel-comments', label: 'Open Comments',        group: 'Panels', run: () => _openCommentsPanel() },
     { id: 'panel-templates', label: 'Insert a template',   group: 'Panels', run: _clickById('tool-templates') },
+
+    { id: 'mode-write',   label: 'Source mode (hide preview)',        group: 'View', run: () => _applyMarkdownMode('write') },
+    { id: 'mode-preview', label: 'Toggle Live preview mode',          group: 'View', shortcut: 'Ctrl Shift P', keywords: ['preview'], run: () => _applyMarkdownMode(state.markdownMode === 'preview' ? 'write' : 'preview') },
+    { id: 'mode-split',   label: 'Toggle Split view',                 group: 'View', shortcut: 'Ctrl Shift S', run: () => _applyMarkdownMode(state.markdownMode === 'split' ? 'write' : 'split') },
+    { id: 'monospace',    label: state.monospace ? 'Turn off monospace font' : 'Turn on monospace font', group: 'View', shortcut: 'Ctrl Shift M', keywords: ['font'], run: () => _toggleMonospace() },
 
     { id: 'share',          label: 'Share this room',                 group: 'Room', shortcut: 'Ctrl Shift K', run: _clickById('btn-share') },
     { id: 'lock',           label: state.room?.editing_locked ? 'Unlock editing' : 'Lock editing', group: 'Room', run: _clickById('setting-lock-btn') },
@@ -46,13 +52,13 @@ function _paletteCommands() {
     { id: 'download-md',       label: 'Download note as .md',         group: 'Edit', keywords: ['export'], run: _clickById('tool-download') },
     { id: 'export',            label: 'Export…',                      group: 'Edit', keywords: ['pdf', 'html', 'txt', 'print'], run: _clickById('btn-export') },
 
-    { id: 'about',      label: 'About SyncPad',       group: 'Help', run: _clickById('btn-about') },
-    { id: 'shortcuts',  label: 'Keyboard shortcuts',  group: 'Help', shortcut: 'Ctrl /', run: _clickById('btn-shortcuts') },
-
     ...THEMES.map((t) => ({
       id: `theme-${t.id}`, label: `Theme: ${t.label}`, group: 'Appearance', keywords: ['color', 'dark', 'light'],
       run: () => applyTheme(t.id),
     })),
+
+    { id: 'about',      label: 'About SyncPad',       group: 'Help', run: _clickById('btn-about') },
+    { id: 'shortcuts',  label: 'Keyboard shortcuts',  group: 'Help', shortcut: 'Ctrl /', run: _clickById('btn-shortcuts') },
   ];
 }
 

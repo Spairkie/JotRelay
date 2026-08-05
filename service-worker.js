@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'syncpad-v43';
+const CACHE_VERSION = 'syncpad-v44';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -16,6 +16,7 @@ const PRECACHE_ASSETS = [
   `${BASE}/manifest.json`,
   `${BASE}/styles/base.css`,
   `${BASE}/styles/landing.css`,
+  `${BASE}/styles/landing-demo.css`,
   `${BASE}/styles/app-shell.css`,
   `${BASE}/styles/editor.css`,
   `${BASE}/styles/panels.css`,
@@ -28,6 +29,7 @@ const PRECACHE_ASSETS = [
   `${BASE}/src/app/routing.js`,
   `${BASE}/src/app/room-lifecycle.js`,
   `${BASE}/src/app/landing.js`,
+  `${BASE}/src/app/landing-demo.js`,
   `${BASE}/src/app/files-panel.js`,
   `${BASE}/src/app/editor-behavior.js`,
   `${BASE}/src/app/comments-preview.js`,

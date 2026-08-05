@@ -1,10 +1,21 @@
 # Demo video
 
-`demo.mp4` is live in the landing page hero (`index.html`'s `.lp-video-shell`,
-autoplay/muted/loop). It's a genuine screen capture of the real app — not
-a mockup — driven entirely through automation, with no narration or music.
+`demo.mp4` is a genuine screen capture of the real app — not a mockup —
+driven entirely through automation, with no narration or music.
 `narration-script.md` in this folder is a script sized to the video's beats
 if you want to hand this off to a voiceover/editing tool for a produced cut.
+
+**It is no longer the landing page hero.** The hero at `index.html`'s
+`.lp-hero-visual` is now a coded, interactive five-scene demo
+(`src/app/landing-demo.js` / `styles/landing-demo.css` — see
+[docs/marketing-site.md#coded-hero-demo](../../docs/marketing-site.md#coded-hero-demo)
+for the full writeup) so the page no longer autoplays or downloads an MP4 on
+load. This file is still very much in active use, just in a different role:
+it's a presskit/social-media asset, and the hero links to it via a
+restrained "Watch recorded demo" link (opens the file on click, not
+automatically). Nothing about generating or maintaining it changed —
+`scripts/generate-demo-video.mjs` and `npm run presskit:video` still produce
+this exact file the same way they always did.
 
 ## What it is
 
@@ -57,10 +68,13 @@ turn it into one:
    AI voiceover directly from the script) — or record narration separately
    (e.g. ElevenLabs) and drop it into any editor.
 2. Export the result back to `demo.mp4` in this folder (same filename, so
-   nothing else needs to change) — or update the `<source>` path in
-   `index.html` if you rename it.
+   nothing else needs to change) — or update the "Watch recorded demo" link's
+   `href` in `index.html` if you rename it.
 3. Regenerate the poster frame from the new video if the opening frame
-   changed:
+   changed (it's no longer wired into the live page as a `<video poster>` —
+   the hero has no `<video>` element anymore — but it's still a useful still
+   frame to have on hand, e.g. as a thumbnail if you upload the video
+   elsewhere):
    ```bash
    ffmpeg -y -i presskit/video/demo.mp4 -ss 00:00:07 -frames:v 1 -update 1 presskit/screenshot/demo-video-poster.png
    ```
@@ -70,7 +84,7 @@ turn it into one:
 | | |
 |---|---|
 | **Filename** | `demo.mp4` |
-| **Format** | H.264 MP4, no audio track (muted autoplay loop) |
-| **Length** | 20–45s is the sweet spot for an autoplay hero loop; this cut is 24.6s |
-| **Resolution** | 1600×1000 (matches `.lp-video-shell`'s ~16:10 aspect ratio) |
+| **Format** | H.264 MP4, no audio track (was originally captured as a muted autoplay loop; still plays back cleanly on demand now that it's a click-to-watch presskit asset) |
+| **Length** | 24.6s |
+| **Resolution** | 1600×1000 |
 | **Poster frame** | `presskit/screenshot/demo-video-poster.png`, extracted from the video itself |

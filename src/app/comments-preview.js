@@ -150,6 +150,7 @@ export async function _refreshComments() {
     UI.renderCommentsList(withPreviews, {
       onDelete: _deleteCommentClick,
       onJump:   _jumpToComment,
+      onReply:  canEdit() ? (text, anchor) => _submitComment(text, anchor) : undefined,
       canDelete: canEdit(),
     });
     state.lastComments = withPreviews;
