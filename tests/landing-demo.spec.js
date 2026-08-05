@@ -83,6 +83,58 @@ test.describe('Coded hero demo (/)', () => {
     await expect(page.locator('#lp-demo-file-status')).toContainText('Sent');
   });
 
+  test('Write scene shows only the two-item checklist, not Alex\'s line', async ({ page }) => {
+    await goToLanding(page);
+    await expect(page.locator('#lp-demo')).toHaveAttribute('data-scene', 'write');
+    await expect(page.locator('#lp-demo-line-3')).not.toBeVisible();
+    // Looping back to Write from a later scene must hide it again too, not
+    // just the very first load.
+    await page.locator('.lp-demo-tab[data-scene="handoff"]').click();
+    await page.locator('.lp-demo-tab[data-scene="write"]').click();
+    await expect(page.locator('#lp-demo-line-3')).not.toBeVisible();
+  });
+
+  test('pausing mid-typing settles the current scene instantly instead of leaving it stuck', { timeout: 15_000 }, async ({ page }) => {
+    await goToLanding(page);
+    // Autoplay: Write holds ~3.2s, then Collaborate starts typing Alex's
+    // line immediately (~26ms/char, ~35 chars ⇒ ~0.9s to finish). Land
+    // partway through that window.
+    await page.waitForTimeout(3400);
+    const midTyping = await page.locator('#lp-demo-text-3').textContent();
+    expect(midTyping.length).toBeGreaterThan(0);
+    expect(midTyping.length).toBeLessThan('Confirm launch date with marketing'.length);
+    await page.locator('#lp-demo-playpause').click();
+    await expect(page.locator('#lp-demo-text-3')).toHaveText('Confirm launch date with marketing');
+    // And it must actually stay that way — nothing should still be ticking.
+    await page.waitForTimeout(500);
+    await expect(page.locator('#lp-demo-text-3')).toHaveText('Confirm launch date with marketing');
+  });
+
+  test('pausing mid-flight cancels the handoff animation instead of leaving the file stuck', { timeout: 15_000 }, async ({ page }) => {
+    await goToLanding(page);
+    await page.locator('.lp-demo-tab[data-scene="share"]').click(); // stop autoplay, jump to Share instantly
+    await page.locator('#lp-demo-playpause').click(); // resume autoplay from Share
+    // Share holds 2.4s, then Handoff's flight starts ~0.5s later — land
+    // inside the ~0.9s flight window.
+    await page.waitForTimeout(2400 + 700);
+    const flyingMidway = await page.locator('#lp-demo-flying-file').evaluate((el) => el.classList.contains('flying'));
+    expect(flyingMidway).toBe(true);
+    await page.locator('#lp-demo-playpause').click(); // pause mid-flight
+    expect(await page.locator('#lp-demo-flying-file').evaluate((el) => el.classList.contains('flying'))).toBe(false);
+    await expect(page.locator('#lp-demo-file-status')).toContainText('Sent');
+    await expect(page.locator('#lp-demo-mobile-body')).toContainText('Received');
+  });
+
+  test('Handoff settles to Sent/Received during autoplay even with the mobile phone hidden', { timeout: 15_000 }, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await goToLanding(page);
+    await page.locator('.lp-demo-tab[data-scene="share"]').click();
+    await page.locator('#lp-demo-playpause').click();
+    await expect(page.locator('#lp-demo')).toHaveAttribute('data-scene', 'handoff', { timeout: 5000 });
+    await expect(page.locator('#lp-demo-file-status')).toContainText('Sent', { timeout: 3000 });
+    await expect(page.locator('#lp-demo-mobile-body')).toContainText('Received');
+  });
+
   test('reduced motion disables autoplay and skips the flight animation', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await goToLanding(page);

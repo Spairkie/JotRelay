@@ -40,6 +40,7 @@ let sceneIndex = 0;
 let playing = true;
 let gen = 0;
 let _timer = null;
+let _flightAnim = null;
 let reducedMotion = false;
 let visible = true;
 let tabHidden = false;
@@ -141,15 +142,33 @@ function enterShare(myGen, animate, onSettled) {
   onSettled?.();
 }
 
+// Cancels any in-flight WAAPI animation and resets its visuals — the
+// animation runs in the compositor independently of `_timer`/`gen`, so
+// pausing, hiding the tab, or scrolling offscreen mid-flight (or a scene
+// change interrupting it) has to explicitly stop it, not just stop
+// scheduling further scene advances.
+function cancelFlightAnimation() {
+  if (_flightAnim) {
+    try { _flightAnim.cancel(); } catch {}
+    _flightAnim = null;
+  }
+  els.flyingFile?.classList.remove('flying');
+  els.flyingFile?.classList.add('hidden');
+  els.root?.classList.remove('lp-demo-sending');
+}
+
+function settleHandoff() {
+  if (els.fileStatus) els.fileStatus.textContent = 'Sent ✓';
+  if (els.mobileBody) els.mobileBody.innerHTML = MOBILE_RECEIVED_HTML;
+}
+
 function enterHandoff(myGen, animate, onSettled) {
   if (els.fileStatus) els.fileStatus.textContent = "Ready to send to Alex’s iPhone";
   if (els.mobileBody) els.mobileBody.innerHTML = MOBILE_IDLE_HTML;
-  els.root?.classList.remove('lp-demo-sending');
+  cancelFlightAnimation(); // clean up anything left over from an interrupted prior run
 
   if (!animate || reducedMotion) {
-    // Stable completed state, no flight animation.
-    if (els.fileStatus) els.fileStatus.textContent = 'Sent ✓';
-    if (els.mobileBody) els.mobileBody.innerHTML = MOBILE_RECEIVED_HTML;
+    settleHandoff(); // stable completed state, no flight animation
     onSettled?.();
     return;
   }
@@ -161,12 +180,19 @@ function enterHandoff(myGen, animate, onSettled) {
 }
 
 function flyFileToMobile(myGen, onSettled) {
-  const { root, fileChip, flyingFile, mobileBody, fileStatus } = els;
-  if (!root || !fileChip || !flyingFile || !mobileBody) { onSettled?.(); return; }
+  const { root, fileChip, flyingFile, mobileBody } = els;
+  if (!root || !fileChip || !flyingFile || !mobileBody) { settleHandoff(); onSettled?.(); return; }
   const rootRect = root.getBoundingClientRect();
   const fromRect = fileChip.getBoundingClientRect();
   const toRect = mobileBody.getBoundingClientRect();
-  if (!fromRect.width || !toRect.width) { onSettled?.(); return; } // hidden/offscreen — skip straight to settled
+  if (!fromRect.width || !toRect.width) {
+    // .lp-demo-mobile is display:none on narrow screens, so there's no
+    // flight path to animate — but the scene still has to reach its
+    // completed state rather than sit on "Ready to send…" forever.
+    settleHandoff();
+    onSettled?.();
+    return;
+  }
 
   const fromX = fromRect.left - rootRect.left + fromRect.width / 2;
   const fromY = fromRect.top - rootRect.top + fromRect.height / 2;
@@ -180,7 +206,7 @@ function flyFileToMobile(myGen, onSettled) {
   flyingFile.classList.add('flying');
 
   const dx = toX - fromX, dy = toY - fromY;
-  const anim = flyingFile.animate(
+  _flightAnim = flyingFile.animate(
     [
       { transform: 'translate(-50%, -50%) scale(1)', opacity: 1 },
       { transform: `translate(${dx}px, ${dy}px) translate(-50%,-50%) scale(0.45)`, opacity: 0.9, offset: 0.85 },
@@ -188,14 +214,13 @@ function flyFileToMobile(myGen, onSettled) {
     ],
     { duration: 900, easing: 'cubic-bezier(.3,.6,.3,1)' },
   );
-  anim.onfinish = () => {
-    if (myGen !== gen) return;
-    flyingFile.classList.remove('flying');
-    flyingFile.classList.add('hidden');
-    root.classList.remove('lp-demo-sending');
-    if (fileStatus) fileStatus.textContent = 'Sent ✓';
-    mobileBody.innerHTML = MOBILE_RECEIVED_HTML;
-    onSettled?.();
+  _flightAnim.onfinish = () => {
+    const wasCurrent = myGen === gen;
+    cancelFlightAnimation(); // always clean up the visual, whether this scene is still current or not
+    if (wasCurrent) {
+      settleHandoff();
+      onSettled?.();
+    }
   };
 }
 
@@ -261,8 +286,25 @@ function startAutoplay() {
   scheduleAdvance(scene, gen);
 }
 
-function stopAutoplayTimer() {
+// Pausing (Play/Pause button, tab hidden, or scrolled offscreen) has to do
+// more than stop the *next* scene transition from being scheduled — if the
+// current scene's own typing effect or the handoff flight animation was
+// still in progress, clearing just `_timer` would leave it visibly stuck
+// mid-animation (a half-typed line, or a package frozen mid-flight) with
+// nothing left to ever finish it, since resuming only re-arms the *next*
+// scene's timer. Snapping the current scene to its settled state on pause
+// sidesteps that entirely — there's never a "resume this half-finished
+// animation" case to handle, because pausing never leaves one.
+function settleCurrentScene() {
+  gen += 1;
+  const myGen = gen;
   if (_timer) { clearTimeout(_timer); _timer = null; }
+  cancelFlightAnimation();
+  ENTER[SCENES[sceneIndex]]?.(myGen, false, null);
+}
+
+function stopAutoplayTimer() {
+  if (_timer || _flightAnim) settleCurrentScene();
 }
 
 function syncAutoplayToConditions() {

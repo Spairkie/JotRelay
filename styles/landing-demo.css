@@ -83,6 +83,12 @@
    so long checklist text can actually shrink and ellipsize instead of
    forcing the row wider than the card at narrow viewports. */
 .lp-demo-task span:not(.lp-demo-check) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Alex's line doesn't exist yet in the Write scene — it's what Collaborate
+   adds. #lp-demo-line-3 is present in the static markup from the start (so
+   the no-JS/reduced-motion fallback has real content to show), but only
+   becomes visible from Collaborate onward; this same rule is what makes the
+   default data-scene="write" markup correct without any JS involved. */
+.lp-demo[data-scene="write"] #lp-demo-line-3 { display: none; }
 .lp-demo-check {
   width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0;
   border: 1.5px solid var(--border); margin-top: 0.15em;
