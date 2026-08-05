@@ -39,6 +39,23 @@ export function openFloatingCommentComposer(coords, onSubmit) {
   wrap.appendChild(input);
   layer.appendChild(wrap);
   _floatingComposerEl = wrap;
+
+  // coords is the raw caret position and, combined with the CSS
+  // translate(-8px,-100%) anchor, can place the composer partly or fully
+  // off-screen — most easily on narrow phones, where the editor spans
+  // nearly the full viewport width so a caret near the right/top edge is
+  // common. Nudge left/top back on-screen using the actual rendered box.
+  const margin = 8;
+  const rect = wrap.getBoundingClientRect();
+  let dx = 0, dy = 0;
+  if (rect.left < margin) dx = margin - rect.left;
+  else if (rect.right > window.innerWidth - margin) dx = (window.innerWidth - margin) - rect.right;
+  if (rect.top < margin) dy = margin - rect.top;
+  if (dx || dy) {
+    wrap.style.left = `${coords.x + dx}px`;
+    wrap.style.top  = `${coords.y + dy}px`;
+  }
+
   input.focus();
 
   // Reading the value and clearing it in the same step makes this safe to
