@@ -4,14 +4,22 @@
 
 const THEME_KEY = 'syncpad_theme';
 
+// `dark` drives the picker's Dark/Light grouping (src/ui/panels.js's
+// renderThemePicker()) and `elevated` is the picker's 3-tone swatch preview
+// (bg/elevated/accent) — both purely presentational, no effect on the
+// theme itself (that's entirely the [data-theme="..."] CSS block in
+// styles/base.css; this array just has to describe it accurately).
 export const THEMES = [
-  { id: 'charcoal-amber',  label: 'Charcoal Amber', swatch: '#f5a623', bg: '#1c1c1e' },
-  { id: 'midnight-blue',   label: 'Midnight Blue',  swatch: '#60a5fa', bg: '#0f172a' },
-  { id: 'forest-green',    label: 'Forest Green',   swatch: '#4ade80', bg: '#0f1a0f' },
-  { id: 'paper-light',     label: 'Paper Light',    swatch: '#c17d2e', bg: '#f5f0e8' },
-  { id: 'terminal',        label: 'Terminal',       swatch: '#00ff41', bg: '#0a0a0a' },
-  { id: 'mocha-dark',      label: 'Mocha Dark',     swatch: '#d4956a', bg: '#1e1410' },
-  { id: 'lavender-light',  label: 'Lavender Light', swatch: '#7c5cbf', bg: '#f5f3ff' },
+  { id: 'charcoal-amber',  label: 'Charcoal Amber', swatch: '#f5a623', bg: '#1c1c1e', elevated: '#222228', dark: true },
+  { id: 'midnight-blue',   label: 'Midnight Blue',  swatch: '#60a5fa', bg: '#0f172a', elevated: '#1a1f35', dark: true },
+  { id: 'forest-green',    label: 'Forest Green',   swatch: '#4ade80', bg: '#0f1a0f', elevated: '#162118', dark: true },
+  { id: 'terminal',        label: 'Terminal',       swatch: '#00ff41', bg: '#0a0a0a', elevated: '#0f0f0f', dark: true },
+  { id: 'mocha-dark',      label: 'Mocha Dark',     swatch: '#d4956a', bg: '#1e1410', elevated: '#2d1e14', dark: true },
+  { id: 'crimson-night',   label: 'Crimson Night',  swatch: '#f43f5e', bg: '#150808', elevated: '#271212', dark: true },
+  { id: 'paper-light',     label: 'Paper Light',    swatch: '#c17d2e', bg: '#f5f0e8', elevated: '#eeecea', dark: false },
+  { id: 'lavender-light',  label: 'Lavender Light', swatch: '#7c5cbf', bg: '#f5f3ff', elevated: '#ede9fe', dark: false },
+  { id: 'arctic',          label: 'Arctic',         swatch: '#0d9488', bg: '#f0f7f9', elevated: '#e2f0f4', dark: false },
+  { id: 'rose',            label: 'Rose',           swatch: '#db2777', bg: '#fdf2f6', elevated: '#fbe4ec', dark: false },
 ];
 
 /**
@@ -26,6 +34,19 @@ export function applyTheme(id) {
     root.setAttribute('data-theme', id);
   }
   try { localStorage.setItem(THEME_KEY, id); } catch {}
+}
+
+/**
+ * Temporarily apply a theme WITHOUT persisting it — used for the theme
+ * picker's hover preview (src/ui/panels.js), so hovering a swatch lets you
+ * see the whole app in that theme before committing to it with a click.
+ * Pass the saved theme's id (getSavedTheme()) to cancel a preview and
+ * restore the real theme.
+ */
+export function previewTheme(id) {
+  const root = document.documentElement;
+  if (!id || id === 'charcoal-amber') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', id);
 }
 
 /** Load and apply the saved theme from localStorage. */

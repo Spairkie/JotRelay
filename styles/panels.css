@@ -419,10 +419,21 @@
 
 /* Theme picker */
 .theme-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0 8px;
+}
+.theme-section-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-muted); padding: 6px 2px 2px;
+}
+.theme-section-title:first-child { padding-top: 0; }
+.theme-picker-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  padding: 4px 0 8px;
+  padding-bottom: 4px;
 }
 .theme-option {
   display: flex; align-items: center; gap: 8px; padding: 8px 10px;
@@ -445,14 +456,17 @@
      instead of the grid silently overflowing around it. */
   min-width: 0;
 }
-.theme-option:hover { background: var(--bg-base); }
+.theme-option:hover,
+.theme-option:focus-visible { background: var(--bg-base); }
 .theme-option.active { border-color: var(--accent); color: var(--accent); }
-/* Dual-swatch preview */
+/* Triple-swatch preview: base bg, an elevated panel over its right side, and
+   an accent dot sitting on the elevated panel — a miniature of the app chrome. */
 .theme-preview {
   position: relative; width: 28px; height: 20px; border-radius: 5px;
   overflow: hidden; flex-shrink: 0; border: 1px solid rgba(127,127,127,0.2);
 }
-.theme-preview-bg  { position: absolute; inset: 0; }
+.theme-preview-bg       { position: absolute; inset: 0; }
+.theme-preview-elevated { position: absolute; top: 0; right: 0; bottom: 0; width: 45%; }
 .theme-preview-dot {
   position: absolute; bottom: 3px; right: 3px;
   width: 8px; height: 8px; border-radius: 50%;
