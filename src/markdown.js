@@ -255,7 +255,14 @@ export function markdownToPlainText(src) {
   // before the generic strip runs; an empty alt (decorative image) drops
   // to nothing, matching how alt="" is meant to be treated everywhere else.
   const withImgAlt = html.replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/g, (_m, alt) => (alt ? `[${alt}]` : ''));
-  return _stripTags(withImgAlt)
+  // Table cells/rows have no whitespace between them in the rendered HTML
+  // (</th><th>, </td><td>) — stripping tags alone would run every cell's
+  // text together with no separator at all. Insert a tab between cells and
+  // a newline between rows before the generic strip runs; the existing
+  // trailing-whitespace cleanup below already collapses the resulting
+  // trailing tab at the end of each row.
+  const withTableBreaks = withImgAlt.replace(/<\/(?:th|td)>/g, '\t').replace(/<\/tr>/g, '\n');
+  return _stripTags(withTableBreaks)
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
