@@ -98,6 +98,19 @@ test.describe('Settings panel', () => {
     expect(htmlTheme).not.toBe('');
   });
 
+  test('switching themes re-tints the browser-tab favicon to match', async ({ page }) => {
+    await createFreshRoom(page);
+    const before = await page.locator('link[rel="icon"][type="image/svg+xml"]').getAttribute('href');
+
+    await openSettingsPanel(page);
+    const themes = page.locator('.theme-option');
+    await themes.nth(1).click();
+
+    const after = await page.locator('link[rel="icon"][type="image/svg+xml"]').getAttribute('href');
+    expect(after).not.toBe(before);
+    expect(after).toContain('data:image/svg+xml');
+  });
+
   test('theme picker does not overflow the settings panel horizontally', async ({ page }) => {
     // Regression test: .theme-picker's grid-template-columns: 1fr 1fr tracks
     // defaulted to their content's min-content width (the longest theme

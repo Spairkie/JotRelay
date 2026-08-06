@@ -32,7 +32,12 @@
        support SVG favicons. All three come from icon-simple.svg — a bold
        single-card mark tuned for legibility this small, distinct from the
        fuller two-card mark below used where icons render larger (install
-       icon, home-screen icon) and can afford the extra detail. -->
+       icon, home-screen icon) and can afford the extra detail. This SVG
+       link's href is also the one src/theme.js's applyTheme() re-tints to
+       the active theme's own colors at runtime (a data: URI replacing this
+       static file) — this static file is only what's visible before JS
+       runs / for the PNG-favicon fallback browsers, which don't get the
+       theme-matched version. -->
   <link rel="icon"             href="/SyncPad/assets/favicon.svg" type="image/svg+xml" />
   <link rel="icon"             href="/SyncPad/assets/favicon-32.png" type="image/png" sizes="32x32" />
   <link rel="icon"             href="/SyncPad/assets/favicon-16.png" type="image/png" sizes="16x16" />

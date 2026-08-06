@@ -34,6 +34,34 @@ export function applyTheme(id) {
     root.setAttribute('data-theme', id);
   }
   try { localStorage.setItem(THEME_KEY, id); } catch {}
+  _updateFaviconForTheme(id);
+}
+
+// ── Theme-matched favicon ────────────────────────────────────────────────────
+// The browser-tab favicon is the same bold single-card mark as
+// assets/favicon.svg, but recolored to the active theme's own tile
+// background and accent — so switching themes re-tints the tab icon along
+// with the rest of the app instead of it staying a fixed amber regardless
+// of theme. Built inline as a data: URI rather than shipping 10 separate
+// pre-rendered SVG files, since the only thing that ever changes between
+// them is two fill colors.
+function _faviconSvg(bg, accent) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">`
+    + `<rect width="512" height="512" rx="112" fill="${bg}"/>`
+    + `<rect x="140" y="120" width="232" height="272" rx="34" fill="${accent}"/>`
+    + `<g transform="translate(178,196) scale(4.9)" fill="none" stroke="#0f0f11" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">`
+    + `<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>`
+    + `<path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>`
+    + `</g></svg>`;
+}
+
+function _updateFaviconForTheme(id) {
+  try {
+    const link = document.querySelector('link[rel="icon"][type="image/svg+xml"]');
+    if (!link) return; // defensive — the tag is always present in index.html's <head>
+    const theme = THEMES.find((t) => t.id === id) || THEMES[0];
+    link.href = `data:image/svg+xml,${encodeURIComponent(_faviconSvg(theme.bg, theme.swatch))}`;
+  } catch {}
 }
 
 /** Load and apply the saved theme from localStorage. */
