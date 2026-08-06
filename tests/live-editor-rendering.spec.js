@@ -148,7 +148,7 @@ test.describe('Live/Split surface rendering', () => {
     expect(color).toBe(bodyColor);
   });
 
-  test('[TOC] renders as a collapsed <details> that expands to reveal working links', async ({ page }) => {
+  test('[TOC] renders as an open <details> with its links visible immediately', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page, '# Title\n\n[TOC]\n\n## Section A\n\n## Section B\n');
     await setEditorMode(page, 'preview');
@@ -156,13 +156,44 @@ test.describe('Live/Split surface rendering', () => {
 
     const toc = page.locator('.note-live .cm-md-inline-toc');
     await expect(toc).toBeVisible();
-    await expect(toc).toHaveJSProperty('open', false);
-    await expect(toc.locator('a').first()).toBeHidden();
-
-    await toc.locator('summary').click();
+    // Live mode is the seamless, Typora-style surface — a rendered [TOC]
+    // stands in for real document content while writing, so it should be
+    // usable at a glance instead of hidden behind an extra click.
     await expect(toc).toHaveJSProperty('open', true);
     const links = toc.locator('a');
     await expect(links.first()).toBeVisible();
     expect(await links.count()).toBe(3);
+
+    await toc.locator('summary').click();
+    await expect(toc).toHaveJSProperty('open', false);
+    await expect(links.first()).toBeHidden();
+  });
+
+  test('document mini-map shows one tick per heading and jumps on click', async ({ page }) => {
+    await createRoom(page);
+    const filler = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n\n'.repeat(20);
+    await typeInEditor(
+      page,
+      `# Intro\n\n${filler}## Middle\n\n${filler}## End\n\n${filler}`,
+    );
+    await setEditorMode(page, 'preview');
+
+    const minimap = page.locator('.note-live .cm-minimap');
+    await expect(minimap).toBeVisible();
+    const dots = minimap.locator('.cm-minimap-dot');
+    expect(await dots.count()).toBe(3);
+    await expect(dots.nth(2)).toHaveAttribute('title', 'End');
+
+    const scroller = page.locator('.note-live .cm-scroller');
+    const before = await scroller.evaluate((el) => el.scrollTop);
+    await dots.nth(2).click();
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(before);
+  });
+
+  test('document mini-map stays hidden with fewer than two headings', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, '# Only heading\n\nJust some text.\n');
+    await setEditorMode(page, 'preview');
+    await expect(page.locator('.note-live .cm-minimap')).toBeHidden();
   });
 });

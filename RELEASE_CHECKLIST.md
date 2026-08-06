@@ -141,12 +141,16 @@ Preview mode.
 - [ ] **Charcoal Amber** (default) — loads without data-theme attribute; amber accent
 - [ ] **Midnight Blue** — blue accent; dark background
 - [ ] **Forest Green** — green accent; dark background
-- [ ] **Paper Light** — light background; readable text in all panels
 - [ ] **Terminal** — bright green accent; high contrast
 - [ ] **Mocha Dark** — warm brown accent; dark background
+- [ ] **Crimson Night** — red accent; dark background
+- [ ] **Paper Light** — light background; readable text in all panels
 - [ ] **Lavender Light** — light lilac background; readable text in all panels
+- [ ] **Arctic** — light teal background; readable text in all panels
+- [ ] **Rose** — light pink background; readable text in all panels
+- [ ] **Theme picker** groups Dark/Light sections correctly and shows no hover-preview flicker
 - [ ] **Theme persists** after page refresh
-- [ ] **All text readable** in both light themes (Paper Light, Lavender Light) — no invisible text
+- [ ] **All text readable** in every light theme (Paper Light, Lavender Light, Arctic, Rose) — no invisible text
 
 ---
 

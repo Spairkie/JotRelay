@@ -3,7 +3,7 @@
 // Coded, interactive hero demo for the marketing page (replaces the old
 // autoplaying MP4). A small explicit state machine over five scenes —
 // write, collaborate, review, share, handoff — told through one continuous
-// fictional scenario (room "Product launch plan", collaborator "Alex",
+// fictional scenario (room "Product launch plan", collaborator "Hans",
 // file "launch-assets.zip"). Markup lives in index.html (search "Coded,
 // interactive product demo"); styles in styles/landing-demo.css.
 //
@@ -20,10 +20,12 @@
 // is what "old scene callbacks must not modify later scenes" means in
 // practice, without needing a queue or a full animation library.
 
+import { wireTabListKeyboardNav, syncTabListFocus } from '../utils.js';
+
 const SCENES = ['write', 'collaborate', 'review', 'share', 'handoff'];
 const SCENE_LABELS = {
   write: 'Write — typing a checklist',
-  collaborate: 'Collaborate — Alex joins and adds a line live',
+  collaborate: 'Collaborate — Hans joins and adds a line live',
   review: 'Review — an anchored comment on the launch date',
   share: 'Share — permissions and a share link',
   handoff: 'Handoff — sending a file to mobile',
@@ -76,7 +78,7 @@ const PERM_EXPLAIN = {
   comment: 'Anyone with this link can comment, but not edit.',
   view: 'Anyone with this link can view, but not edit or comment.',
 };
-const MOBILE_IDLE_HTML = '<span class="lp-demo-mobile-hint">Alex&rsquo;s iPhone</span>';
+const MOBILE_IDLE_HTML = '<span class="lp-demo-mobile-hint">Hans&rsquo;s iPhone</span>';
 const MOBILE_RECEIVED_HTML = '<div><div class="lp-demo-mobile-file">&#128230;</div>'
   + '<div class="lp-demo-mobile-file-name">launch-assets.zip</div>'
   + '<div class="lp-demo-mobile-file-check">&#10003; Received</div></div>';
@@ -163,7 +165,7 @@ function settleHandoff() {
 }
 
 function enterHandoff(myGen, animate, onSettled) {
-  if (els.fileStatus) els.fileStatus.textContent = "Ready to send to Alex’s iPhone";
+  if (els.fileStatus) els.fileStatus.textContent = "Ready to send to Hans’s iPhone";
   if (els.mobileBody) els.mobileBody.innerHTML = MOBILE_IDLE_HTML;
   cancelFlightAnimation(); // clean up anything left over from an interrupted prior run
 
@@ -240,10 +242,33 @@ function announce(scene) {
 }
 
 function updateTabs(scene) {
+  let activeTab = null;
   els.tabs.forEach((tab) => {
     const active = tab.dataset.scene === scene;
     tab.classList.toggle('active', active);
     tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    if (active) activeTab = tab;
+  });
+  // Keeps Tab-into-the-tablist landing on whichever scene is current even
+  // when autoplay — not a keyboard event — is what changed it.
+  syncTabListFocus(els.tabs, activeTab);
+}
+
+// Thin fill under the active tab, reinforcing that autoplay is a running
+// timer and not a static illustration — purely decorative (the stage is
+// aria-hidden already) so it only needs to track *whether* an advance timer
+// is currently armed, not resume with perfectly accurate elapsed time.
+function startTabProgress(scene, ms) {
+  const tab = els.tabs.find((t) => t.dataset.scene === scene);
+  if (!tab) return;
+  tab.style.setProperty('--lp-tab-progress-ms', `${ms}ms`);
+  tab.classList.add('lp-demo-tab-progress');
+}
+
+function resetTabProgress() {
+  els.tabs.forEach((tab) => {
+    tab.classList.remove('lp-demo-tab-progress');
+    tab.style.removeProperty('--lp-tab-progress-ms');
   });
 }
 
@@ -252,6 +277,7 @@ function goToScene(scene, { animate = false, thenAutoAdvance = false } = {}) {
   gen += 1;
   const myGen = gen;
   if (_timer) { clearTimeout(_timer); _timer = null; }
+  resetTabProgress();
 
   sceneIndex = SCENES.indexOf(scene);
   els.root.dataset.scene = scene;
@@ -269,6 +295,7 @@ function goToScene(scene, { animate = false, thenAutoAdvance = false } = {}) {
 function scheduleAdvance(scene, myGen) {
   const base = DURATIONS[scene] ?? 2500;
   const wait = scene === 'handoff' ? base + HANDOFF_HOLD_MS : base;
+  startTabProgress(scene, wait);
   _timer = setTimeout(() => {
     if (myGen !== gen || !playing) return;
     const next = SCENES[(sceneIndex + 1) % SCENES.length];
@@ -299,6 +326,7 @@ function settleCurrentScene() {
   gen += 1;
   const myGen = gen;
   if (_timer) { clearTimeout(_timer); _timer = null; }
+  resetTabProgress();
   cancelFlightAnimation();
   ENTER[SCENES[sceneIndex]]?.(myGen, false, null);
 }
@@ -335,6 +363,7 @@ export function initLandingDemo() {
     syncAutoplayToConditions();
   });
 
+  wireTabListKeyboardNav(els.tabs);
   els.tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
       playing = false;

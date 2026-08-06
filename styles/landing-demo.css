@@ -83,7 +83,7 @@
    so long checklist text can actually shrink and ellipsize instead of
    forcing the row wider than the card at narrow viewports. */
 .lp-demo-task span:not(.lp-demo-check) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Alex's line doesn't exist yet in the Write scene — it's what Collaborate
+/* Hans's line doesn't exist yet in the Write scene — it's what Collaborate
    adds. #lp-demo-line-3 is present in the static markup from the start (so
    the no-JS/reduced-motion fallback has real content to show), but only
    becomes visible from Collaborate onward; this same rule is what makes the
@@ -229,6 +229,7 @@
 .lp-demo-panel { margin-top: 14px; }
 .lp-demo-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .lp-demo-tab {
+  position: relative; overflow: hidden;
   padding: 7px 13px; border-radius: 20px;
   background: transparent; border: 1px solid var(--border);
   color: var(--text-secondary); font-size: 12.5px; font-weight: 600;
@@ -236,6 +237,20 @@
 }
 .lp-demo-tab:hover { border-color: var(--accent); color: var(--text-primary); }
 .lp-demo-tab.active { background: var(--accent-dim); border-color: var(--accent-glow); color: var(--accent); }
+/* Autoplay progress: a thin fill under the active tab that tracks how long
+   until it auto-advances — reinforces that this is a running demo, not a
+   static illustration. JS (landing-demo.js's startTabProgress/
+   resetTabProgress) only ever adds this class while an advance timer is
+   actually armed, and sets --lp-tab-progress-ms to that timer's duration. */
+.lp-demo-tab-progress::after {
+  content: '';
+  position: absolute; left: 10px; right: 10px; bottom: 4px;
+  height: 2px; border-radius: 1px;
+  background: currentColor; opacity: 0.55;
+  transform-origin: left; transform: scaleX(0);
+  animation: lp-tab-progress-fill var(--lp-tab-progress-ms, 2500ms) linear forwards;
+}
+@keyframes lp-tab-progress-fill { to { transform: scaleX(1); } }
 .lp-demo-playpause {
   margin-left: auto; width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
@@ -298,4 +313,8 @@
     transition: opacity 0.12s linear !important;
   }
   .lp-demo-flying-file { display: none !important; }
+  /* Belt-and-suspenders: JS already never arms an advance timer (and so
+     never adds this class) once reduced motion is active, but the CSS
+     shouldn't rely on that alone. */
+  .lp-demo-tab-progress::after { animation: none; content: none; }
 }

@@ -75,7 +75,7 @@ npx playwright test --project=webkit
 
 ## 4. Test File Overview
 
-All spec files live in `tests/`. Each file is focused on a single area of the application. There are 27 spec files today.
+All spec files live in `tests/`. Each file is focused on a single area of the application. There are 28 spec files today.
 
 | File | What it tests |
 |---|---|
@@ -90,7 +90,8 @@ All spec files live in `tests/`. Each file is focused on a single area of the ap
 | `export.spec.js` | Export and copy behavior: empty-note warning toasts, file downloads, copy to clipboard |
 | `files.spec.js` | File attachments: multi-file upload, bulk select/delete, and download-filename correctness |
 | `history.spec.js` | Version history: opening the panel, the empty state, the snapshot-before-Clear-note → Restore round trip, and the scrubber slider |
-| `landing.spec.js` | Landing page: rendering, "New room" navigation, "Join room" navigation, recent-rooms list |
+| `landing-demo.spec.js` | The coded interactive hero demo on the landing page: scene navigation, autoplay pause/resume, reduced motion, offscreen/hidden-tab pausing, no backend calls |
+| `landing.spec.js` | Landing page: rendering, "New room" navigation, "Join room" navigation, recent-rooms list, active-section nav highlighting |
 | `live-editor-rendering.spec.js` | The CM6-backed Live/Split surface's own rendering path (separate from `markdown.js`'s static renderer): GFM tables, GitHub-style alerts, footnotes, fenced-code syntax highlighting |
 | `markdown.spec.js` | The static `renderMarkdown()` renderer: headings, bold, italic, code, links, checklists, tables of contents, highlight/`==mark==`, XSS safety |
 | `read-only.spec.js` | Read-only share link behavior: `?mode=read` and `/share/:token`, editor disabled, no upload/delete, unlocking passcode/encrypted rooms while staying read-only |

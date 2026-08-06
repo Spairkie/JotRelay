@@ -188,6 +188,46 @@ export function estimateReadingTime(text) {
   return Math.max(1, Math.round(words / 200));
 }
 
+// ── Accessibility ────────────────────────────────────────────────────────────
+
+/**
+ * Wire the standard ARIA APG "Tabs" keyboard pattern (Left/Right/Home/End
+ * move focus with roving tabindex; Enter/Space activation is left to the
+ * browser's native <button> semantics, not reimplemented here) onto a list
+ * of tab elements. Callers still own click handling and updating
+ * aria-selected/tabindex when the active tab changes elsewhere (e.g.
+ * autoplay advancing scenes with no keyboard event at all) — call
+ * syncTabListFocus() after any such change to keep Tab-into-the-list
+ * landing on the right element.
+ * @param {HTMLElement[]} tabs
+ * @param {{orientation?: 'horizontal'|'vertical'}} [opts] Both current
+ *   call sites are horizontal tablists (the default) — Up/Down are only
+ *   bound for an explicitly vertical tablist, per the ARIA APG Tabs
+ *   pattern, so a horizontal list doesn't swallow the page-scroll keys.
+ */
+export function wireTabListKeyboardNav(tabs, { orientation = 'horizontal' } = {}) {
+  const nextKey = orientation === 'vertical' ? 'ArrowDown' : 'ArrowRight';
+  const prevKey = orientation === 'vertical' ? 'ArrowUp'   : 'ArrowLeft';
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('keydown', (e) => {
+      let next = null;
+      if (e.key === nextKey) next = tabs[(i + 1) % tabs.length];
+      else if (e.key === prevKey) next = tabs[(i - 1 + tabs.length) % tabs.length];
+      else if (e.key === 'Home') next = tabs[0];
+      else if (e.key === 'End') next = tabs[tabs.length - 1];
+      if (!next) return;
+      e.preventDefault();
+      syncTabListFocus(tabs, next);
+      next.focus();
+    });
+  });
+}
+
+/** Roving tabindex: only `active` is a Tab stop; the rest are keyboard-reachable via arrow keys once inside the list. */
+export function syncTabListFocus(tabs, active) {
+  tabs.forEach((t) => { t.tabIndex = t === active ? 0 : -1; });
+}
+
 // ── File helpers ─────────────────────────────────────────────────────────────
 
 export function formatFileSize(bytes) {

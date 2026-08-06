@@ -95,7 +95,15 @@
 }
 .header-btn:hover  { background: var(--bg-elevated); color: var(--text-primary); }
 .header-btn.active { color: var(--accent); background: var(--accent-dim); }
-.header-btn svg    { width: 18px; height: 18px; }
+.header-btn svg    { width: 18px; height: 18px; transition: transform var(--transition); }
+/* Share is the header's one inviting action rather than a view toggle, so it
+   gets the accent treatment other icon buttons reserve for "active" state,
+   plus a small icon lift — distinct enough to invite a click without being
+   loud. */
+#btn-share:hover, #btn-share:focus-visible {
+  background: var(--accent-dim); color: var(--accent);
+}
+#btn-share:hover svg, #btn-share:focus-visible svg { transform: translateY(-1px); }
 .header-btn .badge {
   position: absolute; top: 5px; right: 5px;
   width: 7px; height: 7px; border-radius: 50%;

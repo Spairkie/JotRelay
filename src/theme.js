@@ -34,19 +34,79 @@ export function applyTheme(id) {
     root.setAttribute('data-theme', id);
   }
   try { localStorage.setItem(THEME_KEY, id); } catch {}
+  _updateFaviconForTheme(id);
 }
 
-/**
- * Temporarily apply a theme WITHOUT persisting it — used for the theme
- * picker's hover preview (src/ui/panels.js), so hovering a swatch lets you
- * see the whole app in that theme before committing to it with a click.
- * Pass the saved theme's id (getSavedTheme()) to cancel a preview and
- * restore the real theme.
- */
-export function previewTheme(id) {
-  const root = document.documentElement;
-  if (!id || id === 'charcoal-amber') root.removeAttribute('data-theme');
-  else root.setAttribute('data-theme', id);
+// ── Theme-matched favicon ────────────────────────────────────────────────────
+// The browser-tab favicon is the same two-card mark as assets/favicon.svg
+// (see presskit/icon/icon.svg), but recolored to the active theme's own
+// tile background and accent — so switching themes re-tints the tab icon
+// along with the rest of the app instead of it staying a fixed amber
+// regardless of theme. Built inline as a data: URI rather than shipping 10
+// pre-rendered SVG files, since the only thing that ever changes between
+// them is the tile and card colors.
+function _faviconSvg(bg, accent) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">`
+    + `<rect width="512" height="512" rx="112" fill="${bg}"/>`
+    + `<rect x="96" y="88" width="240" height="240" rx="46" fill="none" stroke="${accent}" stroke-opacity="0.4" stroke-width="16"/>`
+    + `<rect x="176" y="184" width="240" height="240" rx="46" fill="${accent}"/>`
+    + `<rect x="214" y="264" width="150" height="20" rx="10" fill="#1c1305" fill-opacity="0.4"/>`
+    + `<rect x="214" y="308" width="150" height="20" rx="10" fill="#1c1305" fill-opacity="0.4"/>`
+    + `<rect x="214" y="352" width="100" height="20" rx="10" fill="#1c1305" fill-opacity="0.4"/>`
+    + `</svg>`;
+}
+
+// Rasterize the themed SVG to a PNG data: URI at the given size, via an
+// offscreen <canvas> — browsers that don't support SVG favicons (this repo
+// still ships the 32/16px PNG <link> fallbacks for them) never look at the
+// SVG link at all, so recoloring only that one leaves them stuck on the
+// static amber PNG regardless of the active theme. Async by nature (image
+// decode), so this is fire-and-forget from applyTheme() rather than
+// blocking it — the SVG link (synchronous) already updates instantly for
+// every browser that reads it, this only extends the same recolor to the
+// ones that don't.
+function _rasterizeFaviconPng(svgMarkup, size) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, size, size);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = reject;
+    img.src = `data:image/svg+xml,${encodeURIComponent(svgMarkup)}`;
+  });
+}
+
+// Bumped on every call below and captured per in-flight rasterization —
+// image decode is async, so rapidly switching themes starts several
+// overlapping _rasterizeFaviconPng() promises with no guaranteed
+// completion order. Without this, an older theme's rasterization finishing
+// after a newer one's would win the last write to link.href and leave the
+// PNG favicon candidates (what browsers without SVG-favicon support
+// actually display) stuck on a stale theme's colors even though the page
+// and the SVG candidate already moved on.
+let _faviconGen = 0;
+
+function _updateFaviconForTheme(id) {
+  try {
+    const gen = ++_faviconGen;
+    const theme = THEMES.find((t) => t.id === id) || THEMES[0];
+    const svg = _faviconSvg(theme.bg, theme.swatch);
+
+    const svgLink = document.querySelector('link[rel="icon"][type="image/svg+xml"]');
+    if (svgLink) svgLink.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+
+    document.querySelectorAll('link[rel="icon"][type="image/png"]').forEach((link) => {
+      const size = Number(link.sizes?.value?.split('x')[0]) || 32;
+      _rasterizeFaviconPng(svg, size).then((dataUrl) => {
+        if (gen === _faviconGen) link.href = dataUrl;
+      }).catch(() => {});
+    });
+  } catch {}
 }
 
 /** Load and apply the saved theme from localStorage. */

@@ -33,6 +33,43 @@ test.describe('Coded hero demo (/)', () => {
     await expect(page.locator('.lp-demo-tab[data-scene="write"]')).toHaveAttribute('aria-selected', 'false');
   });
 
+  test('arrow keys move focus between scene tabs, Enter activates the focused one', async ({ page }) => {
+    await goToLanding(page);
+    const tabs = page.locator('.lp-demo-tab');
+    await tabs.first().scrollIntoViewIfNeeded();
+    await tabs.first().focus();
+
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('.lp-demo-tab[data-scene="collaborate"]')).toBeFocused();
+
+    await page.keyboard.press('End');
+    await expect(page.locator('.lp-demo-tab[data-scene="handoff"]')).toBeFocused();
+
+    await page.keyboard.press('Home');
+    await expect(page.locator('.lp-demo-tab[data-scene="write"]')).toBeFocused();
+
+    await page.keyboard.press('ArrowLeft'); // wraps around to the last tab
+    await expect(page.locator('.lp-demo-tab[data-scene="handoff"]')).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#lp-demo')).toHaveAttribute('data-scene', 'handoff');
+  });
+
+  test('only the active scene tab is a Tab stop (roving tabindex)', async ({ page }) => {
+    await goToLanding(page);
+    await page.locator('.lp-demo-tab[data-scene="review"]').click();
+    const tabIndices = await page.locator('.lp-demo-tab').evaluateAll(
+      (els) => els.map((e) => ({ scene: e.dataset.scene, tabIndex: e.tabIndex })),
+    );
+    expect(tabIndices).toEqual([
+      { scene: 'write', tabIndex: -1 },
+      { scene: 'collaborate', tabIndex: -1 },
+      { scene: 'review', tabIndex: 0 },
+      { scene: 'share', tabIndex: -1 },
+      { scene: 'handoff', tabIndex: -1 },
+    ]);
+  });
+
   test('manual scene selection stops autoplay', async ({ page }) => {
     await goToLanding(page);
     await page.locator('.lp-demo-tab[data-scene="review"]').click();
@@ -50,7 +87,7 @@ test.describe('Coded hero demo (/)', () => {
     await expect(btn).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('Collaborate scene shows Alex\'s presence and the remote line', async ({ page }) => {
+  test('Collaborate scene shows Hans\'s presence and the remote line', async ({ page }) => {
     await goToLanding(page);
     await page.locator('.lp-demo-tab[data-scene="collaborate"]').click();
     await expect(page.locator('#lp-demo-presence')).toHaveCSS('opacity', '1');
@@ -83,7 +120,7 @@ test.describe('Coded hero demo (/)', () => {
     await expect(page.locator('#lp-demo-file-status')).toContainText('Sent');
   });
 
-  test('Write scene shows only the two-item checklist, not Alex\'s line', async ({ page }) => {
+  test('Write scene shows only the two-item checklist, not Hans\'s line', async ({ page }) => {
     await goToLanding(page);
     await expect(page.locator('#lp-demo')).toHaveAttribute('data-scene', 'write');
     await expect(page.locator('#lp-demo-line-3')).not.toBeVisible();
@@ -96,7 +133,12 @@ test.describe('Coded hero demo (/)', () => {
 
   test('pausing mid-typing settles the current scene instantly instead of leaving it stuck', { timeout: 15_000 }, async ({ page }) => {
     await goToLanding(page);
-    // Autoplay: Write holds ~3.2s, then Collaborate starts typing Alex's
+    // The brand-intro now occupies a full viewport ahead of the hero, so the
+    // demo starts outside the IntersectionObserver's 30% threshold and
+    // autoplay wouldn't run at all without this — the demo is pause-when-
+    // offscreen by design (tested below), not just at this specific moment.
+    await page.locator('#lp-demo').scrollIntoViewIfNeeded();
+    // Autoplay: Write holds ~3.2s, then Collaborate starts typing Hans's
     // line immediately (~26ms/char, ~35 chars ⇒ ~0.9s to finish). Land
     // partway through that window.
     await page.waitForTimeout(3400);
@@ -112,6 +154,11 @@ test.describe('Coded hero demo (/)', () => {
 
   test('pausing mid-flight cancels the handoff animation instead of leaving the file stuck', { timeout: 15_000 }, async ({ page }) => {
     await goToLanding(page);
+    // See the scroll comment in the "pausing mid-typing" test above — the
+    // demo starts below the fold now, and the resume click just below this
+    // needs `visible` to already be true, not just incidentally scrolled by
+    // whatever the tab click's own actionability check happens to bring in.
+    await page.locator('#lp-demo').scrollIntoViewIfNeeded();
     await page.locator('.lp-demo-tab[data-scene="share"]').click(); // stop autoplay, jump to Share instantly
     await page.locator('#lp-demo-playpause').click(); // resume autoplay from Share
     // Share holds 2.4s, then Handoff's flight starts ~0.5s later — land
@@ -128,6 +175,7 @@ test.describe('Coded hero demo (/)', () => {
   test('Handoff settles to Sent/Received during autoplay even with the mobile phone hidden', { timeout: 15_000 }, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await goToLanding(page);
+    await page.locator('#lp-demo').scrollIntoViewIfNeeded();
     await page.locator('.lp-demo-tab[data-scene="share"]').click();
     await page.locator('#lp-demo-playpause').click();
     await expect(page.locator('#lp-demo')).toHaveAttribute('data-scene', 'handoff', { timeout: 5000 });
@@ -160,6 +208,12 @@ test.describe('Coded hero demo (/)', () => {
     const demo = page.locator('#lp-demo');
     await expect(demo).toHaveAttribute('data-scene', 'write');
 
+    // The brand-intro occupies a full viewport ahead of the hero, so start
+    // by actually bringing the demo into view — otherwise this test can't
+    // distinguish "paused because genuinely offscreen" from "never started
+    // because the page just loaded that way".
+    await demo.scrollIntoViewIfNeeded();
+
     // #landing-screen (not window/document) is the actual scroll container —
     // it's position:fixed with its own overflow-y:auto — so scroll that.
     // Scroll the demo out of view, then wait past the Write scene's own
@@ -168,8 +222,9 @@ test.describe('Coded hero demo (/)', () => {
     await page.waitForTimeout(4200);
     await expect(demo).toHaveAttribute('data-scene', 'write');
 
-    // Scroll back — autoplay should resume and eventually advance.
-    await page.evaluate(() => document.getElementById('landing-screen').scrollTo(0, 0));
+    // Scroll back to the demo specifically — (0, 0) now lands on the brand-
+    // intro instead, which wouldn't bring #lp-demo back into view at all.
+    await demo.scrollIntoViewIfNeeded();
     await expect(demo).not.toHaveAttribute('data-scene', 'write', { timeout: 8000 });
   });
 

@@ -4,7 +4,7 @@
 
 import {
   generateRoomId, sanitizeRoomId, escapeHtml, formatTimestamp,
-  buildRoomUrl, buildReadOnlyUrl,
+  buildRoomUrl, buildReadOnlyUrl, wireTabListKeyboardNav, syncTabListFocus,
 } from '../utils.js';
 import { getOrCreateReadOnlyShareLink, getOrCreateRoomCode, resolveRoomCode } from '../rooms.js';
 import * as UI from '../ui.js';
@@ -174,9 +174,33 @@ function _renderRecentRooms() {
 // the same way wireContactEvents is, in case boot() re-runs it in one session.
 let _marketingPageWired = false;
 
+// ── Brand-intro typewriter ─────────────────────────────────────────────────
+// Small local implementation (no library) for the opener's tagline — types
+// once on load, then leaves a blinking caret (CSS animation) in place.
+// "SyncPad" itself is plain static markup and never touches this; only the
+// tagline text node is mutated.
+const INTRO_TAGLINE = '/* notes and files, synced instantly */';
+const INTRO_TYPE_MS = 32;
+
+function typeIntroTagline() {
+  const el = document.getElementById('lp-intro-tagline-text');
+  if (!el) return;
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+  if (reducedMotion) { el.textContent = INTRO_TAGLINE; return; }
+  let i = 0;
+  const step = () => {
+    el.textContent = INTRO_TAGLINE.slice(0, i);
+    i += 1;
+    if (i <= INTRO_TAGLINE.length) setTimeout(step, INTRO_TYPE_MS);
+  };
+  step();
+}
+
 export function wireMarketingPageEvents() {
   if (_marketingPageWired) return;
   _marketingPageWired = true;
+
+  typeIntroTagline();
 
   // Mobile nav toggle
   const navToggle = document.getElementById('lp-nav-toggle');
@@ -195,15 +219,21 @@ export function wireMarketingPageEvents() {
   // Feature tabs
   const tabsWrap = document.getElementById('lp-feature-tabs');
   const panelsWrap = document.getElementById('lp-feature-panels');
+  const featureTabs = tabsWrap ? Array.from(tabsWrap.querySelectorAll('.lp-feature-tab')) : [];
+  if (featureTabs.length) {
+    wireTabListKeyboardNav(featureTabs);
+    syncTabListFocus(featureTabs, featureTabs.find((t) => t.classList.contains('active')) || featureTabs[0]);
+  }
   tabsWrap?.addEventListener('click', (e) => {
     const tab = e.target.closest('.lp-feature-tab');
     if (!tab) return;
     const key = tab.dataset.feature;
-    tabsWrap.querySelectorAll('.lp-feature-tab').forEach((t) => {
+    featureTabs.forEach((t) => {
       const active = t === tab;
       t.classList.toggle('active', active);
       t.setAttribute('aria-selected', active ? 'true' : 'false');
     });
+    syncTabListFocus(featureTabs, tab);
     panelsWrap?.querySelectorAll('.lp-feature-panel').forEach((p) => {
       p.classList.toggle('active', p.dataset.featurePanel === key);
     });
@@ -235,6 +265,50 @@ export function wireMarketingPageEvents() {
     revealTargets.forEach((el) => io.observe(el));
   } else {
     revealTargets.forEach((el) => el.classList.add('lp-in-view'));
+  }
+
+  // Scroll spy: underline the nav link for whichever section is currently
+  // in view, so a visitor scrolling through the pitch always knows where
+  // they are. Only in-page anchors (#lp-features etc.) participate —
+  // external links (Presskit, GitHub) never get a matching section.
+  const navAnchors = navLinks
+    ? Array.from(navLinks.querySelectorAll('a[href^="#"]')).filter((a) => a.getAttribute('href') !== '#lp-top')
+    : [];
+  const navSections = navAnchors
+    .map((a) => document.getElementById(a.getAttribute('href').slice(1)))
+    .filter(Boolean);
+  if ('IntersectionObserver' in window && navSections.length) {
+    const setActiveNav = (id) => {
+      navAnchors.forEach((a) => a.classList.toggle('active', a.getAttribute('href') === `#${id}`));
+    };
+    // A thin horizontal band near the top of the viewport, rather than the
+    // default "any overlap counts" — otherwise two adjacent tall sections
+    // both register as intersecting for most of the scroll and the active
+    // link jitters between them.
+    //
+    // IntersectionObserver callbacks only deliver *transitions* (targets
+    // whose intersecting state changed since the last callback), not the
+    // full current state of every observed target — so filtering just the
+    // entries a single callback happens to receive is wrong: when section A
+    // is already intersecting and stays that way while section B exits,
+    // that callback's entries can contain only B's (non-intersecting) one,
+    // which would wrongly clear A's still-valid active link. Track
+    // intersecting state persistently across callbacks instead.
+    const intersecting = new Set();
+    const spy = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) intersecting.add(e.target.id);
+        else intersecting.delete(e.target.id);
+      });
+      // Scrolled back up into the intro/hero (above #lp-features) or down
+      // past #lp-trust into the footer/CTA — no tracked section is in the
+      // band, so nothing should stay underlined either. Document order
+      // (via navSections, not entries order) keeps the choice deterministic
+      // on the rare frame where the thin band spans two sections at once.
+      const activeId = navSections.find((el) => intersecting.has(el.id))?.id || null;
+      setActiveNav(activeId);
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    navSections.forEach((el) => spy.observe(el));
   }
 }
 

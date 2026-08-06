@@ -431,10 +431,6 @@ export function getTemplate(key) {
   return TEMPLATES[key]?.body ?? null;
 }
 
-export function templateKeys() {
-  return Object.keys(TEMPLATES);
-}
-
 // ── Custom templates (localStorage) ──────────────────────────────────────────
 
 const CUSTOM_KEY = 'syncpad_custom_templates';

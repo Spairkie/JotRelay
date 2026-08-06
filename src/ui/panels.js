@@ -2,7 +2,6 @@
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { formatFileSize, fileEmoji, formatTimestamp, escapeHtml } from '../utils.js';
 import { getIcon } from '../icons.js';
-import { previewTheme, getSavedTheme } from '../theme.js';
 
 /** Return a human-readable "in X" string for an ISO expiry date. */
 function _expiresIn(isoDate) {
@@ -521,8 +520,13 @@ export function setViewOnceConsumedPanel({
 
 /**
  * Render the theme picker in #theme-picker, grouped into Dark/Light sections.
- * Hovering (or focusing) a swatch previews it live via theme.js's
- * previewTheme() without persisting; leaving reverts to the saved theme.
+ * Each option is a small mock "window" (header bar + accent button) so you
+ * can read a theme's character at a glance — clicking applies it immediately.
+ * There's no hover-preview: earlier versions live-applied the theme on
+ * mouseenter/focus, which meant just moving the pointer across the list
+ * repainted the whole app — distracting, and surprising for keyboard/
+ * screen-reader users whose focus moves through the list without intending
+ * to change anything yet.
  * @param {Array<{id,label,swatch,bg,elevated,dark}>} themes
  * @param {string}   currentId
  * @param {Function} onSelect  – called with theme id
@@ -554,22 +558,21 @@ export function renderThemePicker(themes, currentId, onSelect) {
       btn.dataset.themeId = t.id;
       btn.title = t.label;
       btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      // Triple-swatch: base / elevated / accent gives a realistic preview
+      // Mini window mockup: base bg, a header-bar strip in the elevated
+      // tone, and an accent "button" — reads like a tiny screenshot rather
+      // than an abstract color chip.
       const bgColor       = escapeHtml(t.bg       || '#1c1c1e');
       const elevatedColor = escapeHtml(t.elevated || t.bg || '#222228');
       const accentColor   = escapeHtml(t.swatch   || '#f5a623');
       btn.innerHTML = `
-        <span class="theme-preview" aria-hidden="true">
-          <span class="theme-preview-bg"       style="background:${bgColor}"></span>
-          <span class="theme-preview-elevated" style="background:${elevatedColor}"></span>
-          <span class="theme-preview-dot"      style="background:${accentColor}"></span>
+        <span class="theme-preview" aria-hidden="true" style="background:${bgColor}">
+          <span class="theme-preview-bar" style="background:${elevatedColor}"></span>
+          <span class="theme-preview-accent" style="background:${accentColor}"></span>
+          <span class="theme-preview-check">${getIcon('check', 12)}</span>
         </span>
-        <span class="theme-label">${escapeHtml(t.label)}</span>
-        <span class="theme-check">${getIcon('check', 13)}</span>`;
-      btn.addEventListener('mouseenter', () => previewTheme(t.id));
-      btn.addEventListener('mouseleave', () => previewTheme(getSavedTheme()));
-      btn.addEventListener('focus', () => previewTheme(t.id));
-      btn.addEventListener('blur', () => previewTheme(getSavedTheme()));
+        <span class="theme-option-footer">
+          <span class="theme-label">${escapeHtml(t.label)}</span>
+        </span>`;
       btn.addEventListener('click', () => {
         onSelect(t.id);
         renderThemePicker(themes, t.id, onSelect);

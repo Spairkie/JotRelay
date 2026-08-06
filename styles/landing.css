@@ -23,6 +23,82 @@
     radial-gradient(ellipse 50% 34% at 100% 18%, var(--landing-glow) 0%, transparent 60%);
 }
 .lp-scroll { position: relative; }
+
+/* ── Brand intro (Typora-inspired opener) ──────────────────────────
+   Full-viewport section shown before the nav/hero — a brand moment, not
+   product UI, so it stays a plain wordmark + typed tagline + scroll cue.
+   100svh (not 100vh) so mobile browser chrome collapsing/expanding never
+   leaves a sliver of the nav peeking in under it. */
+.lp-intro {
+  position: relative;
+  min-height: 100svh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.lp-intro-inner {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  /* fill-mode "both" is what makes the reduced-motion override below work
+     with a single `animation: none` — without an explicit opacity/transform
+     override, the element just falls back to its un-animated (fully
+     visible) base state. */
+  animation: lp-intro-in 550ms ease both;
+}
+@keyframes lp-intro-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+.lp-intro-wordmark {
+  font-size: clamp(2.4rem, 9vw, 5rem);
+  font-weight: 700; letter-spacing: -0.02em; line-height: 1;
+  color: var(--text-primary);
+}
+.lp-intro-wordmark span { color: var(--accent); }
+/* Fixed ch-width (a hair over the 39-char tagline) reserved up front so the
+   typed text grows left-to-right from a stable edge instead of re-centering
+   itself with every keystroke, while the block as a whole still sits
+   centered under the wordmark like everything else in .lp-intro-inner. */
+.lp-intro-tagline {
+  display: flex; align-items: center; justify-content: flex-start;
+  margin-top: clamp(14px, 3vw, 22px);
+  width: 40ch; max-width: 100%; overflow: hidden; white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: clamp(0.82rem, 2vw, 1rem);
+  color: var(--text-secondary);
+}
+.lp-intro-caret {
+  display: inline-block; flex-shrink: 0;
+  width: 0.5em; height: 1em; margin-left: 2px;
+  background: var(--accent);
+  animation: lp-caret-blink 1s step-end infinite;
+}
+@keyframes lp-caret-blink { 50% { opacity: 0; } }
+.lp-intro-scroll-cue {
+  position: absolute; left: 50%; bottom: clamp(20px, 5vh, 40px);
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 500; letter-spacing: 0.03em;
+  color: var(--text-muted); transition: color var(--transition);
+}
+.lp-intro-scroll-cue:hover { color: var(--text-secondary); text-decoration: none; }
+.lp-intro-scroll-cue svg { animation: lp-scroll-cue-bob 1.8s ease-in-out infinite; }
+@keyframes lp-scroll-cue-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .lp-intro-inner { animation: none; }
+  .lp-intro-caret { animation: none; opacity: 0; }
+  .lp-intro-scroll-cue svg { animation: none; }
+}
+@media (max-width: 480px) {
+  /* The fixed 40ch reservation (plus nowrap + overflow:hidden) can exceed
+     a narrow phone's available width even at the tagline's minimum
+     font-size, clipping the tail of the string. Drop the fixed width and
+     allow wrapping instead — a two-line tagline beats a silently
+     truncated one. */
+  .lp-intro-tagline {
+    width: auto; max-width: 100%; white-space: normal; overflow: visible;
+    text-align: left;
+  }
+}
+
 .lp-eyebrow {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
@@ -72,10 +148,23 @@
 .lp-nav-logo span { color: var(--accent); }
 .lp-nav-links { display: flex; align-items: center; gap: 28px; }
 .lp-nav-links a {
+  position: relative;
   font-size: 14px; font-weight: 500; color: var(--text-secondary);
   transition: color var(--transition);
 }
 .lp-nav-links a:hover { color: var(--text-primary); text-decoration: none; }
+/* Active-section indicator (src/app/landing.js's IntersectionObserver-driven
+   scroll spy) — an underline rather than a background pill, so it reads as
+   "you are here" without competing with .lp-nav-cta for visual weight. */
+.lp-nav-links a::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: -5px;
+  height: 2px; border-radius: 1px; background: var(--accent);
+  transform: scaleX(0); transform-origin: left;
+  transition: transform 0.25s ease;
+}
+.lp-nav-links a.active { color: var(--text-primary); }
+.lp-nav-links a.active::after { transform: scaleX(1); }
 .lp-nav-actions { display: flex; align-items: center; gap: 10px; }
 .lp-nav-cta {
   padding: 9px 18px; border-radius: var(--radius-md);

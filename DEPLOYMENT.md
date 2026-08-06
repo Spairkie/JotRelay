@@ -47,7 +47,7 @@ window.SYNCPAD_CONFIG = {
 
 ### Brand-new project? Run one file.
 
-**[`supabase/baseline.sql`](supabase/baseline.sql)** is the whole current schema — every table, function, trigger, RLS policy, and Storage bucket/policy SyncPad uses — concatenated from the numbered migrations below into one script. Paste it into the Supabase **SQL Editor** and run it once. That's the entire database setup for a new project; skip straight to [Step 3](#step-3--configure-credentials) afterward.
+**[`supabase/baseline.sql`](supabase/baseline.sql)** covers every *core* table, function, trigger, RLS policy, and Storage bucket/policy SyncPad uses — concatenated from most of the numbered migrations below into one script. Paste it into the Supabase **SQL Editor** and run it once; the app works after that. It predates two optional feature migrations, though — **also run [`0010_anonymous_write_rate_limiting.sql`](supabase/migrations/0010_anonymous_write_rate_limiting.sql) and [`0011_short_file_references.sql`](supabase/migrations/0011_short_file_references.sql)** (see [Optional feature migrations](#optional-feature-migrations) below for what each enables) if you want those on a brand-new project too, then skip to [Step 3](#step-3--configure-credentials).
 
 It's verified end-to-end, not just assembled by hand: run twice in a row against a real Postgres 16 server (stubbed with minimal `auth`/`storage` schemas standing in for the Supabase-platform pieces the SQL assumes exist) with zero errors either time, confirming the whole file — not just each section individually — is genuinely idempotent and safe to rerun.
 
@@ -70,7 +70,7 @@ If you previously deployed with the edit-token migrations (`0007_room_edit_token
 
 ### Optional feature migrations
 
-These genuinely are opt-in — the app works without them, and each feature just silently no-ops (or shows a "check Supabase setup" error) until its migration is run. `baseline.sql` already includes all of them; if you're instead applying the numbered files one at a time to an existing project, run `0001` first, then any of these you want, in any order:
+These genuinely are opt-in — the app works without them, and each feature just silently no-ops (or shows a "check Supabase setup" error) until its migration is run. `baseline.sql` includes `0002`–`0006` and `0008`; it predates `0010` and `0011`, so run those two separately (in either order, any time) even if you started from `baseline.sql`. If you're instead applying the numbered files one at a time to an existing project, run `0001` first, then any of these you want, in any order:
 
 | Migration | Enables | Symptom if skipped |
 |---|---|---|
@@ -82,6 +82,7 @@ These genuinely are opt-in — the app works without them, and each feature just
 | [`supabase/migrations/0008_quarantine_enforcement.sql`](supabase/migrations/0008_quarantine_enforcement.sql) | Server-enforced quarantine — a database trigger, same technique as room lock; requires `0006` first | Quarantine still works from `/admin`, but (as documented in `0006`'s own header) is frontend-only without this — a determined user could bypass it by calling the API directly |
 | [`supabase/migrations/0007_room_edit_tokens.sql`](supabase/migrations/0007_room_edit_tokens.sql) | Historical/optional — the edit-token table and RPCs, unused by the current client (see `0009`'s header). Only relevant if you want to build something else on top of it | Nothing — this is inert infrastructure, not a live feature |
 | [`supabase/migrations/0010_anonymous_write_rate_limiting.sql`](supabase/migrations/0010_anonymous_write_rate_limiting.sql) | Server-side rate limiting on anonymous room creation (30/device + 60/IP per 15 min) and report submission (10/device + 20/IP per 15 min) — a `BEFORE INSERT` trigger, same technique as the lock/quarantine triggers. See the migration's own header before applying: it depends on Supabase's edge network setting `x-forwarded-for` the way it assumes, which the author flagged as verified against a local Postgres instance but *not* yet against a live Supabase project | No rate limiting on room creation or report submission beyond whatever Supabase's own platform-level limits provide |
+| [`supabase/migrations/0011_short_file_references.sql`](supabase/migrations/0011_short_file_references.sql) | Short, sequential-per-room file references (`syncpad-file:3` instead of the full storage path) so inserted file links stay human-typeable; safe to rerun, and legacy long-form references keep resolving unchanged | New file references still embed the full storage path — longer links, but nothing breaks |
 
 If a feature you expect to see doesn't work, re-check that its migration was actually run — the Supabase SQL Editor's query history shows past runs.
 

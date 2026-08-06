@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'syncpad-v44';
+const CACHE_VERSION = 'syncpad-v45';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -84,6 +84,10 @@ const PRECACHE_ASSETS = [
   `${BASE}/vendor/codemirror.js`,
   `${BASE}/assets/icon-192.png`,
   `${BASE}/assets/icon-512.png`,
+  `${BASE}/assets/apple-touch-icon.png`,
+  `${BASE}/assets/favicon.svg`,
+  `${BASE}/assets/favicon-32.png`,
+  `${BASE}/assets/favicon-16.png`,
 ];
 
 // ── Install: precache core assets (tolerant of individual misses) ──────────

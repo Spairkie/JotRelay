@@ -38,8 +38,8 @@ const _readOnly = new Compartment();
 // listener can tell them apart from real typing in this surface.
 const External = Annotation.define();
 
-// Markdown syntax colouring that follows the app's theme variables, so all
-// seven themes work without per-theme CM6 config. Also covers the embedded-
+// Markdown syntax colouring that follows the app's theme variables, so every
+// theme works without per-theme CM6 config. Also covers the embedded-
 // language tags fenced code blocks parse into (see codeLanguages/mount()
 // below) — the same shared HighlightStyle applies everywhere in this view,
 // and @lezer/highlight's tag vocabulary (keyword, string, number, …) is
@@ -498,6 +498,20 @@ function _stripHeadingMarkup(raw) {
     .trim();
 }
 
+// Live mode is the seamless, Typora-style surface — the whole point is that
+// rendered constructs show their result immediately, not behind an extra
+// click. Unlike the static renderer's .md-inline-toc (export/non-live
+// preview, where a reader opting into a plain HTML document reasonably
+// expects a collapsed-by-default nav) and the floating .note-toc auto-nav
+// (a persistent chrome element, not part of the document being edited),
+// the [TOC] widget here stands in for real document content while you're
+// actively writing it, so it starts open. _liveTocOpen remembers a manual
+// collapse across re-renders (new transactions re-create the widget only
+// when the heading list itself changes — eq() above reuses the existing DOM
+// otherwise — so without this, editing an unrelated heading while the user
+// had deliberately collapsed the nav would silently pop it open again).
+let _liveTocOpen = true;
+
 class _TocWidget extends WidgetType {
   constructor(entries) { super(); this.entries = entries; }
   eq(other) {
@@ -505,14 +519,13 @@ class _TocWidget extends WidgetType {
       other.entries.every((e, i) => e.level === this.entries[i].level && e.text === this.entries[i].text && e.pos === this.entries[i].pos);
   }
   toDOM(view) {
-    // <details>/<summary> — same collapsed-by-default, native-toggle pattern
-    // as the static renderer's .md-inline-toc (src/markdown.js) and the
-    // floating .note-toc auto-nav, so all three "Contents" boxes behave
-    // identically. ignoreEvent() returning true below keeps CM6 from
-    // intercepting the <summary> click before the browser's native toggle
-    // runs.
+    // <details>/<summary> gives free keyboard toggling and native semantics;
+    // ignoreEvent() returning true below keeps CM6 from intercepting the
+    // <summary> click before the browser's native toggle runs.
     const nav = document.createElement('details');
     nav.className = 'cm-md-inline-toc';
+    if (_liveTocOpen) nav.open = true;
+    nav.addEventListener('toggle', () => { _liveTocOpen = nav.open; });
     const label = document.createElement('summary');
     label.textContent = 'Contents';
     nav.appendChild(label);
@@ -563,7 +576,9 @@ class _TocWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
-function _computeTocBadges(state) {
+// Shared by the [TOC] widget above and the minimap track below — both need
+// the same "every ATX heading, in document order" list.
+function _collectHeadings(state) {
   const headings = [];
   syntaxTree(state).iterate({
     enter: (nodeRef) => {
@@ -576,6 +591,11 @@ function _computeTocBadges(state) {
       });
     },
   });
+  return headings;
+}
+
+function _computeTocBadges(state) {
+  const headings = _collectHeadings(state);
   if (headings.length < 2) return Decoration.none;
 
   const ranges = [];
@@ -607,6 +627,112 @@ const _tocField = StateField.define({
   update(value, tr) { return _computeTocBadges(tr.state); },
   provide: (f) => EditorView.decorations.from(f),
 });
+
+// ── Document mini-map (heading overview strip) ──────────────────────────────
+// A very thin rail along the scroller's right edge, near-invisible until
+// hovered, with one tick per heading positioned proportionally to where it
+// falls in the full scrollable document — a subtle "you are here, and here's
+// what's ahead" overview built from the same heading list [TOC] uses,
+// without the fully-fledged always-visible sidebar a real minimap would be.
+// Ticks are fixed relative to the viewport (not the scrolled content), same
+// as a native scrollbar, so they only need recomputing when the document or
+// the editor's own size changes — never on scroll.
+class _MinimapTrack {
+  constructor(view) {
+    this.dom = document.createElement('div');
+    this.dom.className = 'cm-minimap';
+    view.dom.appendChild(this.dom);
+    this._positioned = null;
+    this.rebuild(view);
+  }
+  update(update) {
+    // Neither viewportChanged nor geometryChanged is a reliable "only fires
+    // on a real content/size change" signal here: CM6's virtualized scroller
+    // destroys/recreates off-screen line DOM nodes as you scroll, and that
+    // churn alone can raise geometryChanged even when nothing about the
+    // document's headings or their positions actually moved (confirmed by
+    // testing — plain back-and-forth scrolling over an already-fully-
+    // measured document kept re-triggering it). But dropping both outright
+    // would also drop the legitimate case: CM6 only parses/measures a long
+    // document up to roughly the current viewport, so scrolling into an
+    // unvisited region can genuinely reveal headings that plain docChanged
+    // would never catch. So: check on all three, but let rebuild() itself
+    // decide whether anything actually changed before touching the DOM —
+    // recomputing the heading list is cheap; tearing down and recreating
+    // every tick (and any focus that was on one) is not.
+    if (update.docChanged || update.geometryChanged || update.viewportChanged) this.rebuild(update.view);
+  }
+  rebuild(view) {
+    const headings = _collectHeadings(view.state);
+    const totalHeight = view.contentHeight || 1;
+    const positioned = headings.map((h) => ({
+      ...h,
+      top: Math.min(100, (view.lineBlockAt(h.pos).top / totalHeight) * 100),
+    }));
+    // A tolerance comparison, not an exact-match fingerprint — CM6 estimates
+    // unmeasured lines' heights and keeps refining the estimate as more of a
+    // long document is scrolled into view, which nudges every later
+    // heading's cumulative "top" by a fraction of a percent even when
+    // nothing about its actual position changed in any way a user could
+    // perceive (confirmed by measurement: a full round-trip through an
+    // already-settled document, position deltas topped out under 0.4
+    // percentage points — a fraction of a CSS pixel on the minimap rail).
+    // Rounding to a fixed precision before an exact-match comparison still
+    // misfires for values that happen to straddle a rounding boundary
+    // between two reads, so this compares the actual delta against a
+    // tolerance instead — immune to boundary-crossing by construction.
+    const TOP_TOLERANCE_PCT = 0.75;
+    const prev = this._positioned;
+    // pos is compared exactly, never with tolerance — each button's jump()
+    // closure below captures the h.pos current at the time it's built, so
+    // skipping a rebuild while pos actually moved (e.g. an edit inserted or
+    // removed text before this heading, shifting its offset while its
+    // level/text/percentage position all stayed within tolerance) would
+    // leave that tick jumping to stale, now-wrong content until some later
+    // update happened to force a real rebuild.
+    const unchanged = prev && prev.length === positioned.length && positioned.every((h, i) =>
+      h.level === prev[i].level && h.text === prev[i].text && h.pos === prev[i].pos
+      && Math.abs(h.top - prev[i].top) <= TOP_TOLERANCE_PCT);
+    if (unchanged) return; // nothing actually changed — skip the DOM churn
+    this._positioned = positioned;
+
+    this.dom.innerHTML = '';
+    this.dom.classList.toggle('hidden', positioned.length < 2);
+    if (positioned.length < 2) return;
+    for (const h of positioned) {
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = `cm-minimap-dot cm-minimap-dot-h${h.level}`;
+      dot.style.top = `${h.top}%`;
+      dot.title = h.text || 'section';
+      dot.setAttribute('aria-label', `Jump to ${h.text || 'section'}`);
+      const jump = () => {
+        const pos = Math.min(h.pos, view.state.doc.length);
+        view.dispatch({ selection: { anchor: pos } });
+        _scrollPosIntoView(view, pos, { smooth: true });
+        view.focus();
+      };
+      dot.addEventListener('mousedown', (evt) => {
+        // mousedown, same as the [TOC] widget above, so this fires before
+        // the editor would otherwise steal focus/selection on the way to a click.
+        evt.preventDefault();
+        jump();
+      });
+      // Same reasoning as the [TOC] widget's <a> above: a native <button> is
+      // Tab-focusable, but keyboard Enter/Space activation only ever fires
+      // 'click' (never 'mousedown'), so without this a keyboard user could
+      // Tab to a tick and have Enter/Space do nothing. evt.detail is 0 only
+      // for a keyboard-synthesized click, never a real pointer one, so a
+      // mouse click (already handled by mousedown above) doesn't re-jump.
+      dot.addEventListener('click', (evt) => {
+        if (evt.detail === 0) jump();
+      });
+      this.dom.appendChild(dot);
+    }
+  }
+  destroy() { this.dom.remove(); }
+}
+const _minimapPlugin = ViewPlugin.fromClass(_MinimapTrack);
 
 // GFM tables → real <table>s. A block-replace decoration (unlike the
 // additive widgets above) must come from a StateField — CM6 rejects block
@@ -1005,11 +1131,6 @@ const _theme = EditorView.theme({
 
 export function isMounted() { return !!_view; }
 
-/** Current local caret offset into the doc, or null if unmounted. */
-export function getCaretPos() {
-  return _view ? _view.state.selection.main.head : null;
-}
-
 /**
  * Viewport pixel coordinates for a document offset (floating comment
  * composer/bubble placement). Returns null when unmounted or the position can't be resolved
@@ -1048,6 +1169,12 @@ export function estimateViewportY(pos) {
  */
 export function mount(container, initialValue, { onChange, onCursorActivity, onImageFiles, readOnly = false } = {}) {
   destroy();
+  // _liveTocOpen is module-global so a manual collapse survives this file's
+  // own re-renders (widget reuse via eq() — see its declaration above), but
+  // that means it would otherwise leak across an unrelated destroy()/mount()
+  // pair too — collapsing the TOC in one room would leave a freshly opened
+  // room's TOC starting collapsed as well. Reset it per mounted document.
+  _liveTocOpen = true;
   _onChange = onChange || null;
   _onCursorActivity = onCursorActivity || null;
   _onImageFiles = onImageFiles || null;
@@ -1122,6 +1249,7 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
         _remoteCursorField,
         _checklistProgressField,
         _tocField,
+        _minimapPlugin,
         _tableField,
         _commentAnchorsField,
         EditorView.updateListener.of((update) => {

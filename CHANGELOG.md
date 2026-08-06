@@ -8,6 +8,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 48 — Brand mark redesign, code-fence visual proportion, landing demo keyboard nav
+
+#### Changed
+- **Brand mark redesigned.** The mark (two overlapping solid cards + a separate circular refresh-arrow badge) read as a generic icon-generator composition — the refresh-arrow glyph in particular is close to the single most common "sync" stock icon there is, doing nothing to make the mark ownable. Replaced with two offset rounded cards — an outlined back card, a solid front card with bold content lines — where the offset itself suggests sync/mirroring instead of a bolted-on badge. `presskit/icon/icon-simple.svg` (a separate "simplified" SVG for favicon/small sizes) is gone: the new mark was tested down to native 16px and reads clearly at every size up to 512px, so `icon.svg` is now the single source for the press kit, the PWA install icons, and the browser-tab favicon alike — one less place for two files to silently drift apart. `scripts/generate-icon-pngs.mjs` and `src/theme.js`'s runtime theme-matched-favicon renderer both updated to match.
+- **Fenced code blocks narrowed to 90% of the content measure** (desktop only; full width below 768px). Not an overflow fix — code blocks were already contained to the same measure as headings/paragraphs — but a bordered/backgrounded box reaching flush to both edges reads as more prominent than prose, which rarely wraps all the way to the edge, so blocks visually dominated the page despite being the "correct" width on paper. Still left-aligned to the same edge as the rest of the content; `overflow-x:auto` still covers any line that doesn't fit even the narrower box.
+
+#### Added
+- **Theme-matched favicon.** The browser-tab favicon now re-tints to the active theme's own background/accent colors whenever the theme changes, including the PNG `<link>` fallbacks for browsers without SVG-favicon support (rasterized via an offscreen canvas, async).
+- **Keyboard navigation for the landing page's two tablists** (the coded demo's scene tabs, the "SyncPad features" tabs) — Left/Right/Home/End roving focus per the ARIA APG Tabs pattern; previously click-only plus default per-button Tab stops.
+
+#### Fixed
+Two rounds of Codex review findings on this phase's changes, all confirmed real and fixed: the PNG favicon fallbacks not re-tinting on theme change; `markdownToPlainText()` silently dropping image alt text and running table cells together with no separator; the document mini-map rebuilding on ordinary scrolling (traced to CM6 raising `geometryChanged` from virtualized-viewport DOM churn, not just real content/size changes — fixed with a tolerance-based "did anything actually change" comparison in `rebuild()` itself, including comparing each heading's exact document offset so a stale tick can never silently outlive an edit); the minimap's keyboard-nav helper consuming vertical arrow keys in a horizontal tablist; the file-preview modal's code narrowing not gated to desktop; and PWA install icons (`icon-192.png`/`icon-512.png`/`apple-touch-icon.png`) rasterizing with transparent corners despite `manifest.json` declaring them maskable.
+
+### Phase 47 — Follow-up polish: export-copy-text bug, dead-code sweep, emoji shortcodes, favicon set
+
+#### Fixed
+- **The Export panel's "Copy as plain text" button copied raw Markdown source, `**`/`#`/`[]()` markers and all** — its handler called `copyToClipboard(UI.getEditorValue())` directly instead of the purpose-built `markdownToPlainText()` (which already existed, fully implemented, but had never been wired to anything). Now strips markup as the label promises; "Export as Markdown" already covers the raw-source use case.
+- Fenced code blocks hardened against a CSS Grid content-based sizing edge case: `.editor-wrap`'s `grid-template-columns: 1fr` (and the split-mode `1fr 1fr`) had no explicit minimum, so an unbreakable long line could in principle force the grid track wider than its intended measure before `overflow:hidden` ever got a chance to clip it. Changed to `minmax(0, 1fr)` and added an explicit `max-width: 100%` on `.note-preview pre`/`.preview-markdown-body pre` as a documented guarantee — verified via direct DOM-geometry measurement (both wrapping and deliberately unbreakable long lines) that code blocks already matched the heading/paragraph content measure pixel-for-pixel in every surface tested; this is defense-in-depth, not a fix for a reproduced visual bug.
+- Removed dead exports found via a full-repo usage audit: `getCaretPos()` (`live-editor.js`), `isPresenceHidden()` (`presence.js`), `templateKeys()` (`templates.js`) — confirmed zero call sites anywhere in the repo. `markdownToPlainText()` was in the same unused-export list but turned out to be the fix above, not dead code.
+- Removed a dead legacy share-modal CSS block (`styles/modals.css`) — `.share-badge(--edit/--view)`, `.share-card(--edit/--view)`, `.share-card-header/-title`, `.share-url-box/-text`, `.share-copy-btn`, `.share-native-btn`, `.share-note`, `.share-passcode-notice`, `.share-encryption-notice`, `.share-security-notice`, `.share-send-to-phone`, `.share-steps`, `.share-qr-title`, `.share-room-summary/-badges/-badge`, `.share-summary-label` — all confirmed zero references in any `.js`/`.html`, left over from a share-modal redesign that moved to the current icon-action layout without cleaning up the old rules. Also removed the equally-dead `.toggle-switch`/`.toggle-track`/`.toggle-thumb` component (`styles/panels.css`).
+
+#### Added
+- **Emoji shortcodes** (`:smile:`, `:tada:`, `:rocket:`, `:thumbsup:`, …) now render as Unicode emoji in the classic renderer (`markdown.js`'s new `_EMOJI_MAP`, ~150 commonly-typed GitHub-style names) — `markdownLanguage`'s grammar already parsed `:shortcode:` as an `Emoji` node structurally (previously only its syntax-highlight color was neutralized, per Phase 33); this adds the actual text conversion, with an unrecognized shortcode left as literal text rather than dropped. Live-surface visual conversion (a widget decoration matching the images/checkboxes pattern) is scoped out for now — see `docs/markdown-feature-audit.md`'s "Areas for further work".
+- **Favicon set redesigned and correctly wired.** `presskit/icon/icon-simple.svg` — a bold single-card mark already built and explicitly commented as "tuned for legibility at favicon/small sizes" — was never actually used as the browser-tab favicon; `index.html` linked the full two-card+badge mark at 192px instead, which a side-by-side rendered comparison at real tab size (16px/32px) confirmed blurs into an indistinct smudge at that scale. `index.html` now references `assets/favicon.svg` (primary) plus `favicon-32.png`/`favicon-16.png` fallbacks, all from the simple mark; added `assets/apple-touch-icon.png` (180px, full mark — reads fine at that size). `scripts/generate-icon-pngs.mjs` now generates the app's shipped `assets/*` icons directly (previously only documented as doing so, not actually implemented) alongside the presskit set, so one script run keeps every icon in sync. Service worker cache bumped to `syncpad-v45` and the new assets added to its precache list.
+
+#### Verified
+- All 6 Codex-bot findings from PR #102's review confirmed present in the actual current code (not just marked resolved on GitHub): minimap keyboard activation, `_liveTocOpen` reset on mount, demo `scrollIntoViewIfNeeded()` fixes, mobile tagline wrap, DEPLOYMENT.md's reconciled one-file instructions, and scroll-spy clearing outside tracked sections.
+- Visual pass across the landing page (brand-intro, hero/demo, features/workflow, footer/CTA) via direct screenshot — confirmed no layout regressions, scroll-spy nav highlighting works correctly in the browser, reveal-on-scroll animations settle cleanly.
+- Markdown feature coverage reviewed end to end against `docs/markdown-feature-audit.md` — already GFM-complete with well-reasoned scope decisions; emoji shortcodes (above) was the one confirmed gap worth closing.
+
+### Phase 46 — Coded hero demo, theme picker redesign, live TOC/mini-map, brand-intro landing section
+
+#### Added
+- **Coded hero demo** replacing the landing page's static screenshot/video with a hand-built, dependency-free scripted sequence (5 scenes: Write → Collaborate → Review → Share → Handoff) driven by `src/app/landing-demo.js`, with a mobile-frame variant, autoplay with a per-tab progress fill, pause-on-manual-interaction, and pause/resume tied to viewport visibility via `IntersectionObserver`.
+- **Typora-inspired brand-intro section** at the top of the landing page (`#lp-intro`) — full-viewport centered wordmark, a typed tagline with a blinking caret, a "Scroll to explore" cue, `prefers-reduced-motion` support, no scroll-jacking. `.lp-nav` moved below it in document order (stays `position: sticky`).
+- **Active-section nav highlighting** — an `IntersectionObserver`-driven scroll spy underlines whichever nav link matches the section currently in view.
+- **Document mini-map** in the Live editor surface — a thin always-faintly-visible rail along the scroller edge with one tick per heading, positioned proportionally in the document; brightens on hover, jumps to its heading on click, hidden on touch/coarse-pointer devices.
+- `[TOC]` now renders open by default in Live mode instead of requiring a click to expand.
+- `#btn-share` gets a distinct accent-tinted hover instead of the generic header-icon treatment.
+
+#### Changed
+- **Theme picker redesigned**: removed the hover-preview interaction (hovering/tabbing a swatch used to live-repaint the whole app), replaced flat color chips with a small "window" mockup swatch (header bar + accent pill) and a CSS-only hover/active lift.
+- Icon set audited (93 inline SVGs + every `getIcon()` definition) against the app's stroke convention; fixed the two real inconsistencies found and removed two dead duplicate icon defs (`preview`/`import`, byte-identical to `eye`/`upload`).
+- Hero demo's collaborator character renamed Alex → Hans throughout (markup, JS, tests).
+
+#### Fixed (docs accuracy audit)
+- Template/theme counts stale across README/CLAUDE.md/architecture docs/presskit README/tests (13→17 templates, 7→10 themes).
+- README's Screenshots section pointed at a nonexistent `docs/screenshots/` folder; repointed at the real `presskit/screenshot/*.png` assets.
+- `docs/playwright.md`'s spec-file table was missing `landing-demo.spec.js` and undercounted the total.
+- Service worker cache version comment was stale in README.
+- **Real gap**: `DEPLOYMENT.md` claimed `baseline.sql` includes every migration, but it predates `0010`/`0011` — documented in both `baseline.sql`'s header and `DEPLOYMENT.md`'s migration table, and reconciled with the prominent "brand-new project? run one file" instructions that hadn't been updated to match.
+- A brand-intro layout bug found during verification: the "Scroll to explore" cue rendered on top of the wordmark instead of near the viewport bottom — an animated `transform` on its parent established a new containing block for the cue's `position: absolute`, even though the animation settles on `transform: none` (the computed/used value is an identity matrix, not literally "none"). Fixed by moving the cue to be a sibling of the animated wrapper instead of a child.
+- 6 findings from an automated Codex review addressed: minimap ticks not keyboard-activatable, `_liveTocOpen` leaking across room mount/destroy, the new intro pushing the demo below its `IntersectionObserver` autoplay threshold (breaking 3 existing tests), mobile tagline clipping, the DEPLOYMENT.md reconciliation above, and scroll-spy nav state not clearing outside tracked sections.
+
 ### Phase 45 — Live TOC/footnote interactivity, code-fence-in-blockquote fix, shorter file references, code line numbers
 
 #### Fixed
