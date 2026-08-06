@@ -109,6 +109,34 @@
 <div id="landing-screen" class="hidden">
   <div class="landing-glow-bg"></div>
 
+  <!-- ── Brand intro (Typora-inspired opener) ─────────────────────
+       Full-viewport section shown before the nav/hero. Purely a brand
+       moment — wordmark + typed tagline + scroll cue — no product UI,
+       so it never competes with the coded demo in the hero below.
+       Wired up by src/app/landing.js's wireMarketingPageEvents()
+       (search "brand-intro typewriter"). -->
+  <section class="lp-intro" id="lp-intro" aria-label="SyncPad">
+    <div class="lp-intro-inner">
+      <h1 class="lp-intro-wordmark">Sync<span>Pad</span></h1>
+      <p class="lp-intro-tagline" aria-hidden="true">
+        <span class="lp-intro-tagline-text" id="lp-intro-tagline-text"></span><span class="lp-intro-caret"></span>
+      </p>
+      <span class="sr-only">notes and files, synced instantly</span>
+    </div>
+    <!-- A sibling of .lp-intro-inner, not a child of it: .lp-intro-inner's
+         entrance animation interpolates `transform` (translateY → none),
+         and an animated transform establishes a new containing block for
+         `position:absolute` descendants even once it settles on `none` —
+         the computed value lands on an identity matrix, not literally
+         "no transform". Nesting this cue inside .lp-intro-inner made its
+         `bottom` resolve against that small, content-sized box instead of
+         the full-viewport .lp-intro, landing it on top of the wordmark. -->
+    <a class="lp-intro-scroll-cue" href="#lp-hero">
+      <span>Scroll to explore</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+    </a>
+  </section>
+
   <!-- ── Sticky marketing nav ─────────────────────────────────── -->
   <nav class="lp-nav">
     <div class="lp-nav-inner">
@@ -132,7 +160,7 @@
   <div class="lp-scroll" id="lp-top">
 
     <!-- ── Hero ───────────────────────────────────────────────── -->
-    <section class="lp-hero">
+    <section class="lp-hero" id="lp-hero">
       <div class="lp-hero-copy">
         <span class="lp-eyebrow">No account. No setup. Just sync.</span>
         <h1 class="lp-h1">Your notes and files, <span class="lp-grad">synced instantly</span> — across every device.</h1>
@@ -172,7 +200,7 @@
             <div class="lp-demo-chrome">
               <span class="lp-demo-status-dot"></span>
               <span class="lp-demo-room">Product launch plan</span>
-              <span class="lp-demo-presence" id="lp-demo-presence"><span class="lp-demo-avatar">A</span>Alex</span>
+              <span class="lp-demo-presence" id="lp-demo-presence"><span class="lp-demo-avatar">H</span>Hans</span>
             </div>
             <div class="lp-demo-stage">
               <div class="lp-demo-doc-view" id="lp-demo-doc-view">
@@ -180,11 +208,11 @@
                   <div class="lp-demo-line lp-demo-h1">Product launch plan</div>
                   <div class="lp-demo-line lp-demo-task" id="lp-demo-line-1"><span class="lp-demo-check"></span><span id="lp-demo-text-1">Finalize pricing page</span></div>
                   <div class="lp-demo-line lp-demo-task" id="lp-demo-line-2"><span class="lp-demo-check"></span><span id="lp-demo-text-2">QA the onboarding flow</span></div>
-                  <div class="lp-demo-line lp-demo-task" id="lp-demo-line-3"><span class="lp-demo-check"></span><span class="lp-demo-highlight-target" id="lp-demo-text-3">Confirm launch date with marketing</span><span class="lp-demo-remote-cursor" id="lp-demo-remote-cursor"></span><span class="lp-demo-remote-name" id="lp-demo-remote-name">Alex</span></div>
+                  <div class="lp-demo-line lp-demo-task" id="lp-demo-line-3"><span class="lp-demo-check"></span><span class="lp-demo-highlight-target" id="lp-demo-text-3">Confirm launch date with marketing</span><span class="lp-demo-remote-cursor" id="lp-demo-remote-cursor"></span><span class="lp-demo-remote-name" id="lp-demo-remote-name">Hans</span></div>
                 </div>
                 <div class="lp-demo-comment" id="lp-demo-comment">
-                  <div class="lp-demo-comment-avatar">A</div>
-                  <div class="lp-demo-comment-text"><strong>Alex</strong><p>&ldquo;Should this happen before final QA?&rdquo;</p></div>
+                  <div class="lp-demo-comment-avatar">H</div>
+                  <div class="lp-demo-comment-text"><strong>Hans</strong><p>&ldquo;Should this happen before final QA?&rdquo;</p></div>
                 </div>
               </div>
               <div class="lp-demo-share-view" id="lp-demo-share-view">
@@ -206,7 +234,7 @@
                   <span class="lp-demo-file-name">launch-assets.zip</span>
                   <span class="lp-demo-file-meta">2.4&nbsp;MB</span>
                 </div>
-                <div class="lp-demo-file-status" id="lp-demo-file-status">Ready to send to Alex&rsquo;s iPhone</div>
+                <div class="lp-demo-file-status" id="lp-demo-file-status">Ready to send to Hans&rsquo;s iPhone</div>
               </div>
               <div class="lp-demo-flying-file hidden" id="lp-demo-flying-file" aria-hidden="true">&#128230;</div>
             </div>
@@ -216,7 +244,7 @@
             <div class="lp-demo-mobile-screen">
               <div class="lp-demo-mobile-room">Product launch plan</div>
               <div class="lp-demo-mobile-body" id="lp-demo-mobile-body">
-                <span class="lp-demo-mobile-hint">Alex&rsquo;s iPhone</span>
+                <span class="lp-demo-mobile-hint">Hans&rsquo;s iPhone</span>
               </div>
             </div>
           </div>
