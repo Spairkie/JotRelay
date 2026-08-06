@@ -594,7 +594,7 @@ function _collectHeadings(state) {
   return headings;
 }
 
-function _computeTocBadges(state) {
+function _computeTocBadges(state, isInitial) {
   const headings = _collectHeadings(state);
   if (headings.length < 2) return Decoration.none;
 
@@ -605,7 +605,15 @@ function _computeTocBadges(state) {
     // Reveal the raw "[TOC]" marker while the cursor is actually on it (same
     // pattern as every other hideable construct in this file) — otherwise
     // there's no way to select/delete the line without leaving Live mode.
-    if (_selectionTouches(state, line.from, line.to)) continue;
+    // Skipped on the field's very first computation (isInitial): mount()
+    // never gives EditorState.create() an explicit selection, so CM6
+    // defaults to a bare cursor at position 0 — an arbitrary artifact of
+    // state construction, not a real "the user is editing this" signal. If
+    // [TOC] happens to sit on line 1 (a natural place to put one), that
+    // default cursor "touches" it and the widget would render as raw text
+    // until the first real click/selection change moved the cursor away,
+    // which reads as "the TOC doesn't render until the editor is focused."
+    if (!isInitial && _selectionTouches(state, line.from, line.to)) continue;
     // A *replace*, not an insertion: this was previously Decoration.widget()
     // (additive), which left the literal "[TOC]" text sitting right below
     // the rendered Contents box instead of being hidden by it — the one
@@ -619,7 +627,7 @@ function _computeTocBadges(state) {
 }
 
 const _tocField = StateField.define({
-  create: (state) => _computeTocBadges(state),
+  create: (state) => _computeTocBadges(state, true),
   // Recomputed on every transaction, not just docChanged — whether the
   // marker line renders as the widget or reveals its raw "[TOC]" text now
   // depends on the *selection* too (reveal-while-touched, same as
