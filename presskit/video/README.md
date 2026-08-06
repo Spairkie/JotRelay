@@ -8,7 +8,7 @@ if you want to hand this off to a voiceover/editing tool for a produced cut.
 **It is no longer the landing page hero.** The hero at `index.html`'s
 `.lp-hero-visual` is now a coded, interactive five-scene demo
 (`src/app/landing-demo.js` / `styles/landing-demo.css` — see
-[docs/marketing-site.md#coded-hero-demo](../../docs/marketing-site.md#coded-hero-demo)
+[docs/marketing-site.md#coded-hero-demo](https://github.com/Spairkie/SyncPad/blob/main/docs/marketing-site.md#coded-hero-demo)
 for the full writeup) so the page no longer autoplays or downloads an MP4 on
 load. This file is still very much in active use, just in a different role:
 it's a presskit/social-media asset, and the hero links to it via a

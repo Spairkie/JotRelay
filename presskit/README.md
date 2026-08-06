@@ -6,6 +6,16 @@ folder is free to use under the terms in [Asset usage](#asset-usage) below.
 
 If you need something that isn't here, see [Contact](#contact).
 
+**[⬇ Download everything in this folder as one .zip](https://raw.githubusercontent.com/Spairkie/SyncPad/main/presskit/SyncPad-Presskit.zip)**
+(logos, screenshots, and the demo video together — regenerated from the
+files below with `npm run presskit:zip`, so it's always this same content,
+just zipped)
+
+This is an absolute link rather than a relative `SyncPad-Presskit.zip` one
+on purpose: the archive deliberately doesn't contain a copy of itself, so a
+relative link would go dead the moment someone extracts it — this one still
+resolves from inside an already-extracted copy, not just from the repo.
+
 ---
 
 ## What SyncPad is
@@ -119,10 +129,11 @@ as a "secure" product in the compliance sense.
 
 ```text
 presskit/
-  README.md          — this file
-  icon/               — logo/icon system (SVG source + PNG exports)
-  screenshot/         — product screenshots + the demo video's poster frame
-  video/              — the hero demo video + its narration script
+  README.md               — this file
+  SyncPad-Presskit.zip    — everything below, zipped (npm run presskit:zip)
+  icon/                    — logo/icon system (SVG source + PNG exports)
+  screenshot/              — product screenshots + the demo video's poster frame
+  video/                   — the hero demo video + its narration script
 ```
 
 ### Icon
@@ -137,7 +148,7 @@ presskit/
 - Pre-rendered PNGs: `icon-512.png`, `icon-256.png`, `icon-128.png`,
   `favicon.png` (64×64), `favicon-32.png`
 - Regenerate the PNGs after editing the SVG with `npm run presskit:icons`
-  (see [the repo's scripts documentation](../docs/marketing-site.md#scripts)
+  (see [the repo's scripts documentation](https://github.com/Spairkie/SyncPad/blob/main/docs/marketing-site.md#scripts)
   for details and how to add more sizes)
 
 ### Screenshots
@@ -160,7 +171,7 @@ content (a fictional "Q3 Product Roadmap" room, sample files, etc.) rather
 than a live production room, so no real user data appears in them. Replace
 them with real captures once you have production screenshots you're happy
 with; see
-[docs/marketing-site.md](../docs/marketing-site.md#swapping-in-real-assets)
+[docs/marketing-site.md](https://github.com/Spairkie/SyncPad/blob/main/docs/marketing-site.md#swapping-in-real-assets)
 for how the current ones were generated and how to redo the process.
 
 ### Video
@@ -175,7 +186,7 @@ produce a narrated cut.
 The landing page hero itself no longer autoplays this file — it's a coded,
 interactive five-scene demo instead (`src/app/landing-demo.js` /
 `styles/landing-demo.css`; see
-[docs/marketing-site.md#coded-hero-demo](../docs/marketing-site.md#coded-hero-demo)).
+[docs/marketing-site.md#coded-hero-demo](https://github.com/Spairkie/SyncPad/blob/main/docs/marketing-site.md#coded-hero-demo)).
 `demo.mp4` remains available as a presskit/social-media asset and via the
 hero's "Watch recorded demo" link, which opens it on click rather than
 loading it automatically. See [`video/README.md`](video/README.md) for the
