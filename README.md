@@ -337,7 +337,7 @@ npm run test:chrome    # chromium only
 npm run test:report    # open HTML report
 ```
 
-To browse the app itself (not run tests), `npm run serve` and open `http://localhost:5555/SyncPad/` — `serve.json` gives it the same `/SyncPad` SPA fallback the test suite's `tests/spa-server.js` uses.
+To browse the app itself (not run tests), `npm run serve` and open `http://localhost:5555/SyncPad/` — it runs the same `tests/spa-server.js` the test suite uses, so `/SyncPad`-prefixed assets and in-app routes both resolve correctly.
 
 See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 

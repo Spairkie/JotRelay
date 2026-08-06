@@ -594,7 +594,7 @@ function _collectHeadings(state) {
   return headings;
 }
 
-function _computeTocBadges(state) {
+function _computeTocBadges(state, isInitial) {
   const headings = _collectHeadings(state);
   if (headings.length < 2) return Decoration.none;
 
@@ -605,7 +605,15 @@ function _computeTocBadges(state) {
     // Reveal the raw "[TOC]" marker while the cursor is actually on it (same
     // pattern as every other hideable construct in this file) — otherwise
     // there's no way to select/delete the line without leaving Live mode.
-    if (_selectionTouches(state, line.from, line.to)) continue;
+    // Skipped on the field's very first computation (isInitial): mount()
+    // never gives EditorState.create() an explicit selection, so CM6
+    // defaults to a bare cursor at position 0 — an arbitrary artifact of
+    // state construction, not a real "the user is editing this" signal. If
+    // [TOC] happens to sit on line 1 (a natural place to put one), that
+    // default cursor "touches" it and the widget would render as raw text
+    // until the first real click/selection change moved the cursor away,
+    // which reads as "the TOC doesn't render until the editor is focused."
+    if (!isInitial && _selectionTouches(state, line.from, line.to)) continue;
     // A *replace*, not an insertion: this was previously Decoration.widget()
     // (additive), which left the literal "[TOC]" text sitting right below
     // the rendered Contents box instead of being hidden by it — the one
@@ -619,7 +627,7 @@ function _computeTocBadges(state) {
 }
 
 const _tocField = StateField.define({
-  create: (state) => _computeTocBadges(state),
+  create: (state) => _computeTocBadges(state, true),
   // Recomputed on every transaction, not just docChanged — whether the
   // marker line renders as the widget or reveals its raw "[TOC]" text now
   // depends on the *selection* too (reveal-while-touched, same as
@@ -637,12 +645,40 @@ const _tocField = StateField.define({
 // Ticks are fixed relative to the viewport (not the scrolled content), same
 // as a native scrollbar, so they only need recomputing when the document or
 // the editor's own size changes — never on scroll.
+// How close the pointer needs to be to the scroller's right edge (in CSS
+// px) before the otherwise-invisible dots fade in — wide enough to cover
+// the real scrollbar plus a comfortable margin, narrow enough that moving
+// the mouse across the body of the document doesn't trigger it. .cm-minimap
+// itself stays pointer-events:none (see its CSS) so it can never intercept
+// clicks meant for the actual scrollbar underneath it; this is a plain
+// mousemove/clientX check against the scroller's own bounding rect instead
+// of a CSS :hover, specifically so the reveal can start before the pointer
+// is precisely on a 5px dot, not just once it's already there.
+const _MINIMAP_REVEAL_ZONE_PX = 32;
+
 class _MinimapTrack {
   constructor(view) {
     this.dom = document.createElement('div');
     this.dom.className = 'cm-minimap';
     view.dom.appendChild(this.dom);
     this._positioned = null;
+    // Listened on view.dom (.cm-editor), not view.scrollDOM (.cm-scroller):
+    // .cm-minimap is a *sibling* of .cm-scroller, not a descendant of it (both
+    // are direct children of view.dom, appended above), and each dot has its
+    // own pointer-events:auto — so a mousemove landing exactly on a dot never
+    // bubbles up through .cm-scroller at all, only through .cm-minimap and
+    // view.dom. Listening on .cm-scroller alone would miss that case, leaving
+    // only the one dot under the pointer visible via its own :hover rule
+    // while the rest of the group stayed invisible.
+    this._listenDOM = view.dom;
+    this._onScrollerMove = (evt) => {
+      const rect = view.scrollDOM.getBoundingClientRect();
+      const nearEdge = evt.clientX >= rect.right - _MINIMAP_REVEAL_ZONE_PX;
+      this.dom.classList.toggle('is-near-edge', nearEdge);
+    };
+    this._onScrollerLeave = () => this.dom.classList.remove('is-near-edge');
+    view.dom.addEventListener('mousemove', this._onScrollerMove);
+    view.dom.addEventListener('mouseleave', this._onScrollerLeave);
     this.rebuild(view);
   }
   update(update) {
@@ -730,7 +766,11 @@ class _MinimapTrack {
       this.dom.appendChild(dot);
     }
   }
-  destroy() { this.dom.remove(); }
+  destroy() {
+    this._listenDOM.removeEventListener('mousemove', this._onScrollerMove);
+    this._listenDOM.removeEventListener('mouseleave', this._onScrollerLeave);
+    this.dom.remove();
+  }
 }
 const _minimapPlugin = ViewPlugin.fromClass(_MinimapTrack);
 

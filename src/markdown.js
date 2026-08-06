@@ -488,7 +488,18 @@ function _renderNode(node, text, ctx) {
       // the opt-in "Code line numbers" setting is on (styles/editor.css).
       const lineCount = body.replace(/\n$/, '').split('\n').length;
       const gutter = `<span class="code-line-numbers-gutter" aria-hidden="true">${'<span></span>'.repeat(lineCount)}</span>`;
-      return `<pre class="code-block">${gutter}<code${lang ? ` class="language-${escapeHtml(lang)}" data-lang="${escapeHtml(lang)}"` : ''}>${escapeHtml(body)}</code></pre>`;
+      // Language label (top-left, always visible — useful at a glance when
+      // scanning a doc with several blocks) and a copy button (top-right,
+      // hover/focus-revealed — an action, not information, so it doesn't
+      // need to compete for attention at rest). Both float over the <pre>'s
+      // own padding rather than reserving a separate header row, so nothing
+      // about the code-line-numbers gutter's top-alignment has to change.
+      const langLabel = lang ? `<span class="code-block-lang" aria-hidden="true">${escapeHtml(lang)}</span>` : '';
+      const copyBtn = '<button type="button" class="code-block-copy-btn" aria-label="Copy code">'
+        + '<svg class="code-block-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M15 9V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h5"/></svg>'
+        + '<svg class="code-block-copy-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>'
+        + '</button>';
+      return `<pre class="code-block">${gutter}${langLabel}${copyBtn}<code${lang ? ` class="language-${escapeHtml(lang)}" data-lang="${escapeHtml(lang)}"` : ''}>${escapeHtml(body)}</code></pre>`;
     }
 
     // Deliberately NOT rendered as code — this renderer doesn't support

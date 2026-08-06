@@ -26,7 +26,7 @@ npx playwright install
 npm test
 ```
 
-You don't need to manually start a server first — `npm test` does it for you. If you want a server running yourself (e.g. to poke around in the app between test runs), either `npm run serve` or `node tests/spa-server.js` in a separate terminal both work — `reuseExistingServer` is enabled locally, so Playwright will attach to whichever is already running on port 5555 instead of spawning its own. Both give `/SyncPad/*` routes SPA fallback to `index.html` (`npm run serve`'s `npx serve .` picks up the rewrite rule in `serve.json`); a plain `npx serve .` run from somewhere that rewrite isn't visible (a different working directory, or the file deleted) won't have it, and will 404 on every route but the bare landing screen.
+You don't need to manually start a server first — `npm test` does it for you. If you want a server running yourself (e.g. to poke around in the app between test runs), `npm run serve` and `node tests/spa-server.js` are the same command (the former just runs the latter) — `reuseExistingServer` is enabled locally, so Playwright will attach to whichever is already running on port 5555 instead of spawning its own. Both give `/SyncPad/*` routes SPA fallback to `index.html`, and — unlike a generic static-file server — correctly strip the `/SyncPad` prefix before resolving real assets too (`index.html` references everything as an absolute `/SyncPad/...` path, matching where GitHub Pages hosts the site, so a plain file server pointed at the repo root can't serve them as-is).
 
 ---
 
@@ -318,7 +318,7 @@ webServer: {
 }
 ```
 
-`tests/spa-server.js` serves the repo at `/SyncPad/` (matching the GitHub Pages deployment path `index.html` hardcodes as `window.SYNCPAD_CONFIG.basePath`) with SPA fallback to `index.html`, so every in-app route resolves the same way it does in production — `serve.json` gives plain `npx serve .` (what `npm run serve` runs) the identical rewrite. CI uses the dedicated script rather than `npx serve` mainly so there's no dependency on `serve.json` being picked up correctly from whatever directory the CI runner invokes it from. In CI, `reuseExistingServer` is `false`, so Playwright always spawns a fresh server and tears it down after the run, preventing port conflicts from a previous failed run.
+`tests/spa-server.js` serves the repo at `/SyncPad/` (matching the GitHub Pages deployment path `index.html` hardcodes as `window.SYNCPAD_CONFIG.basePath`) with SPA fallback to `index.html`, so every in-app route resolves the same way it does in production — `npm run serve` runs this exact script rather than a generic static-file server, since one that doesn't strip the `/SyncPad` prefix before resolving files would 404 or silently return `index.html` for every real asset. In CI, `reuseExistingServer` is `false`, so Playwright always spawns a fresh server and tears it down after the run, preventing port conflicts from a previous failed run.
 
 **Artifacts:** On failure, Playwright saves screenshots and videos to `test-results/` and writes a full HTML report to `playwright-report/`. Configure your CI pipeline to upload these directories as job artifacts so you can inspect failures without re-running the suite.
 
