@@ -111,6 +111,55 @@ test.describe('Settings panel', () => {
     expect(after).toContain('data:image/svg+xml');
   });
 
+  test('rapid theme switches never leave the PNG favicon fallback on a stale theme', async ({ page }) => {
+    // Regression test: the PNG <link rel="icon"> fallbacks (what a browser
+    // without SVG-favicon support actually displays) are re-rendered async
+    // via an offscreen canvas. Switching themes twice in quick succession
+    // starts two independent, unordered image-decode jobs — without a
+    // generation token, an older theme's rasterization finishing after a
+    // newer one's would win the final link.href and leave the PNG favicon
+    // stuck on stale colors even though the page (and the SVG candidate)
+    // already moved on. Artificially delay the FIRST call's decode so it
+    // resolves after the second — the exact adversarial ordering the fix
+    // has to survive — and confirm the final href still matches a clean,
+    // uncontested rasterization of the theme actually applied last.
+    await createFreshRoom(page);
+
+    const reference = await page.evaluate(async () => {
+      const { applyTheme } = await import('/SyncPad/src/theme.js');
+      applyTheme('rose');
+      await new Promise((r) => setTimeout(r, 400));
+      return document.querySelector('link[rel="icon"][sizes="32x32"]').href;
+    });
+
+    const raced = await page.evaluate(async () => {
+      const { applyTheme } = await import('/SyncPad/src/theme.js');
+      const RealImage = window.Image;
+      let callCount = 0;
+      window.Image = function (...args) {
+        const img = new RealImage(...args);
+        const setSrc = Object.getOwnPropertyDescriptor(RealImage.prototype, 'src').set;
+        Object.defineProperty(img, 'src', {
+          set(v) {
+            callCount++;
+            const delay = callCount === 1 ? 250 : 20; // 1st call (midnight-blue) resolves LAST
+            setTimeout(() => setSrc.call(img, v), delay);
+          },
+        });
+        return img;
+      };
+
+      applyTheme('midnight-blue');
+      applyTheme('rose');
+
+      await new Promise((r) => setTimeout(r, 500));
+      window.Image = RealImage;
+      return document.querySelector('link[rel="icon"][sizes="32x32"]').href;
+    });
+
+    expect(raced).toBe(reference);
+  });
+
   test('theme picker does not overflow the settings panel horizontally', async ({ page }) => {
     // Regression test: .theme-picker's grid-template-columns: 1fr 1fr tracks
     // defaulted to their content's min-content width (the longest theme

@@ -81,8 +81,19 @@ function _rasterizeFaviconPng(svgMarkup, size) {
   });
 }
 
+// Bumped on every call below and captured per in-flight rasterization —
+// image decode is async, so rapidly switching themes starts several
+// overlapping _rasterizeFaviconPng() promises with no guaranteed
+// completion order. Without this, an older theme's rasterization finishing
+// after a newer one's would win the last write to link.href and leave the
+// PNG favicon candidates (what browsers without SVG-favicon support
+// actually display) stuck on a stale theme's colors even though the page
+// and the SVG candidate already moved on.
+let _faviconGen = 0;
+
 function _updateFaviconForTheme(id) {
   try {
+    const gen = ++_faviconGen;
     const theme = THEMES.find((t) => t.id === id) || THEMES[0];
     const svg = _faviconSvg(theme.bg, theme.swatch);
 
@@ -91,7 +102,9 @@ function _updateFaviconForTheme(id) {
 
     document.querySelectorAll('link[rel="icon"][type="image/png"]').forEach((link) => {
       const size = Number(link.sizes?.value?.split('x')[0]) || 32;
-      _rasterizeFaviconPng(svg, size).then((dataUrl) => { link.href = dataUrl; }).catch(() => {});
+      _rasterizeFaviconPng(svg, size).then((dataUrl) => {
+        if (gen === _faviconGen) link.href = dataUrl;
+      }).catch(() => {});
     });
   } catch {}
 }
