@@ -23,6 +23,92 @@ test.describe('Marketing landing page (/)', () => {
     await expect(page.locator('.lp-footer')).toBeAttached();
   });
 
+  test('brand-intro section renders before the nav, with the hero still present', async ({ page }) => {
+    await goToLanding(page);
+    const intro = page.locator('#lp-intro');
+    await expect(intro).toBeVisible();
+    await expect(intro.locator('.lp-intro-wordmark')).toHaveText('SyncPad');
+
+    // Document order: intro, then nav, then the existing hero — nothing
+    // removed or reshuffled, just a new opener ahead of it all.
+    // DOCUMENT_POSITION_FOLLOWING means the argument comes after `this`.
+    const order = await page.evaluate(() => {
+      const nav = document.querySelector('.lp-nav');
+      const introEl = document.getElementById('lp-intro');
+      const heroEl = document.getElementById('lp-hero');
+      return {
+        introBeforeNav: !!(introEl.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING),
+        navBeforeHero: !!(nav.compareDocumentPosition(heroEl) & Node.DOCUMENT_POSITION_FOLLOWING),
+      };
+    });
+    expect(order.introBeforeNav).toBe(true);
+    expect(order.navBeforeHero).toBe(true);
+
+    await expect(page.locator('#lp-hero')).toBeAttached();
+    await expect(page.locator('.lp-h1')).toBeAttached();
+  });
+
+  test('brand-intro fills the viewport and the scroll cue sits near the bottom, clear of the wordmark', async ({ page }) => {
+    await goToLanding(page);
+    const viewport = page.viewportSize();
+    const introBox = await page.locator('#lp-intro').boundingBox();
+    const wordmarkBox = await page.locator('.lp-intro-wordmark').boundingBox();
+    const cueBox = await page.locator('.lp-intro-scroll-cue').boundingBox();
+
+    // min-height: 100svh — the section itself must span (at least) the
+    // full viewport, not shrink to its content's height.
+    expect(introBox.height).toBeGreaterThanOrEqual(viewport.height - 1);
+
+    // Regression guard: the scroll cue is `position: absolute; bottom: …`
+    // and must resolve against #lp-intro's full-height box. Nesting it
+    // inside the wordmark/tagline wrapper — which animates `transform` on
+    // entrance — silently made THAT wrapper the containing block instead
+    // (an animated transform establishes one even once it settles on
+    // `none`, since the computed value lands on an identity matrix rather
+    // than literally reverting to "no transform"), so the cue rendered
+    // pinned to the bottom of that small wrapper and overlapped the
+    // wordmark instead of sitting near the real viewport bottom.
+    expect(cueBox.y).toBeGreaterThan(wordmarkBox.y + wordmarkBox.height + 40);
+    expect(cueBox.y).toBeGreaterThan(viewport.height * 0.7);
+  });
+
+  test('brand-intro tagline types out, then leaves a blinking caret', async ({ page }) => {
+    await goToLanding(page);
+    const text = page.locator('#lp-intro-tagline-text');
+    await expect(text).toHaveText('/* notes and files, synced instantly */', { timeout: 3000 });
+    await expect(page.locator('.lp-intro-caret')).toBeVisible();
+  });
+
+  test('reduced motion shows the complete tagline immediately with no continuous animation', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await goToLanding(page);
+    const text = page.locator('#lp-intro-tagline-text');
+    // Immediately, not after the ~1.2s a full type-out would take.
+    await expect(text).toHaveText('/* notes and files, synced instantly */', { timeout: 500 });
+    const caretOpacity = await page.locator('.lp-intro-caret').evaluate((el) => getComputedStyle(el).opacity);
+    expect(caretOpacity).toBe('0');
+    const animationName = await page.locator('.lp-intro-inner').evaluate((el) => getComputedStyle(el).animationName);
+    expect(animationName).toBe('none');
+  });
+
+  test('scrolling underlines the nav link for the section currently in view', async ({ page }) => {
+    await goToLanding(page);
+    const featuresLink = page.locator('.lp-nav-links a[href="#lp-features"]');
+    const howLink       = page.locator('.lp-nav-links a[href="#lp-how"]');
+
+    // Hero: nothing underlined yet.
+    await expect(featuresLink).not.toHaveClass(/active/);
+    await expect(howLink).not.toHaveClass(/active/);
+
+    await page.locator('#lp-features').scrollIntoViewIfNeeded();
+    await expect(featuresLink).toHaveClass(/active/);
+    await expect(howLink).not.toHaveClass(/active/);
+
+    await page.locator('#lp-how').scrollIntoViewIfNeeded();
+    await expect(howLink).toHaveClass(/active/);
+    await expect(featuresLink).not.toHaveClass(/active/);
+  });
+
   test('feature tabs switch the active panel', async ({ page }) => {
     await goToLanding(page);
     const encryptionTab = page.locator('.lp-feature-tab[data-feature="encryption"]');

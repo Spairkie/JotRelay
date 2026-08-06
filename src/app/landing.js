@@ -174,9 +174,33 @@ function _renderRecentRooms() {
 // the same way wireContactEvents is, in case boot() re-runs it in one session.
 let _marketingPageWired = false;
 
+// ── Brand-intro typewriter ─────────────────────────────────────────────────
+// Small local implementation (no library) for the opener's tagline — types
+// once on load, then leaves a blinking caret (CSS animation) in place.
+// "SyncPad" itself is plain static markup and never touches this; only the
+// tagline text node is mutated.
+const INTRO_TAGLINE = '/* notes and files, synced instantly */';
+const INTRO_TYPE_MS = 32;
+
+function typeIntroTagline() {
+  const el = document.getElementById('lp-intro-tagline-text');
+  if (!el) return;
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+  if (reducedMotion) { el.textContent = INTRO_TAGLINE; return; }
+  let i = 0;
+  const step = () => {
+    el.textContent = INTRO_TAGLINE.slice(0, i);
+    i += 1;
+    if (i <= INTRO_TAGLINE.length) setTimeout(step, INTRO_TYPE_MS);
+  };
+  step();
+}
+
 export function wireMarketingPageEvents() {
   if (_marketingPageWired) return;
   _marketingPageWired = true;
+
+  typeIntroTagline();
 
   // Mobile nav toggle
   const navToggle = document.getElementById('lp-nav-toggle');
@@ -235,6 +259,31 @@ export function wireMarketingPageEvents() {
     revealTargets.forEach((el) => io.observe(el));
   } else {
     revealTargets.forEach((el) => el.classList.add('lp-in-view'));
+  }
+
+  // Scroll spy: underline the nav link for whichever section is currently
+  // in view, so a visitor scrolling through the pitch always knows where
+  // they are. Only in-page anchors (#lp-features etc.) participate —
+  // external links (Presskit, GitHub) never get a matching section.
+  const navAnchors = navLinks
+    ? Array.from(navLinks.querySelectorAll('a[href^="#"]')).filter((a) => a.getAttribute('href') !== '#lp-top')
+    : [];
+  const navSections = navAnchors
+    .map((a) => document.getElementById(a.getAttribute('href').slice(1)))
+    .filter(Boolean);
+  if ('IntersectionObserver' in window && navSections.length) {
+    const setActiveNav = (id) => {
+      navAnchors.forEach((a) => a.classList.toggle('active', a.getAttribute('href') === `#${id}`));
+    };
+    // A thin horizontal band near the top of the viewport, rather than the
+    // default "any overlap counts" — otherwise two adjacent tall sections
+    // both register as intersecting for most of the scroll and the active
+    // link jitters between them.
+    const spy = new IntersectionObserver((entries) => {
+      const visible = entries.filter((e) => e.isIntersecting);
+      if (visible.length) setActiveNav(visible[0].target.id);
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    navSections.forEach((el) => spy.observe(el));
   }
 }
 

@@ -50,7 +50,7 @@ test.describe('Coded hero demo (/)', () => {
     await expect(btn).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('Collaborate scene shows Alex\'s presence and the remote line', async ({ page }) => {
+  test('Collaborate scene shows Hans\'s presence and the remote line', async ({ page }) => {
     await goToLanding(page);
     await page.locator('.lp-demo-tab[data-scene="collaborate"]').click();
     await expect(page.locator('#lp-demo-presence')).toHaveCSS('opacity', '1');
@@ -83,7 +83,7 @@ test.describe('Coded hero demo (/)', () => {
     await expect(page.locator('#lp-demo-file-status')).toContainText('Sent');
   });
 
-  test('Write scene shows only the two-item checklist, not Alex\'s line', async ({ page }) => {
+  test('Write scene shows only the two-item checklist, not Hans\'s line', async ({ page }) => {
     await goToLanding(page);
     await expect(page.locator('#lp-demo')).toHaveAttribute('data-scene', 'write');
     await expect(page.locator('#lp-demo-line-3')).not.toBeVisible();
@@ -96,7 +96,7 @@ test.describe('Coded hero demo (/)', () => {
 
   test('pausing mid-typing settles the current scene instantly instead of leaving it stuck', { timeout: 15_000 }, async ({ page }) => {
     await goToLanding(page);
-    // Autoplay: Write holds ~3.2s, then Collaborate starts typing Alex's
+    // Autoplay: Write holds ~3.2s, then Collaborate starts typing Hans's
     // line immediately (~26ms/char, ~35 chars ⇒ ~0.9s to finish). Land
     // partway through that window.
     await page.waitForTimeout(3400);

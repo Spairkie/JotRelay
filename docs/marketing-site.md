@@ -107,7 +107,7 @@ function for the full list of what else runs on the marketing route.
 **The story.** One continuous fictional scenario, told across five scenes a
 visitor can autoplay through or jump into directly: a room called "Product
 launch plan" — **Write** (a two-item checklist typed in) → **Collaborate**
-(a teammate, "Alex", joins with a live cursor and types a third line) →
+(a teammate, "Hans", joins with a live cursor and types a third line) →
 **Review** (that new line gets highlighted with an anchored comment,
 "Should this happen before final QA?") → **Share** (a simplified
 permissions/link panel) → **Handoff** (a file, "launch-assets.zip", flies
