@@ -546,13 +546,24 @@ body.code-line-numbers .note-preview pre.code-block code {
 .cm-minimap-dot {
   position: absolute; right: 0; transform: translateY(-50%);
   width: 5px; height: 5px; border-radius: 50%;
-  background: var(--text-muted); opacity: 0.35;
+  background: var(--text-muted); opacity: 0;
   border: none; padding: 0; cursor: pointer; pointer-events: auto;
   transition: opacity 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
-.cm-minimap:hover .cm-minimap-dot { opacity: 0.6; }
-.cm-minimap-dot:hover,
-.cm-minimap-dot:focus-visible {
+/* Stay fully invisible at rest; live-editor.js's _MinimapTrack toggles
+   is-near-edge on plain mousemove proximity to the scroller's right edge
+   (not CSS :hover — .cm-minimap is pointer-events:none so it never steals
+   clicks from the real scrollbar underneath it, and a mousemove check can
+   start the fade-in before the pointer is precisely on a 5px dot). */
+.cm-minimap.is-near-edge .cm-minimap-dot { opacity: 0.45; }
+/* .cm-minimap prefix (not bare .cm-minimap-dot:hover) matches is-near-edge's
+   specificity (3 class selectors each) so this reliably wins on cascade
+   order rather than losing outright to a higher-specificity selector — a
+   bare :hover/:focus-visible here would otherwise always lose to the rule
+   above regardless of source order, leaving the hovered dot at the same dim
+   group-reveal opacity as every other dot instead of standing out. */
+.cm-minimap .cm-minimap-dot:hover,
+.cm-minimap .cm-minimap-dot:focus-visible {
   opacity: 1; background: var(--accent); transform: translateY(-50%) scale(1.5);
 }
 .cm-minimap-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
