@@ -200,13 +200,19 @@ export function estimateReadingTime(text) {
  * syncTabListFocus() after any such change to keep Tab-into-the-list
  * landing on the right element.
  * @param {HTMLElement[]} tabs
+ * @param {{orientation?: 'horizontal'|'vertical'}} [opts] Both current
+ *   call sites are horizontal tablists (the default) — Up/Down are only
+ *   bound for an explicitly vertical tablist, per the ARIA APG Tabs
+ *   pattern, so a horizontal list doesn't swallow the page-scroll keys.
  */
-export function wireTabListKeyboardNav(tabs) {
+export function wireTabListKeyboardNav(tabs, { orientation = 'horizontal' } = {}) {
+  const nextKey = orientation === 'vertical' ? 'ArrowDown' : 'ArrowRight';
+  const prevKey = orientation === 'vertical' ? 'ArrowUp'   : 'ArrowLeft';
   tabs.forEach((tab, i) => {
     tab.addEventListener('keydown', (e) => {
       let next = null;
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = tabs[(i + 1) % tabs.length];
-      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = tabs[(i - 1 + tabs.length) % tabs.length];
+      if (e.key === nextKey) next = tabs[(i + 1) % tabs.length];
+      else if (e.key === prevKey) next = tabs[(i - 1 + tabs.length) % tabs.length];
       else if (e.key === 'Home') next = tabs[0];
       else if (e.key === 'End') next = tabs[tabs.length - 1];
       if (!next) return;
