@@ -6,10 +6,15 @@ folder is free to use under the terms in [Asset usage](#asset-usage) below.
 
 If you need something that isn't here, see [Contact](#contact).
 
-**[⬇ Download everything in this folder as one .zip](SyncPad-Presskit.zip)**
+**[⬇ Download everything in this folder as one .zip](https://raw.githubusercontent.com/Spairkie/SyncPad/main/presskit/SyncPad-Presskit.zip)**
 (logos, screenshots, and the demo video together — regenerated from the
 files below with `npm run presskit:zip`, so it's always this same content,
 just zipped)
+
+This is an absolute link rather than a relative `SyncPad-Presskit.zip` one
+on purpose: the archive deliberately doesn't contain a copy of itself, so a
+relative link would go dead the moment someone extracts it — this one still
+resolves from inside an already-extracted copy, not just from the repo.
 
 ---
 
