@@ -27,8 +27,16 @@
 
   <!-- PWA -->
   <link rel="manifest"         href="/SyncPad/manifest.json" />
-  <link rel="icon"             href="/SyncPad/assets/icon-192.png" type="image/png" />
-  <link rel="apple-touch-icon" href="/SyncPad/assets/icon-192.png" />
+  <!-- Favicon: the SVG is the primary reference (crisp at any tab/bookmark
+       size); the 32/16 PNGs are the fallback for browsers that don't
+       support SVG favicons. All three come from icon-simple.svg — a bold
+       single-card mark tuned for legibility this small, distinct from the
+       fuller two-card mark below used where icons render larger (install
+       icon, home-screen icon) and can afford the extra detail. -->
+  <link rel="icon"             href="/SyncPad/assets/favicon.svg" type="image/svg+xml" />
+  <link rel="icon"             href="/SyncPad/assets/favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="icon"             href="/SyncPad/assets/favicon-16.png" type="image/png" sizes="16x16" />
+  <link rel="apple-touch-icon" href="/SyncPad/assets/apple-touch-icon.png" />
 
   <!-- Google Fonts as <link> tags (not base.css's old @import) so the browser's
        preloader discovers and starts fetching them immediately, in parallel

@@ -189,7 +189,7 @@ network or Supabase — everything is rendered from local HTML/SVG/CSS.
 
 | Script | What it does |
 |---|---|
-| `scripts/generate-icon-pngs.mjs` | Rasterizes `presskit/icon/icon.svg` and `icon-simple.svg` to the PNG sizes listed in `presskit/README.md#icon` |
+| `scripts/generate-icon-pngs.mjs` | Rasterizes `presskit/icon/icon.svg` and `icon-simple.svg` to the PNG sizes listed in `presskit/README.md#icon`, and also writes the app's own shipped icons (`assets/icon-192.png`, `assets/icon-512.png`, `assets/apple-touch-icon.png`, `assets/favicon.svg`, `assets/favicon-32.png`, `assets/favicon-16.png`) |
 | `scripts/build-mockups.mjs` | Pulls real screens (header, editor, side panels, share modal, encryption gate) out of `index.html` by id (via `scripts/lib/extract-fragment.mjs`) and writes six standalone HTML files to `scripts/mockups/`, populated with realistic placeholder content |
 | `scripts/generate-screenshots.mjs` | Serves the repo with `tests/spa-server.js` and screenshots each `scripts/mockups/*.html` into `presskit/screenshot/` |
 | `scripts/generate-demo-video.mjs` | Drives the real app markup/CSS through a scripted ~25s sequence (type → live-render → simulated second device → Share modal → Files panel) and assembles it into `presskit/video/demo.mp4` + a poster frame — see `presskit/video/README.md` for why it captures frame-by-frame instead of using Playwright's `recordVideo` |
@@ -214,10 +214,18 @@ Share modal, or Files panel (requires `ffmpeg` with `libx264` on `PATH`):
 npm run presskit:video
 ```
 
-The icon script (with the size list edited) also produced the app's own
-`assets/icon-192.png` and `assets/icon-512.png` — those are the real PWA
-icons referenced by `manifest.json`, kept in sync with the presskit mark
-so the installed app and the press assets match.
+The icon script also writes the app's own shipped icons straight into
+`assets/`: `icon-192.png`/`icon-512.png` (the real PWA install icons
+`manifest.json` references) and `apple-touch-icon.png` all render from the
+full two-card `icon.svg` mark, since they display large enough (home
+screen, app switcher) for the detail to read clearly. `favicon.svg` (a copy
+of `icon-simple.svg`) plus its `favicon-32.png`/`favicon-16.png` PNG
+fallbacks — what `index.html`'s `<link rel="icon">` tags actually
+reference for the browser tab — render from the bold single-card variant
+instead: at 16–32px the full mark's two overlapping cards and small ring
+badge blur into an indistinct smudge, where the single-card glyph stays
+legible. One script run keeps the installed-app icon, the browser-tab
+favicon, and the press-kit mark all in sync with the same two source SVGs.
 
 ### Why mockups instead of live screenshots
 

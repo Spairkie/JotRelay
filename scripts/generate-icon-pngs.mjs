@@ -1,32 +1,52 @@
-// SyncPad — presskit icon PNG exporter.
+// SyncPad — icon PNG exporter.
 //
-// Renders presskit/icon/icon.svg (and the small-size icon-simple.svg
-// variant) to PNG at the sizes the presskit needs, using a headless
-// Chromium page as the rasterizer instead of a system SVG tool (none is
-// assumed to be installed). Re-run this after editing either source SVG.
+// Renders the two source SVGs (presskit/icon/icon.svg — the full two-card
+// mark — and icon-simple.svg — a bold single-card variant tuned for
+// legibility at favicon/small sizes) to every PNG size the project actually
+// ships, using a headless Chromium page as the rasterizer instead of a
+// system SVG tool (none is assumed to be installed). Re-run this after
+// editing either source SVG — presskit assets, the PWA install icons, and
+// the browser-tab favicons all come from these same two files, so there is
+// one source of truth for the whole icon set.
 //
 // Usage:  node scripts/generate-icon-pngs.mjs
 import { chromium } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, copyFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const iconDir = path.join(root, 'presskit', 'icon');
+const assetsDir = path.join(root, 'assets');
 
 const targets = [
-  { svg: 'icon.svg',        out: 'icon-512.png', size: 512 },
-  { svg: 'icon.svg',        out: 'icon-256.png', size: 256 },
-  { svg: 'icon.svg',        out: 'icon-128.png', size: 128 },
-  { svg: 'icon-simple.svg', out: 'favicon.png',  size: 64  },
-  { svg: 'icon-simple.svg', out: 'favicon-32.png', size: 32 },
+  // Presskit — full mark, every size the press kit documents.
+  { svg: 'icon.svg',        dir: iconDir,    out: 'icon-512.png',   size: 512 },
+  { svg: 'icon.svg',        dir: iconDir,    out: 'icon-256.png',   size: 256 },
+  { svg: 'icon.svg',        dir: iconDir,    out: 'icon-128.png',   size: 128 },
+  { svg: 'icon-simple.svg', dir: iconDir,    out: 'favicon.png',    size: 64  },
+  { svg: 'icon-simple.svg', dir: iconDir,    out: 'favicon-32.png', size: 32  },
+
+  // Shipped app assets (referenced by index.html / manifest.json).
+  // PWA install icons render large (home screen, app switcher) — the full
+  // two-card mark reads fine at these sizes.
+  { svg: 'icon.svg',        dir: assetsDir,  out: 'icon-192.png',         size: 192 },
+  { svg: 'icon.svg',        dir: assetsDir,  out: 'icon-512.png',         size: 512 },
+  { svg: 'icon.svg',        dir: assetsDir,  out: 'apple-touch-icon.png', size: 180 },
+  // Browser-tab favicons render tiny (16–32px) — two overlapping cards plus
+  // a small ring badge blur into an illegible smudge at that size, so these
+  // use the bold single-card variant instead. favicon.svg is the primary
+  // reference (crisp at any size in browsers that support SVG favicons);
+  // the PNGs are the fallback for the ones that don't.
+  { svg: 'icon-simple.svg', dir: assetsDir,  out: 'favicon-32.png',       size: 32  },
+  { svg: 'icon-simple.svg', dir: assetsDir,  out: 'favicon-16.png',       size: 16  },
 ];
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
 
-for (const { svg, out, size } of targets) {
+for (const { svg, dir, out, size } of targets) {
   const svgMarkup = readFileSync(path.join(iconDir, svg), 'utf8');
   await page.setViewportSize({ width: size, height: size });
   await page.setContent(
@@ -35,8 +55,14 @@ for (const { svg, out, size } of targets) {
        svg{display:block;width:${size}px;height:${size}px;}
      </style></head><body>${svgMarkup}</body></html>`,
   );
-  await page.locator('svg').screenshot({ path: path.join(iconDir, out), omitBackground: true });
-  console.log(`wrote ${out} (${size}x${size})`);
+  await page.locator('svg').screenshot({ path: path.join(dir, out), omitBackground: true });
+  console.log(`wrote ${path.relative(root, path.join(dir, out))} (${size}x${size})`);
 }
 
 await browser.close();
+
+// favicon.svg is a straight copy of the small-size-tuned source — modern
+// browsers use it directly for the tab icon at whatever size they need,
+// no rasterization required.
+copyFileSync(path.join(iconDir, 'icon-simple.svg'), path.join(assetsDir, 'favicon.svg'));
+console.log(`wrote ${path.relative(root, path.join(assetsDir, 'favicon.svg'))} (copied from icon-simple.svg)`);
