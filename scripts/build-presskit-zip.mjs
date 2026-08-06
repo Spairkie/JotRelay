@@ -49,7 +49,11 @@ if (existsSync(tmpPath)) unlinkSync(tmpPath);
 
 try {
   // No -r: trackedFiles is already a flat file list, not directories.
-  execFileSync('zip', ['-X', '-q', tmpPath, ...trackedFiles], {
+  // -MM: fail instead of just warning if a listed path doesn't match an
+  // actual file — without it, zip -q exits 0 even with a tracked path
+  // missing from disk, and the script would rename a silently incomplete
+  // archive into place.
+  execFileSync('zip', ['-X', '-q', '-MM', tmpPath, ...trackedFiles], {
     cwd: presskitDir,
     stdio: 'inherit',
   });
