@@ -683,8 +683,16 @@ class _MinimapTrack {
     // tolerance instead — immune to boundary-crossing by construction.
     const TOP_TOLERANCE_PCT = 0.75;
     const prev = this._positioned;
+    // pos is compared exactly, never with tolerance — each button's jump()
+    // closure below captures the h.pos current at the time it's built, so
+    // skipping a rebuild while pos actually moved (e.g. an edit inserted or
+    // removed text before this heading, shifting its offset while its
+    // level/text/percentage position all stayed within tolerance) would
+    // leave that tick jumping to stale, now-wrong content until some later
+    // update happened to force a real rebuild.
     const unchanged = prev && prev.length === positioned.length && positioned.every((h, i) =>
-      h.level === prev[i].level && h.text === prev[i].text && Math.abs(h.top - prev[i].top) <= TOP_TOLERANCE_PCT);
+      h.level === prev[i].level && h.text === prev[i].text && h.pos === prev[i].pos
+      && Math.abs(h.top - prev[i].top) <= TOP_TOLERANCE_PCT);
     if (unchanged) return; // nothing actually changed — skip the DOM churn
     this._positioned = positioned;
 
