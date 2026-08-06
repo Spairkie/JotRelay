@@ -576,7 +576,9 @@ class _TocWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
-function _computeTocBadges(state) {
+// Shared by the [TOC] widget above and the minimap track below — both need
+// the same "every ATX heading, in document order" list.
+function _collectHeadings(state) {
   const headings = [];
   syntaxTree(state).iterate({
     enter: (nodeRef) => {
@@ -589,6 +591,11 @@ function _computeTocBadges(state) {
       });
     },
   });
+  return headings;
+}
+
+function _computeTocBadges(state) {
+  const headings = _collectHeadings(state);
   if (headings.length < 2) return Decoration.none;
 
   const ranges = [];
@@ -620,6 +627,54 @@ const _tocField = StateField.define({
   update(value, tr) { return _computeTocBadges(tr.state); },
   provide: (f) => EditorView.decorations.from(f),
 });
+
+// ── Document mini-map (heading overview strip) ──────────────────────────────
+// A very thin rail along the scroller's right edge, near-invisible until
+// hovered, with one tick per heading positioned proportionally to where it
+// falls in the full scrollable document — a subtle "you are here, and here's
+// what's ahead" overview built from the same heading list [TOC] uses,
+// without the fully-fledged always-visible sidebar a real minimap would be.
+// Ticks are fixed relative to the viewport (not the scrolled content), same
+// as a native scrollbar, so they only need recomputing when the document or
+// the editor's own size changes — never on scroll.
+class _MinimapTrack {
+  constructor(view) {
+    this.dom = document.createElement('div');
+    this.dom.className = 'cm-minimap';
+    view.dom.appendChild(this.dom);
+    this.rebuild(view);
+  }
+  update(update) {
+    if (update.docChanged || update.geometryChanged || update.viewportChanged) this.rebuild(update.view);
+  }
+  rebuild(view) {
+    const headings = _collectHeadings(view.state);
+    this.dom.innerHTML = '';
+    this.dom.classList.toggle('hidden', headings.length < 2);
+    if (headings.length < 2) return;
+    const totalHeight = view.contentHeight || 1;
+    for (const h of headings) {
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = `cm-minimap-dot cm-minimap-dot-h${h.level}`;
+      dot.style.top = `${Math.min(100, (view.lineBlockAt(h.pos).top / totalHeight) * 100)}%`;
+      dot.title = h.text || 'section';
+      dot.setAttribute('aria-label', `Jump to ${h.text || 'section'}`);
+      dot.addEventListener('mousedown', (evt) => {
+        // mousedown, same as the [TOC] widget above, so this fires before
+        // the editor would otherwise steal focus/selection on the way to a click.
+        evt.preventDefault();
+        const pos = Math.min(h.pos, view.state.doc.length);
+        view.dispatch({ selection: { anchor: pos } });
+        _scrollPosIntoView(view, pos, { smooth: true });
+        view.focus();
+      });
+      this.dom.appendChild(dot);
+    }
+  }
+  destroy() { this.dom.remove(); }
+}
+const _minimapPlugin = ViewPlugin.fromClass(_MinimapTrack);
 
 // GFM tables → real <table>s. A block-replace decoration (unlike the
 // additive widgets above) must come from a StateField — CM6 rejects block
@@ -1135,6 +1190,7 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
         _remoteCursorField,
         _checklistProgressField,
         _tocField,
+        _minimapPlugin,
         _tableField,
         _commentAnchorsField,
         EditorView.updateListener.of((update) => {
