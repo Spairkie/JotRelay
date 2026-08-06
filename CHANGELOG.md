@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 49 — Baseline SQL refresh
+
+#### Fixed
+- **`baseline.sql` now includes migrations `0010` and `0011`.** It previously predated both — anyone following the advertised one-shot "run this file, the app works" path for a brand-new project silently lacked anonymous write rate limiting and short file references, a gap `DEPLOYMENT.md` and the file's own header had been documenting rather than closing since Phase 47. Re-verified idempotency end-to-end against a real Postgres 16 instance (run twice, zero errors both times), and separately exercised `0010`'s rate-limiting trigger directly (30 room-creates succeed, the 31st is correctly rejected) and `0011`'s per-room `file_no` sequencing (independent counters per room, confirmed via inserts across two rooms) — going beyond the DDL-applies-without-erroring bar to confirm the actual logic works. `0010`'s one still-open caveat (whether a given Supabase project's PostgREST layer populates `x-forwarded-for` the way its IP-based limiting assumes) is preserved verbatim in its own section and called out in `DEPLOYMENT.md`, not silently dropped — the per-device counting this migration also does isn't gated on that assumption, so the worst case if it doesn't hold is reduced coverage, not a broken deploy.
+
 ### Phase 48 — Brand mark redesign, code-fence visual proportion, landing demo keyboard nav
 
 #### Changed
