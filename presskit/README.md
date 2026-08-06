@@ -35,7 +35,7 @@ device in well under a second.
 Underneath the simplicity is a genuinely capable editor: a Typora-style
 live Markdown surface with tables, checklists, code blocks, and GitHub-style
 callouts; file attachments up to 10 MB with signed download links; inline
-comments and version history; a command palette; and seven built-in visual
+comments and version history; a command palette; and 10 built-in visual
 themes. Rooms can be locked down with a passcode, encrypted end-to-end with
 a passphrase, capped to a device limit, or set to auto-expire — all
 configurable without ever creating an account.
@@ -61,7 +61,7 @@ without the sign-up friction either usually implies.
 - **Presence & collaboration** — connected-device list, typing indicators, and live cursor position
 - **Inline comments & version history** — anchor a comment to a text range; scrub back through past snapshots
 - **Auto-expiration & device limits** — rooms that clear themselves after a set time or once too many devices have joined
-- **Seven visual themes**, a command palette, keyboard shortcuts, and a full PWA install path
+- **10 visual themes**, a command palette, keyboard shortcuts, and a full PWA install path
 
 Full feature list: see the [project README](https://github.com/Spairkie/SyncPad#features).
 
@@ -110,7 +110,7 @@ as a "secure" product in the compliance sense.
 
 - The product name is **SyncPad** — one word, capital S and capital P. Not "Sync Pad" or "Syncpad."
 - The wordmark styles it as **Sync** in the primary text color and **Pad** in the brand accent color (amber, `#f5a623` in the default theme) — see [`icon/`](icon/) and the landing page header for reference.
-- SyncPad ships seven visual themes; the amber-on-charcoal "Charcoal Amber" theme shown in these assets is the default, not the only look. Screenshots in other themes are equally representative of the product.
+- SyncPad ships 10 visual themes; the amber-on-charcoal "Charcoal Amber" theme shown in these assets is the default, not the only look. Screenshots in other themes are equally representative of the product.
 - Please don't alter the icon's proportions, add drop shadows/effects beyond what's already baked in, or recolor the mark. Cropping to a square or circle for platform-specific placements (app store tiles, avatars) is fine.
 
 ---

@@ -17,15 +17,18 @@
 
 ## Screenshots
 
-> Add screenshots to `docs/screenshots/` after first deploy.
+The app's real CSS/markup, populated with realistic sample content (a
+fictional "Q3 Product Roadmap" room) rather than a live production room — see
+[`presskit/README.md`](presskit/README.md#screenshots) for the full set and
+how they were generated.
 
-| Landing | Editor | Share Modal |
-|---------|--------|-------------|
-| `docs/screenshots/landing.png` | `docs/screenshots/editor.png` | `docs/screenshots/share-modal.png` |
-
-| File Preview | Admin placeholder | Mobile |
+| Live Markdown editor | Presence & collaboration | Encrypted room |
 |---|---|---|
-| `docs/screenshots/file-preview.png` | `docs/screenshots/admin-placeholder.png` | `docs/screenshots/mobile.png` |
+| ![Live Markdown editor](presskit/screenshot/desktop-editor.png) | ![Presence panel with connected devices and a typing indicator](presskit/screenshot/live-collaboration.png) | ![Passphrase gate on an encrypted room](presskit/screenshot/encrypted-note.png) |
+
+| Files panel | Share modal | Mobile layout |
+|---|---|---|
+| ![Files panel with several uploaded files](presskit/screenshot/file-handoff.png) | ![Share modal with editable link, read-only link, and short code](presskit/screenshot/room-sharing.png) | ![Mobile layout with its bottom action bar](presskit/screenshot/mobile-responsive.png) |
 
 ---
 
@@ -37,7 +40,7 @@
 - **Typora-style live markdown editing** — the Live surface (CodeMirror 6) renders formatting inline as you type (hidden syntax markers, real tables/images/checkboxes) alongside a raw Source mode and a side-by-side Split view, plus a safe custom renderer (no CM6 dependency) powering export/print/file-preview output
 - **File upload and preview** — images, text, Markdown, CSV, PDF (no library)
 - **Presence, typing indicator, and cursor/activity tracking**
-- **Responsive layout** with 7 themes, bottom action bar on mobile
+- **Responsive layout** with 10 themes, bottom action bar on mobile
 - **Progressive Web App** (PWA) — installable, offline-capable
 - **Thorough documentation** and a working Supabase SQL schema
 
@@ -66,7 +69,7 @@
 - **Bare URL autolinking** — plain `https://…` text becomes a clickable link automatically
 - **Nested lists** — indented bullet/numbered sub-items render as proper nested lists
 - **Checklist preview** — GFM-style checkboxes; click to toggle, live in the editor
-- **Templates Library v2** — 13 built-in templates (meeting, checklist, standup, bug report, code review, and more); searchable modal with two-column preview pane
+- **Templates Library v2** — 17 built-in templates (meeting, checklist, standup, bug report, code review, and more); searchable modal with two-column preview pane
 - **Custom templates** — save, rename, delete, export/import as JSON (localStorage-backed, up to 50 000 chars each)
 - **Find & Replace** — case-insensitive (toggle to case-sensitive) search with Prev / Next navigation, Replace, and Replace All
 - **Selection context menu** — right-click selected text, in either Source or Live mode, for cut/copy/paste/delete/select-all or to add a comment, without navigating to the toolbar or Comments panel first. On a touchscreen, long-press defers to the device's own native text-selection UI (selection handles, the OS Copy/Select All/Share callout) instead of opening this menu
@@ -104,7 +107,7 @@
 - **Read-only file access** — read-only users can preview and download files but cannot upload or delete
 
 ### Appearance & UX
-- **7 themes** — Charcoal Amber, Midnight Blue, Forest Green, Paper Light, Terminal, Mocha Dark, Lavender Light
+- **10 themes** — Charcoal Amber, Midnight Blue, Forest Green, Terminal, Mocha Dark, Crimson Night, Paper Light, Lavender Light, Arctic, Rose
 - **Mobile layout** — bottom action bar with one-thumb access to all major features
 - **PWA** — installable on desktop and mobile; offline-capable for cached assets
 
@@ -265,7 +268,7 @@ Browser UI (HTML/CSS/JS)
             ├── encryption.js   — AES-256-GCM + PBKDF2 (Web Crypto)
             ├── permissions.js  — frontend permission context
             ├── settings.js     — room settings (passcode, expiry, etc.)
-            ├── templates.js    — 13 built-ins + localStorage custom templates
+            ├── templates.js    — 17 built-ins + localStorage custom templates
             ├── theme.js        — CSS variable theme system
             ├── shortcuts.js    — keyboard shortcut handler
             └── admin.js        — admin dashboard entry point; shell/tabs in src/admin/*.js
@@ -289,7 +292,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full module-by-module
 - **Two sync tracks** — Broadcast for live typing (~250 ms), Postgres for durable saves (1 s debounce)
 - **Encryption in-browser only** — AES-256-GCM key derived from passphrase via PBKDF2; plaintext never leaves the device over the network when encryption is active
 - **Service worker** — network-first caching for same-origin assets; Supabase traffic bypassed entirely
-- **Theme system** — CSS custom properties with a `data-theme` attribute on `<html>`; seven themes with zero runtime overhead
+- **Theme system** — CSS custom properties with a `data-theme` attribute on `<html>`; 10 themes with zero runtime overhead
 
 ### Tech stack
 
@@ -355,9 +358,9 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 - [x] Bulk file delete — multi-select checkboxes with confirmation modal
 - [x] File sort — 6 orderings in the Files panel (newest, oldest, name, size)
 - [x] Admin dashboard — Supabase Auth gate, rooms / reports / cleanup tabs
-- [x] Templates Library v2 — 13 built-ins, searchable modal, export / import JSON
+- [x] Templates Library v2 — 17 built-ins, searchable modal, export / import JSON
 - [x] PDF export — browser `window.print()` in a styled preview window
-- [x] Playwright test suite — grown from an initial ~75 scenarios across 6 spec files to 27 spec files today; see `docs/playwright.md` for current scope
+- [x] Playwright test suite — grown from an initial ~75 scenarios across 6 spec files to 28 spec files today; see `docs/playwright.md` for current scope
 - [x] Editor modernization — floating card layout, comfortable max writing width, split-view divider
 - [x] Typora-style Live editing surface — CodeMirror 6-backed, replacing the old read-only rendered-HTML preview pane as the default view for new rooms
 
@@ -372,7 +375,7 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 - [x] Batch admin expired-room cleanup queries for larger room sets
 - [x] Add real `/share/:token` protected-room regression tests
 - [x] Add admin user setup documentation in `docs/admin-setup.md`
-- [x] Bump service worker cache version on every release that changes cached assets (currently `syncpad-v40` — see `service-worker.js`)
+- [x] Bump service worker cache version on every release that changes cached assets (currently `syncpad-v44` — see `service-worker.js`)
 - [x] Anonymous write rate limiting for room creation (30/device + 60/IP per 15 min) and report submission (10/device + 20/IP per 15 min) — optional `supabase/migrations/0010_anonymous_write_rate_limiting.sql`; see [Optional feature migrations](DEPLOYMENT.md#optional-feature-migrations)
 
 ### Outside current demo scope

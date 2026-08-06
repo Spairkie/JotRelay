@@ -79,7 +79,7 @@ Maintains the frontend permission context for the current session (e.g. read-onl
 Implements handlers for the room settings panel: expiry presets, passcode changes, read-only toggles, and share-link management. It does NOT own the settings UI structure — the DOM is defined in `ui.js` and `index.html`.
 
 ### `templates.js`
-Manages the 13 built-in templates and any custom templates persisted in `localStorage` under the key `syncpad_custom_templates`. It exposes `exportCustomTemplates()` and `importCustomTemplates(json)`, and enforces the `BODY_MAX = 50,000` character limit. It does NOT render the template picker UI — that is handled by `ui.js`.
+Manages the 17 built-in templates and any custom templates persisted in `localStorage` under the key `syncpad_custom_templates`. It exposes `exportCustomTemplates()` and `importCustomTemplates(json)`, and enforces the `BODY_MAX = 50,000` character limit. It does NOT render the template picker UI — that is handled by `ui.js`.
 
 ### `theme.js`
 Applies and persists the active theme by writing to the `data-theme` attribute on `<html>`, which triggers CSS custom-property cascades defined in `styles/base.css`. It does NOT contain any CSS itself — all theme colours and transition rules live in the stylesheet.

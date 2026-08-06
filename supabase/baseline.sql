@@ -23,6 +23,12 @@
 --     that previously ran 0007. A fresh project that never ran 0007 has
 --     nothing to revert.
 --
+-- NOT (yet) included — added after this file was last generated, not
+-- excluded on purpose. Run these separately if you want the features they
+-- enable; see DEPLOYMENT.md's "Optional feature migrations" table:
+--   • 0010_anonymous_write_rate_limiting.sql
+--   • 0011_short_file_references.sql
+--
 -- Each section below keeps its source file's own header comment intact
 -- (design rationale worth having in one place), including a few
 -- "run this AFTER 0001_base_schema.sql has been applied" notes that are
