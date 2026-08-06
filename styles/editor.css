@@ -52,7 +52,15 @@
      .mode-split overrides to two columns below.
      Row 1 = formatting toolbar (auto height); Row 2 = editor/preview (fills rest). */
   display: grid;
-  grid-template-columns: 1fr;
+  /* minmax(0, 1fr), not a bare 1fr — a bare fr track's automatic minimum
+     is its content's min-content size, so an unbreakable long line (a URL,
+     a fenced code block with no wrap points) could otherwise force this
+     whole card wider than its intended measure before overflow:hidden ever
+     gets a chance to clip it. minmax(0, ...) lets the track (and this grid
+     item's own box) shrink to the specified width regardless, so it's
+     always .note-preview/.note-live's own overflow-x:auto that handles
+     long content, never the card growing around it. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   gap: 0;
   /* Comfortable writing width on desktop. Split mode overrides below. */
@@ -63,7 +71,7 @@
 
 /* Split mode: two equal columns, wider card to give each pane room. */
 .editor-wrap.mode-split {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   width: min(100% - 2rem, 1400px);
 }
 
@@ -384,6 +392,7 @@ body.code-line-numbers .note-live .cm-md-codeblock-content::before {
 .note-preview pre {
   background: var(--bg-surface); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: 14px 16px; overflow-x: auto; margin: 0.8em 0;
+  max-width: 100%; /* same content measure as headings/paragraphs — never wider */
   position: relative; /* anchors the line-numbers gutter below, when shown */
 }
 /* Opt-in code-block line numbers (Settings > Editor preferences). A gutter

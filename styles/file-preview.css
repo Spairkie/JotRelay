@@ -89,7 +89,7 @@
 .preview-markdown-body h3,
 .preview-markdown-body h4 { margin: 20px 0 8px; color: var(--text-primary); font-weight: 700; }
 .preview-markdown-body p   { margin: 0 0 12px; }
-.preview-markdown-body pre { background: var(--bg-elevated); border-radius: 6px; padding: 14px; overflow-x: auto; margin: 0 0 12px; }
+.preview-markdown-body pre { background: var(--bg-elevated); border-radius: 6px; padding: 14px; overflow-x: auto; margin: 0 0 12px; max-width: 100%; }
 .preview-markdown-body code { background: var(--bg-elevated); padding: 2px 5px; border-radius: 4px; font-family: var(--font-mono); font-size: 12px; }
 .preview-markdown-body pre code { background: none; padding: 0; }
 .preview-markdown-body ul,
