@@ -248,7 +248,14 @@ export function renderTocHtml(headings) {
 export function markdownToPlainText(src) {
   if (!src) return '';
   const html = renderMarkdown(src);
-  return _stripTags(html)
+  // <img> is a void element — _stripTags would otherwise discard it (and
+  // its alt text, the only thing it has going for it as plain text) along
+  // with every other tag. Swap it for its alt text (bracketed, so it still
+  // reads as "an image was here" rather than floating unmarked prose)
+  // before the generic strip runs; an empty alt (decorative image) drops
+  // to nothing, matching how alt="" is meant to be treated everywhere else.
+  const withImgAlt = html.replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/g, (_m, alt) => (alt ? `[${alt}]` : ''));
+  return _stripTags(withImgAlt)
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
