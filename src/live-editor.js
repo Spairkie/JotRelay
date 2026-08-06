@@ -642,22 +642,60 @@ class _MinimapTrack {
     this.dom = document.createElement('div');
     this.dom.className = 'cm-minimap';
     view.dom.appendChild(this.dom);
+    this._positioned = null;
     this.rebuild(view);
   }
   update(update) {
+    // Neither viewportChanged nor geometryChanged is a reliable "only fires
+    // on a real content/size change" signal here: CM6's virtualized scroller
+    // destroys/recreates off-screen line DOM nodes as you scroll, and that
+    // churn alone can raise geometryChanged even when nothing about the
+    // document's headings or their positions actually moved (confirmed by
+    // testing — plain back-and-forth scrolling over an already-fully-
+    // measured document kept re-triggering it). But dropping both outright
+    // would also drop the legitimate case: CM6 only parses/measures a long
+    // document up to roughly the current viewport, so scrolling into an
+    // unvisited region can genuinely reveal headings that plain docChanged
+    // would never catch. So: check on all three, but let rebuild() itself
+    // decide whether anything actually changed before touching the DOM —
+    // recomputing the heading list is cheap; tearing down and recreating
+    // every tick (and any focus that was on one) is not.
     if (update.docChanged || update.geometryChanged || update.viewportChanged) this.rebuild(update.view);
   }
   rebuild(view) {
     const headings = _collectHeadings(view.state);
-    this.dom.innerHTML = '';
-    this.dom.classList.toggle('hidden', headings.length < 2);
-    if (headings.length < 2) return;
     const totalHeight = view.contentHeight || 1;
-    for (const h of headings) {
+    const positioned = headings.map((h) => ({
+      ...h,
+      top: Math.min(100, (view.lineBlockAt(h.pos).top / totalHeight) * 100),
+    }));
+    // A tolerance comparison, not an exact-match fingerprint — CM6 estimates
+    // unmeasured lines' heights and keeps refining the estimate as more of a
+    // long document is scrolled into view, which nudges every later
+    // heading's cumulative "top" by a fraction of a percent even when
+    // nothing about its actual position changed in any way a user could
+    // perceive (confirmed by measurement: a full round-trip through an
+    // already-settled document, position deltas topped out under 0.4
+    // percentage points — a fraction of a CSS pixel on the minimap rail).
+    // Rounding to a fixed precision before an exact-match comparison still
+    // misfires for values that happen to straddle a rounding boundary
+    // between two reads, so this compares the actual delta against a
+    // tolerance instead — immune to boundary-crossing by construction.
+    const TOP_TOLERANCE_PCT = 0.75;
+    const prev = this._positioned;
+    const unchanged = prev && prev.length === positioned.length && positioned.every((h, i) =>
+      h.level === prev[i].level && h.text === prev[i].text && Math.abs(h.top - prev[i].top) <= TOP_TOLERANCE_PCT);
+    if (unchanged) return; // nothing actually changed — skip the DOM churn
+    this._positioned = positioned;
+
+    this.dom.innerHTML = '';
+    this.dom.classList.toggle('hidden', positioned.length < 2);
+    if (positioned.length < 2) return;
+    for (const h of positioned) {
       const dot = document.createElement('button');
       dot.type = 'button';
       dot.className = `cm-minimap-dot cm-minimap-dot-h${h.level}`;
-      dot.style.top = `${Math.min(100, (view.lineBlockAt(h.pos).top / totalHeight) * 100)}%`;
+      dot.style.top = `${h.top}%`;
       dot.title = h.text || 'section';
       dot.setAttribute('aria-label', `Jump to ${h.text || 'section'}`);
       const jump = () => {
