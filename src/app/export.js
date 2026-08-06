@@ -3,7 +3,7 @@
 // print-to-PDF.
 
 import { escapeHtml, copyToClipboard } from '../utils.js';
-import { renderMarkdown, renderMarkdownWithToc, renderTocHtml } from '../markdown.js';
+import { renderMarkdown, renderMarkdownWithToc, renderTocHtml, markdownToPlainText } from '../markdown.js';
 import { getDownloadUrl } from '../files.js';
 import * as UI from '../ui.js';
 import { state } from './state.js';
@@ -80,7 +80,10 @@ details.md-inline-toc>ul{display:block!important;list-style:none;margin:0.6em 0 
   });
   document.getElementById('export-copy-text')?.addEventListener('click', async () => {
     if (!_requireContent()) return;
-    const ok = await copyToClipboard(UI.getEditorValue());
+    // Actual reading text, not raw source — strips **/#/[]()/etc. markup
+    // rather than copying it literally, matching the "plain text" label
+    // (raw markdown source is already covered by "Export as Markdown").
+    const ok = await copyToClipboard(markdownToPlainText(UI.getEditorValue()));
     if (ok) UI.showToast('Copied plain text.', 'success');
     else    UI.showToast('Could not copy.', 'error');
   });
