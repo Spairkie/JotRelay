@@ -55,12 +55,43 @@ function _faviconSvg(bg, accent) {
     + `</g></svg>`;
 }
 
+// Rasterize the themed SVG to a PNG data: URI at the given size, via an
+// offscreen <canvas> — browsers that don't support SVG favicons (this repo
+// still ships the 32/16px PNG <link> fallbacks for them) never look at the
+// SVG link at all, so recoloring only that one leaves them stuck on the
+// static amber PNG regardless of the active theme. Async by nature (image
+// decode), so this is fire-and-forget from applyTheme() rather than
+// blocking it — the SVG link (synchronous) already updates instantly for
+// every browser that reads it, this only extends the same recolor to the
+// ones that don't.
+function _rasterizeFaviconPng(svgMarkup, size) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, size, size);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = reject;
+    img.src = `data:image/svg+xml,${encodeURIComponent(svgMarkup)}`;
+  });
+}
+
 function _updateFaviconForTheme(id) {
   try {
-    const link = document.querySelector('link[rel="icon"][type="image/svg+xml"]');
-    if (!link) return; // defensive — the tag is always present in index.html's <head>
     const theme = THEMES.find((t) => t.id === id) || THEMES[0];
-    link.href = `data:image/svg+xml,${encodeURIComponent(_faviconSvg(theme.bg, theme.swatch))}`;
+    const svg = _faviconSvg(theme.bg, theme.swatch);
+
+    const svgLink = document.querySelector('link[rel="icon"][type="image/svg+xml"]');
+    if (svgLink) svgLink.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+
+    document.querySelectorAll('link[rel="icon"][type="image/png"]').forEach((link) => {
+      const size = Number(link.sizes?.value?.split('x')[0]) || 32;
+      _rasterizeFaviconPng(svg, size).then((dataUrl) => { link.href = dataUrl; }).catch(() => {});
+    });
   } catch {}
 }
 
