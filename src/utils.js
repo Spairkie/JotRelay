@@ -174,6 +174,33 @@ export async function copyToClipboard(text) {
   } catch { return false; }
 }
 
+// Delegated click handler for the copy button rendered inline in every
+// fenced code block by markdown.js's FencedCode case (shared by the main
+// app's #note-preview and the file-preview modal's .preview-markdown-body,
+// so it lives here rather than duplicated in both call sites). Reads the
+// sibling <code>'s .textContent rather than a separately-stored copy of the
+// source — that reliably reconstructs the original plain text even after
+// Prism.highlightAllUnder() has replaced <code>'s innerHTML with tokenized
+// <span> markup, since .textContent concatenates text nodes regardless of
+// nesting.
+export function wireCodeBlockCopyButtons(container) {
+  container?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.code-block-copy-btn');
+    if (!btn || !container.contains(btn)) return;
+    const code = btn.closest('pre')?.querySelector('code');
+    if (!code) return;
+    const ok = await copyToClipboard(code.textContent);
+    if (!ok) return;
+    btn.classList.add('is-copied');
+    const prevLabel = btn.getAttribute('aria-label');
+    btn.setAttribute('aria-label', 'Copied!');
+    setTimeout(() => {
+      btn.classList.remove('is-copied');
+      btn.setAttribute('aria-label', prevLabel);
+    }, 1400);
+  });
+}
+
 // ── Text stats ───────────────────────────────────────────────────────────────
 
 export function countWords(text) {

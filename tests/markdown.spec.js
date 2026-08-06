@@ -64,6 +64,41 @@ test.describe('Markdown preview', () => {
     await expect(preview.locator('pre code')).toContainText('line1\nline2\nline3');
   });
 
+  test('a fenced code block with a language tag shows a language label; a plain fence does not', async ({ page }) => {
+    const preview = await withPreview(page, '```javascript\nconst x = 1;\n```\n\n```\nno language here\n```');
+    const blocks = preview.locator('pre.code-block');
+    await expect(blocks.nth(0).locator('.code-block-lang')).toHaveText('javascript');
+    await expect(blocks.nth(1).locator('.code-block-lang')).toHaveCount(0);
+    // Both still get a copy button — copying isn't language-dependent.
+    await expect(blocks.nth(0).locator('.code-block-copy-btn')).toHaveCount(1);
+    await expect(blocks.nth(1).locator('.code-block-copy-btn')).toHaveCount(1);
+  });
+
+  test('clicking a code block\'s copy button copies its text and shows a confirmation', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const preview = await withPreview(page, '```js\nconst x = 1;\nconst y = 2;\n```');
+    // withPreview() renders raw HTML into #note-preview directly, bypassing
+    // the app's own _wirePreviewClickOnce() wiring — call the same shared
+    // helper it delegates to, so this exercises the real click-handling
+    // logic rather than re-implementing it in the test.
+    await page.evaluate(async () => {
+      const { wireCodeBlockCopyButtons } = await import('/SyncPad/src/utils.js');
+      wireCodeBlockCopyButtons(document.getElementById('note-preview'));
+    });
+
+    const copyBtn = preview.locator('.code-block-copy-btn');
+    await copyBtn.click();
+
+    await expect(copyBtn).toHaveClass(/is-copied/);
+    await expect(copyBtn).toHaveAttribute('aria-label', 'Copied!');
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toBe('const x = 1;\nconst y = 2;');
+
+    // The confirmation is transient, not permanent.
+    await expect(copyBtn).not.toHaveClass(/is-copied/, { timeout: 3000 });
+    await expect(copyBtn).toHaveAttribute('aria-label', 'Copy code');
+  });
+
   test('HTML comments never appear in rendered output', async ({ page }) => {
     const block = await withPreview(page, 'para one\n\n<!-- a block comment -->\n\npara two');
     await expect(block).not.toContainText('block comment');

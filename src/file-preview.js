@@ -12,7 +12,7 @@
 //     bucket remains private.
 
 import { renderMarkdown } from './markdown.js';
-import { escapeHtml, formatFileSize } from './utils.js';
+import { escapeHtml, formatFileSize, wireCodeBlockCopyButtons } from './utils.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -37,10 +37,21 @@ const TEXT_EXT_SET  = new Set([
  * @param {Function} getSignedUrl – async (filePath) => string  (existing helper)
  * @param {Function} onDownload   – async (file) => void         (existing helper)
  */
+let _copyButtonsWired = false;
+
 export async function openFilePreview(file, getSignedUrl, onDownload) {
   _ensureModal();
   const modal = document.getElementById('file-preview-modal');
   if (!modal) return;
+
+  // #file-preview-body's innerHTML is replaced wholesale on every preview
+  // (_setBody), but the element itself persists — event delegation on it
+  // only needs wiring once, ever, regardless of whether _ensureModal() had
+  // to build the modal or found it already in index.html.
+  if (!_copyButtonsWired) {
+    _copyButtonsWired = true;
+    wireCodeBlockCopyButtons(document.getElementById('file-preview-body'));
+  }
 
   // Show loading state immediately
   _setPreviewMeta(file.filename, file.file_size);

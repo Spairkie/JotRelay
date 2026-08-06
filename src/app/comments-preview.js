@@ -5,7 +5,7 @@
 // anchors to the (re)mounted live surface and recompute margin-dot
 // positions, so they're kept in one module rather than forced apart.
 
-import { debounce } from '../utils.js';
+import { debounce, wireCodeBlockCopyButtons } from '../utils.js';
 import { listComments, addComment, deleteComment } from '../comments.js';
 import { canEdit, canUseChecklist, editBlockedReason } from '../permissions.js';
 import { encryptContent, decryptContent, looksEncrypted } from '../encryption.js';
@@ -357,6 +357,7 @@ export const _debouncedRefreshFloatingComments = debounce(_refreshFloatingCommen
 function _wirePreviewClickOnce() {
   if (state.previewObserverWired) return;
   state.previewObserverWired = true;
+  wireCodeBlockCopyButtons(document.getElementById('note-preview'));
   document.getElementById('note-preview')?.addEventListener('click', (e) => {
     const cb = e.target;
     if (!(cb instanceof HTMLInputElement) || cb.type !== 'checkbox') return;
