@@ -46,6 +46,7 @@ inspecting the source), so this table reflects real output, not intent.
 | Admonitions | GFM alerts — `> [!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` |
 | Table of Contents | Typora-style `[TOC]` marker |
 | Link Targets | not per-link syntax — SyncPad opens every external link in a new tab (`target="_blank"`) by consistent site-wide policy instead |
+| Emoji Shortcodes | `:smile:`, `:tada:`, `:rocket:`, `:thumbsup:`, etc. — a curated ~150-entry table of the shortcodes people actually type from muscle memory (`_EMOJI_MAP` in `markdown.js`), not the full multi-thousand-entry Unicode set. An unrecognized shortcode renders as literal text rather than being dropped or guessed at. `markdownLanguage`'s own grammar only recognizes `[a-zA-Z_0-9]+` between the colons, so symbol-only codes like `:+1:`/`:-1:` never reach this table at all (`thumbsup`/`thumbsdown` cover the same emoji under names the grammar can actually match) |
 
 ## Deliberately not supported
 
@@ -61,7 +62,6 @@ inspecting the source), so this table reflects real output, not intent.
 | Underline | no flavor has a clean non-HTML syntax for this (`__x__` is bold in GFM); introducing a non-standard marker would surprise anyone pasting content from elsewhere |
 | Custom Heading IDs (`{#id}`) | Pandoc/Markdown Extra syntax, not GFM — auto-generated ids already cover the actual use case (linkable headings) |
 | Setext Headings (`Text\n===`, `Text\n---`) | basic CommonMark, but a legacy alternate style to the `#`/`##` ATX form SyncPad already implements (and the toolbar's H1/H2/H3 buttons insert). The `---` underline form is also genuinely ambiguous with horizontal rules — CommonMark itself resolves this with a lookback rule this renderer's single-pass block scanner doesn't have. Low real-world value for a quick-notepad tool given ATX already covers headings; revisit only if requested |
-| Emoji shortcodes (`:smile:`) | popular on GitHub's UI but not part of the GFM spec itself; would need a sizeable shortcode→Unicode data table for a large win. Genuine Unicode emoji (😀) already renders fine as plain text with no special handling needed |
 | Symbols (typographic replacement) | SyncPad already does this at typing time via the opt-in Smart Punctuation editor feature; doing it again at render time would double-process already-converted text |
 | Indent (Tab) → code block | CommonMark's 4-space-indent rule is ambiguous against this renderer's indent-based list-nesting logic; fenced code blocks already cover the same need unambiguously |
 | Image Size / Image Captions | not in GFM; needs either an attribute-syntax extension (Kramdown-style `{width=…}`) or raw HTML |
@@ -119,9 +119,15 @@ SyncPad has two rendering surfaces:
     `@lezer/highlight` defines as a sub-tag of `tags.string`
     (`character: t(string)`), so it inherited the string-literal color
     above. Neutralized with an explicit, more-specific `{ tag:
-    tags.character, color: 'inherit' }` override, so shortcode text (still
-    correctly unconverted — see Emoji above) reads as plain text again,
-    matching the classic renderer.
+    tags.character, color: 'inherit' }` override, so shortcode text reads
+    as plain text again rather than picking up string-literal coloring.
+    **Note (post-emoji-shortcode-support):** the classic renderer now
+    converts a recognized shortcode to its Unicode emoji (see Emoji
+    Shortcodes above); the live surface deliberately still leaves
+    `:smile:` as literal, uncolored text rather than adding a widget
+    decoration to visually swap it for 😄 the way it does for images/
+    checkboxes/tables — a real but out-of-scope-for-now follow-up (see
+    Areas for further work at the end of this doc), not an oversight.
   - **Kept as-is, considered and not a bug:** raw HTML typed directly in
     prose (e.g. section 11 of the feature-test doc, `<div>…</div>` as a
     literal example) picks up the *same* `tags.tagName`/`tags.attributeName`
@@ -142,3 +148,15 @@ SyncPad has two rendering surfaces:
     Obsidian-style tools commonly highlight recognized syntax wherever they
     see it), left in place rather than risking a fragile fix for a cosmetic
     edge case.
+
+## Areas for further work
+
+- **Emoji shortcode conversion in the live surface.** The classic renderer
+  converts a recognized `:shortcode:` to its Unicode emoji; the live CM6
+  surface currently only neutralizes its color (see the Phase 33 note
+  above) and still shows the raw colons-and-letters text. Bringing it to
+  parity would mean a widget decoration matching the pattern already used
+  for images/checkboxes/tables — hide the raw text near the caret, show the
+  rendered emoji everywhere else — which is a reasonable follow-up but a
+  materially bigger, riskier change than the classic-renderer addition
+  itself, so it's scoped out for now rather than rushed.

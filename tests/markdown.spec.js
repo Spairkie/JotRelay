@@ -279,6 +279,21 @@ test.describe('Markdown preview', () => {
     await expect(preview.locator('mark')).toContainText('important');
   });
 
+  test('converts recognized emoji shortcodes to Unicode emoji', async ({ page }) => {
+    const preview = await withPreview(page, 'Great work :tada: :rocket: :thumbsup:');
+    await expect(preview.locator('p')).toHaveText('Great work 🎉 🚀 👍');
+  });
+
+  test('leaves an unrecognized emoji shortcode as literal text', async ({ page }) => {
+    const preview = await withPreview(page, 'Not a real one: :totally_made_up_xyz:');
+    await expect(preview.locator('p')).toHaveText('Not a real one: :totally_made_up_xyz:');
+  });
+
+  test('does not convert an emoji shortcode inside inline code', async ({ page }) => {
+    const preview = await withPreview(page, '`:tada:` stays literal in code');
+    await expect(preview.locator('code')).toHaveText(':tada:');
+  });
+
   test('shows a checklist progress badge above the list', async ({ page }) => {
     const preview = await withPreview(page, '- [x] done one\n- [ ] not done\n- [x] done two');
     await expect(preview.locator('.md-checklist-progress')).toHaveText('2/3 done');
