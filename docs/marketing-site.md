@@ -183,9 +183,11 @@ operable, accessible surface.
 
 ## Scripts
 
-Four small Node scripts (`@playwright/test`'s bundled Chromium, plus
-`ffmpeg` for the video) generate presskit assets. None of them touch the
-network or Supabase — everything is rendered from local HTML/SVG/CSS.
+Five small Node scripts (`@playwright/test`'s bundled Chromium, plus
+`ffmpeg` for the video and the `zip` CLI for the archive) generate and
+package presskit assets. None of them touch the network or Supabase — the
+four generators render everything from local HTML/SVG/CSS, and the zip
+script just packages whatever they produced.
 
 | Script | What it does |
 |---|---|
@@ -193,6 +195,7 @@ network or Supabase — everything is rendered from local HTML/SVG/CSS.
 | `scripts/build-mockups.mjs` | Pulls real screens (header, editor, side panels, share modal, encryption gate) out of `index.html` by id (via `scripts/lib/extract-fragment.mjs`) and writes six standalone HTML files to `scripts/mockups/`, populated with realistic placeholder content |
 | `scripts/generate-screenshots.mjs` | Serves the repo with `tests/spa-server.js` and screenshots each `scripts/mockups/*.html` into `presskit/screenshot/` |
 | `scripts/generate-demo-video.mjs` | Drives the real app markup/CSS through a scripted ~25s sequence (type → live-render → simulated second device → Share modal → Files panel) and assembles it into `presskit/video/demo.mp4` + a poster frame — see `presskit/video/README.md` for why it captures frame-by-frame instead of using Playwright's `recordVideo` |
+| `scripts/build-presskit-zip.mjs` | Zips `presskit/{README.md,icon,screenshot,video}` into `presskit/SyncPad-Presskit.zip` (requires the `zip` CLI on `PATH`) — the single download linked from the top of `presskit/README.md` |
 
 Regenerate screenshots after a visual change to the app shell, editor, or
 any panel/modal touched by the mockups:
@@ -212,6 +215,14 @@ Share modal, or Files panel (requires `ffmpeg` with `libx264` on `PATH`):
 
 ```bash
 npm run presskit:video
+```
+
+Regenerate the presskit zip after changing any file inside `presskit/`
+(icons, screenshots, video, or the README itself) — it's a plain re-zip of
+whatever's currently on disk, so it goes stale silently if you forget:
+
+```bash
+npm run presskit:zip
 ```
 
 The icon script also writes the app's own shipped icons straight into
