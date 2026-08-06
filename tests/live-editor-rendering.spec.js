@@ -169,6 +169,57 @@ test.describe('Live/Split surface rendering', () => {
     await expect(links.first()).toBeHidden();
   });
 
+  test('[TOC] as the very first line renders immediately, before any click or keypress', async ({ page }) => {
+    // Regression test: mount() never gives EditorState.create() an explicit
+    // selection, so CM6 defaults to a bare cursor at position 0 — landing
+    // exactly on this line since [TOC] is the first thing in the document.
+    // That default cursor used to be indistinguishable from "the user is
+    // editing this line", so the marker rendered its raw "[TOC]" text
+    // instead of the widget until some other interaction moved the cursor
+    // away. Deliberately no click/keypress/Control+End here, unlike the
+    // test above — that's the whole point of this one.
+    await createRoom(page);
+    await typeInEditor(page, '[TOC]\n\n## Section A\n\n## Section B\n');
+    await setEditorMode(page, 'preview');
+
+    const toc = page.locator('.note-live .cm-md-inline-toc');
+    await expect(toc).toBeVisible();
+    await expect(toc).toHaveJSProperty('open', true);
+    await expect(toc.locator('a')).toHaveCount(2);
+  });
+
+  test('document mini-map dots stay invisible until the pointer nears the scroller edge', async ({ page }) => {
+    await createRoom(page);
+    const filler = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n\n'.repeat(20);
+    await typeInEditor(
+      page,
+      `# Intro\n\n${filler}## Middle\n\n${filler}## End\n\n${filler}`,
+    );
+    await setEditorMode(page, 'preview');
+
+    const firstDot = page.locator('.note-live .cm-minimap-dot').first();
+    await expect(firstDot).toHaveCSS('opacity', '0');
+
+    const scrollerBox = await page.locator('.note-live .cm-scroller').boundingBox();
+    // Near the right edge, deliberately not on a specific dot — proximity
+    // alone (not a precise 5px hit) should reveal the whole group at a
+    // subtle opacity.
+    await page.mouse.move(scrollerBox.x + scrollerBox.width - 10, scrollerBox.y + 10);
+    await expect(firstDot).toHaveCSS('opacity', '0.45');
+
+    // Hovering the dot itself brings it to full prominence, not just the
+    // group's dim reveal opacity — .cm-minimap.is-near-edge .cm-minimap-dot
+    // and .cm-minimap .cm-minimap-dot:hover both have 3-class specificity,
+    // so this also guards the fix that made the :hover rule actually win.
+    const firstDotBox = await firstDot.boundingBox();
+    await page.mouse.move(firstDotBox.x + firstDotBox.width / 2, firstDotBox.y + firstDotBox.height / 2);
+    await expect(firstDot).toHaveCSS('opacity', '1');
+
+    // Moving away from the editor entirely hides them again.
+    await page.mouse.move(scrollerBox.x + scrollerBox.width / 2, scrollerBox.y - 40);
+    await expect(firstDot).toHaveCSS('opacity', '0');
+  });
+
   test('document mini-map shows one tick per heading and jumps on click', async ({ page }) => {
     await createRoom(page);
     const filler = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n\n'.repeat(20);
