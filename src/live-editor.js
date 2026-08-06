@@ -660,14 +660,26 @@ class _MinimapTrack {
       dot.style.top = `${Math.min(100, (view.lineBlockAt(h.pos).top / totalHeight) * 100)}%`;
       dot.title = h.text || 'section';
       dot.setAttribute('aria-label', `Jump to ${h.text || 'section'}`);
-      dot.addEventListener('mousedown', (evt) => {
-        // mousedown, same as the [TOC] widget above, so this fires before
-        // the editor would otherwise steal focus/selection on the way to a click.
-        evt.preventDefault();
+      const jump = () => {
         const pos = Math.min(h.pos, view.state.doc.length);
         view.dispatch({ selection: { anchor: pos } });
         _scrollPosIntoView(view, pos, { smooth: true });
         view.focus();
+      };
+      dot.addEventListener('mousedown', (evt) => {
+        // mousedown, same as the [TOC] widget above, so this fires before
+        // the editor would otherwise steal focus/selection on the way to a click.
+        evt.preventDefault();
+        jump();
+      });
+      // Same reasoning as the [TOC] widget's <a> above: a native <button> is
+      // Tab-focusable, but keyboard Enter/Space activation only ever fires
+      // 'click' (never 'mousedown'), so without this a keyboard user could
+      // Tab to a tick and have Enter/Space do nothing. evt.detail is 0 only
+      // for a keyboard-synthesized click, never a real pointer one, so a
+      // mouse click (already handled by mousedown above) doesn't re-jump.
+      dot.addEventListener('click', (evt) => {
+        if (evt.detail === 0) jump();
       });
       this.dom.appendChild(dot);
     }
@@ -1116,6 +1128,12 @@ export function estimateViewportY(pos) {
  */
 export function mount(container, initialValue, { onChange, onCursorActivity, onImageFiles, readOnly = false } = {}) {
   destroy();
+  // _liveTocOpen is module-global so a manual collapse survives this file's
+  // own re-renders (widget reuse via eq() — see its declaration above), but
+  // that means it would otherwise leak across an unrelated destroy()/mount()
+  // pair too — collapsing the TOC in one room would leave a freshly opened
+  // room's TOC starting collapsed as well. Reset it per mounted document.
+  _liveTocOpen = true;
   _onChange = onChange || null;
   _onCursorActivity = onCursorActivity || null;
   _onImageFiles = onImageFiles || null;

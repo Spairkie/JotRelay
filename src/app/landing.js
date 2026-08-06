@@ -281,7 +281,10 @@ export function wireMarketingPageEvents() {
     // link jitters between them.
     const spy = new IntersectionObserver((entries) => {
       const visible = entries.filter((e) => e.isIntersecting);
-      if (visible.length) setActiveNav(visible[0].target.id);
+      // Scrolled back up into the intro/hero (above #lp-features) or down
+      // past #lp-trust into the footer/CTA — no tracked section is in the
+      // band, so nothing should stay underlined either.
+      setActiveNav(visible.length ? visible[0].target.id : null);
     }, { rootMargin: '-45% 0px -50% 0px' });
     navSections.forEach((el) => spy.observe(el));
   }

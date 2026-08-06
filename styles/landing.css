@@ -88,7 +88,15 @@
   .lp-intro-scroll-cue svg { animation: none; }
 }
 @media (max-width: 480px) {
-  .lp-intro-tagline { width: 32ch; }
+  /* The fixed 40ch reservation (plus nowrap + overflow:hidden) can exceed
+     a narrow phone's available width even at the tagline's minimum
+     font-size, clipping the tail of the string. Drop the fixed width and
+     allow wrapping instead — a two-line tagline beats a silently
+     truncated one. */
+  .lp-intro-tagline {
+    width: auto; max-width: 100%; white-space: normal; overflow: visible;
+    text-align: left;
+  }
 }
 
 .lp-eyebrow {

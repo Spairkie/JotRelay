@@ -47,7 +47,7 @@ window.SYNCPAD_CONFIG = {
 
 ### Brand-new project? Run one file.
 
-**[`supabase/baseline.sql`](supabase/baseline.sql)** is the whole current schema — every table, function, trigger, RLS policy, and Storage bucket/policy SyncPad uses — concatenated from the numbered migrations below into one script. Paste it into the Supabase **SQL Editor** and run it once. That's the entire database setup for a new project; skip straight to [Step 3](#step-3--configure-credentials) afterward.
+**[`supabase/baseline.sql`](supabase/baseline.sql)** covers every *core* table, function, trigger, RLS policy, and Storage bucket/policy SyncPad uses — concatenated from most of the numbered migrations below into one script. Paste it into the Supabase **SQL Editor** and run it once; the app works after that. It predates two optional feature migrations, though — **also run [`0010_anonymous_write_rate_limiting.sql`](supabase/migrations/0010_anonymous_write_rate_limiting.sql) and [`0011_short_file_references.sql`](supabase/migrations/0011_short_file_references.sql)** (see [Optional feature migrations](#optional-feature-migrations) below for what each enables) if you want those on a brand-new project too, then skip to [Step 3](#step-3--configure-credentials).
 
 It's verified end-to-end, not just assembled by hand: run twice in a row against a real Postgres 16 server (stubbed with minimal `auth`/`storage` schemas standing in for the Supabase-platform pieces the SQL assumes exist) with zero errors either time, confirming the whole file — not just each section individually — is genuinely idempotent and safe to rerun.
 
