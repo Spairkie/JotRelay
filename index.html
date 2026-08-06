@@ -29,15 +29,15 @@
   <link rel="manifest"         href="/SyncPad/manifest.json" />
   <!-- Favicon: the SVG is the primary reference (crisp at any tab/bookmark
        size); the 32/16 PNGs are the fallback for browsers that don't
-       support SVG favicons. All three come from icon-simple.svg — a bold
-       single-card mark tuned for legibility this small, distinct from the
-       fuller two-card mark below used where icons render larger (install
-       icon, home-screen icon) and can afford the extra detail. This SVG
-       link's href is also the one src/theme.js's applyTheme() re-tints to
-       the active theme's own colors at runtime (a data: URI replacing this
-       static file) — this static file is only what's visible before JS
-       runs / for the PNG-favicon fallback browsers, which don't get the
-       theme-matched version. -->
+       support SVG favicons. All three come from the same source mark as
+       the larger install/home-screen icons below (presskit/icon/icon.svg)
+       — tested down to native 16px and still reads clearly, so there's no
+       separate small-size variant to keep in sync. src/theme.js's
+       applyTheme() re-tints all three of these <link> hrefs to the active
+       theme's own colors at runtime (a data: URI replacing each static
+       file — instant for the SVG link, a rasterized PNG data: URI for the
+       other two); these static files are only what's visible before that
+       JS runs. -->
   <link rel="icon"             href="/SyncPad/assets/favicon.svg" type="image/svg+xml" />
   <link rel="icon"             href="/SyncPad/assets/favicon-32.png" type="image/png" sizes="32x32" />
   <link rel="icon"             href="/SyncPad/assets/favicon-16.png" type="image/png" sizes="16x16" />

@@ -4,15 +4,7 @@
       <stop offset="0" stop-color="#1c1c22"/>
       <stop offset="1" stop-color="#0a0a0c"/>
     </linearGradient>
-    <radialGradient id="glowGrad" cx="256" cy="240" r="260" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f5a623" stop-opacity="0.20"/>
-      <stop offset="1" stop-color="#f5a623" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="cardGrad" x1="192" y1="158" x2="392" y2="414" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffd27a"/>
-      <stop offset="1" stop-color="#f5a623"/>
-    </linearGradient>
-    <linearGradient id="ringGrad" x1="346" y1="112" x2="438" y2="204" gradientUnits="userSpaceOnUse">
+    <linearGradient id="cardGrad" x1="176" y1="184" x2="416" y2="424" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#ffd27a"/>
       <stop offset="1" stop-color="#f5a623"/>
     </linearGradient>
@@ -20,24 +12,16 @@
 
   <!-- Tile -->
   <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#bgGrad)"/>
-  <circle cx="256" cy="240" r="260" fill="url(#glowGrad)"/>
 
-  <!-- Back pad (the "synced" device) -->
-  <rect x="120" y="98" width="200" height="256" rx="26" fill="#242429" stroke="rgba(245,166,35,0.35)" stroke-width="3"/>
-  <rect x="150" y="140" width="120" height="10" rx="5" fill="rgba(232,232,237,0.16)"/>
-  <rect x="150" y="166" width="90"  height="10" rx="5" fill="rgba(232,232,237,0.12)"/>
+  <!-- Back card — an unfilled outline, not a second flat shape: reads as
+       "the other synced copy" behind the primary one, with the offset
+       between the two (rather than a separate refresh-arrow glyph) doing
+       the work of suggesting sync/mirroring. -->
+  <rect x="96" y="88" width="240" height="240" rx="46" fill="none" stroke="#f5a623" stroke-opacity="0.4" stroke-width="16"/>
 
-  <!-- Front pad (primary, brand-amber) -->
-  <rect x="192" y="158" width="200" height="256" rx="26" fill="url(#cardGrad)"/>
-  <rect x="222" y="228" width="140" height="14" rx="7" fill="rgba(15,15,17,0.32)"/>
-  <rect x="222" y="268" width="140" height="14" rx="7" fill="rgba(15,15,17,0.32)"/>
-  <rect x="222" y="308" width="92"  height="14" rx="7" fill="rgba(15,15,17,0.32)"/>
-
-  <!-- Sync badge -->
-  <circle cx="392" cy="158" r="48" fill="#101012" stroke="url(#ringGrad)" stroke-width="4"/>
-  <g transform="translate(368,134) scale(2)" fill="none" stroke="url(#ringGrad)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="23 4 23 10 17 10"/>
-    <polyline points="1 20 1 14 7 14"/>
-    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-  </g>
+  <!-- Front card — primary, brand-amber -->
+  <rect x="176" y="184" width="240" height="240" rx="46" fill="url(#cardGrad)"/>
+  <rect x="214" y="264" width="150" height="20" rx="10" fill="#1c1305" fill-opacity="0.4"/>
+  <rect x="214" y="308" width="150" height="20" rx="10" fill="#1c1305" fill-opacity="0.4"/>
+  <rect x="214" y="352" width="100" height="20" rx="10" fill="#1c1305" fill-opacity="0.4"/>
 </svg>

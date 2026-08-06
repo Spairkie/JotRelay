@@ -127,13 +127,16 @@ presskit/
 
 ### Icon
 
-- [`icon/icon.svg`](icon/icon.svg) — full source-of-truth mark (two synced
-  "pad" cards + a sync-loop badge)
-- [`icon/icon-simple.svg`](icon/icon-simple.svg) — a single-card variant
-  tuned for legibility at favicon/small sizes
+- [`icon/icon.svg`](icon/icon.svg) — the single source-of-truth mark: two
+  offset rounded "pad" cards (an outlined back card, a solid front card
+  with content lines) — the offset itself suggests sync/mirroring, rather
+  than a separate refresh-arrow badge. Tested down to native 16px and
+  still reads clearly, so this one file covers everything from the
+  browser-tab favicon up to the 512px install icon — no separate
+  small-size variant to keep in sync.
 - Pre-rendered PNGs: `icon-512.png`, `icon-256.png`, `icon-128.png`,
   `favicon.png` (64×64), `favicon-32.png`
-- Regenerate the PNGs after editing either SVG with `npm run presskit:icons`
+- Regenerate the PNGs after editing the SVG with `npm run presskit:icons`
   (see [the repo's scripts documentation](../docs/marketing-site.md#scripts)
   for details and how to add more sizes)
 

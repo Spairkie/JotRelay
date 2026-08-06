@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 48 — Brand mark redesign, code-fence visual proportion, landing demo keyboard nav
+
+#### Changed
+- **Brand mark redesigned.** The mark (two overlapping solid cards + a separate circular refresh-arrow badge) read as a generic icon-generator composition — the refresh-arrow glyph in particular is close to the single most common "sync" stock icon there is, doing nothing to make the mark ownable. Replaced with two offset rounded cards — an outlined back card, a solid front card with bold content lines — where the offset itself suggests sync/mirroring instead of a bolted-on badge. `presskit/icon/icon-simple.svg` (a separate "simplified" SVG for favicon/small sizes) is gone: the new mark was tested down to native 16px and reads clearly at every size up to 512px, so `icon.svg` is now the single source for the press kit, the PWA install icons, and the browser-tab favicon alike — one less place for two files to silently drift apart. `scripts/generate-icon-pngs.mjs` and `src/theme.js`'s runtime theme-matched-favicon renderer both updated to match.
+- **Fenced code blocks narrowed to 90% of the content measure** (desktop only; full width below 768px). Not an overflow fix — code blocks were already contained to the same measure as headings/paragraphs — but a bordered/backgrounded box reaching flush to both edges reads as more prominent than prose, which rarely wraps all the way to the edge, so blocks visually dominated the page despite being the "correct" width on paper. Still left-aligned to the same edge as the rest of the content; `overflow-x:auto` still covers any line that doesn't fit even the narrower box.
+
+#### Added
+- **Theme-matched favicon.** The browser-tab favicon now re-tints to the active theme's own background/accent colors whenever the theme changes, including the PNG `<link>` fallbacks for browsers without SVG-favicon support (rasterized via an offscreen canvas, async).
+- **Keyboard navigation for the landing page's two tablists** (the coded demo's scene tabs, the "SyncPad features" tabs) — Left/Right/Home/End roving focus per the ARIA APG Tabs pattern; previously click-only plus default per-button Tab stops.
+
+#### Fixed
+Two rounds of Codex review findings on this phase's changes, all confirmed real and fixed: the PNG favicon fallbacks not re-tinting on theme change; `markdownToPlainText()` silently dropping image alt text and running table cells together with no separator; the document mini-map rebuilding on ordinary scrolling (traced to CM6 raising `geometryChanged` from virtualized-viewport DOM churn, not just real content/size changes — fixed with a tolerance-based "did anything actually change" comparison in `rebuild()` itself, including comparing each heading's exact document offset so a stale tick can never silently outlive an edit); the minimap's keyboard-nav helper consuming vertical arrow keys in a horizontal tablist; the file-preview modal's code narrowing not gated to desktop; and PWA install icons (`icon-192.png`/`icon-512.png`/`apple-touch-icon.png`) rasterizing with transparent corners despite `manifest.json` declaring them maskable.
+
 ### Phase 47 — Follow-up polish: export-copy-text bug, dead-code sweep, emoji shortcodes, favicon set
 
 #### Fixed

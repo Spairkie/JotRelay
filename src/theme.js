@@ -38,21 +38,22 @@ export function applyTheme(id) {
 }
 
 // ── Theme-matched favicon ────────────────────────────────────────────────────
-// The browser-tab favicon is the same bold single-card mark as
-// assets/favicon.svg, but recolored to the active theme's own tile
-// background and accent — so switching themes re-tints the tab icon along
-// with the rest of the app instead of it staying a fixed amber regardless
-// of theme. Built inline as a data: URI rather than shipping 10 separate
+// The browser-tab favicon is the same two-card mark as assets/favicon.svg
+// (see presskit/icon/icon.svg), but recolored to the active theme's own
+// tile background and accent — so switching themes re-tints the tab icon
+// along with the rest of the app instead of it staying a fixed amber
+// regardless of theme. Built inline as a data: URI rather than shipping 10
 // pre-rendered SVG files, since the only thing that ever changes between
-// them is two fill colors.
+// them is the tile and card colors.
 function _faviconSvg(bg, accent) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">`
     + `<rect width="512" height="512" rx="112" fill="${bg}"/>`
-    + `<rect x="140" y="120" width="232" height="272" rx="34" fill="${accent}"/>`
-    + `<g transform="translate(178,196) scale(4.9)" fill="none" stroke="#0f0f11" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">`
-    + `<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>`
-    + `<path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>`
-    + `</g></svg>`;
+    + `<rect x="96" y="88" width="240" height="240" rx="46" fill="none" stroke="${accent}" stroke-opacity="0.4" stroke-width="16"/>`
+    + `<rect x="176" y="184" width="240" height="240" rx="46" fill="${accent}"/>`
+    + `<rect x="214" y="264" width="150" height="20" rx="10" fill="#1c1305" fill-opacity="0.4"/>`
+    + `<rect x="214" y="308" width="150" height="20" rx="10" fill="#1c1305" fill-opacity="0.4"/>`
+    + `<rect x="214" y="352" width="100" height="20" rx="10" fill="#1c1305" fill-opacity="0.4"/>`
+    + `</svg>`;
 }
 
 // Rasterize the themed SVG to a PNG data: URI at the given size, via an
