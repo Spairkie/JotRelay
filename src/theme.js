@@ -36,19 +36,6 @@ export function applyTheme(id) {
   try { localStorage.setItem(THEME_KEY, id); } catch {}
 }
 
-/**
- * Temporarily apply a theme WITHOUT persisting it — used for the theme
- * picker's hover preview (src/ui/panels.js), so hovering a swatch lets you
- * see the whole app in that theme before committing to it with a click.
- * Pass the saved theme's id (getSavedTheme()) to cancel a preview and
- * restore the real theme.
- */
-export function previewTheme(id) {
-  const root = document.documentElement;
-  if (!id || id === 'charcoal-amber') root.removeAttribute('data-theme');
-  else root.setAttribute('data-theme', id);
-}
-
 /** Load and apply the saved theme from localStorage. */
 export function loadSavedTheme() {
   let saved;

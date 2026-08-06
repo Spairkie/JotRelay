@@ -436,10 +436,10 @@
   padding-bottom: 4px;
 }
 .theme-option {
-  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 6px; padding: 6px;
   border-radius: var(--radius-md); background: var(--bg-elevated); border: 1px solid var(--border);
   cursor: pointer; font-size: 12px; color: var(--text-primary); text-align: left;
-  transition: background var(--transition), border-color var(--transition);
+  transition: background var(--transition), border-color var(--transition), transform 0.15s ease, box-shadow 0.15s ease;
   /* Grid items default to an automatic minimum width of their content's
      min-content size, NOT 0 — a flex container child (.theme-label) having
      overflow:hidden only zeroes out ITS OWN min-content contribution one
@@ -456,25 +456,37 @@
      instead of the grid silently overflowing around it. */
   min-width: 0;
 }
+/* Purely visual lift on hover/focus — unlike the old hover-preview, this
+   never touches [data-theme] on <html>, so casually moving the pointer or
+   tabbing through the list can't repaint the whole app. */
 .theme-option:hover,
-.theme-option:focus-visible { background: var(--bg-base); }
-.theme-option.active { border-color: var(--accent); color: var(--accent); }
-/* Triple-swatch preview: base bg, an elevated panel over its right side, and
-   an accent dot sitting on the elevated panel — a miniature of the app chrome. */
+.theme-option:focus-visible { border-color: var(--text-muted); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.theme-option.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+/* Mini window mockup: base bg fills the card, a header-bar strip in the
+   elevated tone sits on top, and a small accent "button" — reads like a
+   tiny screenshot of the theme rather than an abstract color chip. */
 .theme-preview {
-  position: relative; width: 28px; height: 20px; border-radius: 5px;
-  overflow: hidden; flex-shrink: 0; border: 1px solid rgba(127,127,127,0.2);
+  position: relative; width: 100%; height: 42px; border-radius: 6px;
+  overflow: hidden; border: 1px solid rgba(127,127,127,0.18);
 }
-.theme-preview-bg       { position: absolute; inset: 0; }
-.theme-preview-elevated { position: absolute; top: 0; right: 0; bottom: 0; width: 45%; }
-.theme-preview-dot {
-  position: absolute; bottom: 3px; right: 3px;
-  width: 8px; height: 8px; border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.25);
+.theme-preview-bar {
+  position: absolute; top: 0; left: 0; right: 0; height: 30%;
 }
+.theme-preview-accent {
+  position: absolute; left: 8px; bottom: 8px;
+  width: 20px; height: 6px; border-radius: 3px;
+}
+.theme-preview-check {
+  position: absolute; top: 5px; right: 5px;
+  width: 16px; height: 16px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--text-inverse);
+  opacity: 0; transform: scale(0.6); transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.theme-option.active .theme-preview-check { opacity: 1; transform: scale(1); }
+.theme-option-footer { display: flex; align-items: center; padding: 0 2px; }
 .theme-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.theme-check { flex-shrink: 0; color: var(--accent); width: 13px; height: 13px; opacity: 0; }
-.theme-option.active .theme-check { opacity: 1; }
+.theme-option.active .theme-label { color: var(--accent); font-weight: 600; }
 
 .toggle-switch { position: relative; width: 40px; height: 22px; cursor: pointer; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
