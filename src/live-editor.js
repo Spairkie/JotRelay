@@ -1085,11 +1085,6 @@ const _theme = EditorView.theme({
 
 export function isMounted() { return !!_view; }
 
-/** Current local caret offset into the doc, or null if unmounted. */
-export function getCaretPos() {
-  return _view ? _view.state.selection.main.head : null;
-}
-
 /**
  * Viewport pixel coordinates for a document offset (floating comment
  * composer/bubble placement). Returns null when unmounted or the position can't be resolved

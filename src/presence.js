@@ -133,11 +133,6 @@ export function setPresenceHidden(hidden) {
   _track({});
 }
 
-/** Current "Hide my cursor & typing" preference. */
-export function isPresenceHidden() {
-  return _hidden;
-}
-
 /**
  * Broadcast this device's cursor location (throttled).
  * Read-only devices broadcast their scroll position but NOT as "typing".

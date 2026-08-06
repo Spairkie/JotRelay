@@ -53,50 +53,10 @@
 .share-modal h3 { margin-bottom: 6px; }
 .share-modal-header { margin-bottom: 14px; }
 .share-subtitle { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
-.share-room-summary {
-  border: 1px solid var(--border); background: var(--bg-elevated);
-  border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 12px;
-}
-.share-summary-label { font-size: 11px; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em; }
 .share-room-path { font-size: 13px; font-family: var(--font-mono); color: var(--text-primary); margin-bottom: 8px; word-break: break-all; }
-.share-room-badges { display: flex; flex-wrap: wrap; gap: 6px; }
-.share-room-badge { font-size: 11px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-secondary); }
-.share-card {
-  border-radius: var(--radius-lg); border: 1px solid var(--border);
-  padding: 15px; margin-bottom: 12px;
-}
-.share-card--edit { border-color: rgba(245,166,35,0.3); background: rgba(245,166,35,0.02); }
-.share-card--view { border-color: rgba(96,165,250,0.25); background: rgba(96,165,250,0.02); }
-.share-card-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 12px; gap: 8px;
-}
-.share-card-title { font-size: 13px; font-weight: 600; }
 .share-section-desc { font-size: 12px; color: var(--text-secondary); margin: 4px 0 10px; }
-.share-badge {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; font-weight: 600; border-radius: 20px; padding: 3px 10px; white-space: nowrap;
-}
-.share-badge--edit { color: var(--accent); background: var(--accent-dim); border: 1px solid rgba(245,166,35,0.3); }
-.share-badge--view { color: var(--blue); background: rgba(96,165,250,0.1); border: 1px solid rgba(96,165,250,0.25); }
-.share-url-box {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 9px 12px; margin-bottom: 12px;
-}
-.share-url-text {
-  flex: 1; font-size: 12px; font-family: var(--font-mono);
-  color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.share-copy-btn {
-  font-size: 12px; font-weight: 600; color: var(--accent); flex-shrink: 0;
-  padding: 3px 10px; border-radius: var(--radius-sm);
-  border: 1px solid var(--accent-glow); background: var(--accent-dim);
-  transition: opacity var(--transition);
-}
-.share-copy-btn:hover { opacity: 0.8; }
-.share-copy-btn:disabled, .share-qr-download:disabled, .share-native-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.share-qr-title { font-size: 11px; color: var(--text-secondary); margin: 2px 0 6px; }
+.share-section-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+.share-qr-download:disabled { opacity: 0.45; cursor: not-allowed; }
 .share-qr { text-align: center; margin: 10px 0 8px; }
 .share-qr canvas, .share-qr img { border-radius: var(--radius-md); }
 .share-qr-download {
@@ -108,45 +68,6 @@
 }
 .share-qr-download svg { width: 13px; height: 13px; }
 .share-qr-download:hover { background: var(--bg-base); color: var(--accent); }
-.share-security-notice {
-  margin: 12px 0 10px; background: rgba(248,113,113,0.06);
-  border: 1px solid rgba(248,113,113,0.2); border-radius: var(--radius-md);
-  padding: 11px 13px; font-size: 11px; color: var(--text-secondary); line-height: 1.55;
-}
-.share-security-notice strong { color: var(--red); font-weight: 600; }
-.share-passcode-notice {
-  font-size: 12px; color: var(--yellow);
-  background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2);
-  border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 8px;
-  display: flex; align-items: center; gap: 6px;
-}
-.share-encryption-notice {
-  font-size: 12px; color: var(--accent);
-  background: var(--accent-dim); border: 1px solid rgba(245,166,35,0.25);
-  border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 8px;
-  display: flex; align-items: center; gap: 6px;
-}
-.share-note {
-  margin: 12px 0 8px; padding: 10px 12px; border-radius: var(--radius-md);
-  border: 1px solid rgba(96,165,250,0.25); background: rgba(96,165,250,0.08);
-  color: var(--text-secondary); font-size: 12px; line-height: 1.55;
-}
-.share-send-to-phone {
-  margin-top: 12px; padding: 12px 14px;
-  background: var(--bg-input); border: 1px solid var(--border-soft); border-radius: var(--radius-md);
-}
-.share-section-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
-.share-steps { font-size: 12px; color: var(--text-secondary); padding-left: 1.4em; margin: 0; line-height: 1.65; }
-.share-steps li { margin: 1px 0; }
-.share-native-btn {
-  width: 100%; margin-top: 12px; padding: 10px; border-radius: var(--radius-md);
-  background: var(--bg-elevated); border: 1px solid var(--border);
-  color: var(--text-primary); font-size: 14px; font-weight: 500;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  transition: background var(--transition), border-color var(--transition);
-}
-.share-native-btn svg { width: 16px; height: 16px; }
-.share-native-btn:hover { background: var(--bg-base); border-color: var(--accent); }
 
 /* ── Templates modal ────────────────────────────────────────── */
 /* Flex-column layout prevents footer from overlapping the template grid. */
@@ -464,9 +385,7 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
   .tmpl-two-col { grid-template-columns: 1fr; min-height: 240px; }
   .tmpl-preview-col { display: none; }
   .share-modal { padding: 18px 16px; }
-  .share-url-box { align-items: stretch; flex-direction: column; gap: 7px; }
-  .share-copy-btn { width: 100%; min-height: 36px; }
-  .share-qr-download, .share-native-btn { min-height: 38px; }
+  .share-qr-download { min-height: 38px; }
   .remote-notice { left: 12px; right: 12px; transform: none; max-width: none; animation: none; }
   .remote-notice-actions { justify-content: stretch; }
   .remote-notice-btn { flex: 1; }
