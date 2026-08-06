@@ -36,11 +36,11 @@ test.describe('Templates modal', () => {
     expect(await buttons.count()).toBeGreaterThanOrEqual(7);
   });
 
-  test('has at least 13 built-in templates after Phase 3', async ({ page }) => {
+  test('has at least 17 built-in templates', async ({ page }) => {
     await createRoom(page);
     await openTemplatesModal(page);
     const buttons = page.locator('.template-btn');
-    expect(await buttons.count()).toBeGreaterThanOrEqual(13);
+    expect(await buttons.count()).toBeGreaterThanOrEqual(17);
   });
 
   test('search filter reduces visible templates', async ({ page }) => {

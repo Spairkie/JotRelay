@@ -38,8 +38,8 @@ const _readOnly = new Compartment();
 // listener can tell them apart from real typing in this surface.
 const External = Annotation.define();
 
-// Markdown syntax colouring that follows the app's theme variables, so all
-// seven themes work without per-theme CM6 config. Also covers the embedded-
+// Markdown syntax colouring that follows the app's theme variables, so every
+// theme works without per-theme CM6 config. Also covers the embedded-
 // language tags fenced code blocks parse into (see codeLanguages/mount()
 // below) — the same shared HighlightStyle applies everywhere in this view,
 // and @lezer/highlight's tag vocabulary (keyword, string, number, …) is

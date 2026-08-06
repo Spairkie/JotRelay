@@ -169,7 +169,7 @@ function _renderQr(containerId, url) {
   if (!url || !window.QRCode) return;
   try {
     // Read QR colours from the active theme's CSS variables so the code adapts
-    // to all seven themes rather than always using the Charcoal Amber palette.
+    // to every theme rather than always using the Charcoal Amber palette.
     const cs = getComputedStyle(document.documentElement);
     const colorDark  = cs.getPropertyValue('--accent').trim()  || '#f5a623';
     const colorLight = cs.getPropertyValue('--bg-base').trim() || '#18181c';
