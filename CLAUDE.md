@@ -16,7 +16,7 @@ SyncPad is a vanilla-JavaScript realtime shared notepad built on Supabase. It ha
 ```
 npm run serve
 ```
-Then open `http://localhost:5555/SyncPad/`. `index.html` hardcodes `window.SYNCPAD_CONFIG.basePath = '/SyncPad'`, so every in-app route (`/SyncPad/<room-id>`, `/SyncPad/admin`, etc.) only resolves under that prefix — `serve.json`'s rewrite (`/SyncPad/** → /index.html`) gives plain `npx serve .` the same SPA fallback `tests/spa-server.js` provides for the test suite, so both paths work the same way. (If you ever see the bare landing screen render but every other `/SyncPad/*` route 404, check that `serve.json` is present and its rewrite destination is `/index.html`, not `/SyncPad/index.html` — the latter doesn't exist on disk and silently breaks the whole rewrite.)
+Then open `http://localhost:5555/SyncPad/`. `index.html` hardcodes `window.SYNCPAD_CONFIG.basePath = '/SyncPad'` and every static asset reference (`<link>`/`<script>` src) as an absolute `/SyncPad/...` path, matching where GitHub Pages actually hosts the site — so `npm run serve` runs `tests/spa-server.js` directly (not `npx serve .`) rather than trying to reproduce that with a generic static-file server. It strips the `/SyncPad` prefix before resolving a file on disk and only falls back to `index.html` when no real file matches, so both real assets (`/SyncPad/styles/base.css` → `styles/base.css`) and in-app routes (`/SyncPad/<room-id>`, `/SyncPad/admin`, etc.) resolve correctly. (A generic static server pointed at the repo root — `npx serve .` without this prefix-stripping — will 404 or silently return `index.html` for every real asset, since `styles/base.css` only exists at that path, not at `SyncPad/styles/base.css`.)
 
 **Install Playwright browsers (first time only):**
 ```
