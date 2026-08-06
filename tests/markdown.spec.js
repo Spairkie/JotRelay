@@ -294,6 +294,18 @@ test.describe('Markdown preview', () => {
     await expect(preview.locator('code')).toHaveText(':tada:');
   });
 
+  test('fenced code block is narrower than surrounding prose, left-aligned to the same edge', async ({ page }) => {
+    const preview = await withPreview(page, '# Heading\n\nSome paragraph text.\n\n```js\nconst x = 1;\n```');
+    const [headingBox, preBox] = await Promise.all([
+      preview.locator('h1').boundingBox(),
+      preview.locator('pre').boundingBox(),
+    ]);
+    // Left edges line up (both flush with the content measure)...
+    expect(Math.abs(headingBox.x - preBox.x)).toBeLessThan(1);
+    // ...but the code block's own box is visibly narrower, not full width.
+    expect(preBox.width).toBeLessThan(headingBox.width * 0.95);
+  });
+
   test('shows a checklist progress badge above the list', async ({ page }) => {
     const preview = await withPreview(page, '- [x] done one\n- [ ] not done\n- [x] done two');
     await expect(preview.locator('.md-checklist-progress')).toHaveText('2/3 done');

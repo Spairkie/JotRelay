@@ -361,6 +361,16 @@ body.code-line-numbers .note-live .cm-md-codeblock-content::before {
 .note-live .cm-remote-selection { border-radius: 2px; }
 @media (min-width: 768px) {
   .note-live { padding: 2rem max(5%, calc((100% - 800px) / 2)); font-size: 16px; }
+  /* Same visual-proportion narrowing as .note-preview pre above, and for
+     the same reason — kept here instead of on the whole block since a
+     fenced code block here is per-line background/border decoration on
+     real, individually-editable .cm-line elements (see the comment at
+     .cm-md-codeblock's declaration), not a single wrapping box. Reducing
+     each code line's own box width still lets CM6's line-wrapping extension
+     (which measures actual rendered layout, not a fixed character count)
+     reflow text to the narrower box automatically — typing and wrapping
+     both keep working normally, just within a visually narrower band. */
+  .note-live .cm-md-codeblock { max-width: 90%; }
 }
 /* No border-left here: #note-editor already carries the split divider via
    its border-right, and doubling them reads as a 2px line. */
@@ -392,8 +402,22 @@ body.code-line-numbers .note-live .cm-md-codeblock-content::before {
 .note-preview pre {
   background: var(--bg-surface); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: 14px 16px; overflow-x: auto; margin: 0.8em 0;
-  max-width: 100%; /* same content measure as headings/paragraphs — never wider */
+  max-width: 100%; /* never wider than the content measure, even on narrow/mobile widths */
   position: relative; /* anchors the line-numbers gutter below, when shown */
+}
+@media (min-width: 768px) {
+  /* Technically already contained to the same content measure as prose
+     (max-width:100% above) but still *feels* wider: a bordered/backgrounded
+     box that reaches flush to both edges reads as more prominent than
+     paragraph lines, which rarely wrap all the way out to the edge.
+     Narrowing the block itself — still left-aligned (no margin:auto), not
+     centered — visually settles it back into the reading column instead of
+     dominating the page. Left off below this breakpoint on purpose: a
+     phone screen has no "spare" margin to read as disproportionate, and
+     every pixel of width there matters more for code legibility than for
+     visual proportion. overflow-x:auto above still covers any line that
+     doesn't fit even this narrower box. */
+  .note-preview pre { max-width: 90%; }
 }
 /* Opt-in code-block line numbers (Settings > Editor preferences). A gutter
    *sibling* to <code>, not wrapper spans inside it — Prism.highlightAllUnder()
