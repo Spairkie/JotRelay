@@ -375,7 +375,7 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 - [x] Batch admin expired-room cleanup queries for larger room sets
 - [x] Add real `/share/:token` protected-room regression tests
 - [x] Add admin user setup documentation in `docs/admin-setup.md`
-- [x] Bump service worker cache version on every release that changes cached assets (currently `syncpad-v44` — see `service-worker.js`)
+- [x] Bump service worker cache version on every release that changes cached assets (currently `syncpad-v45` — see `service-worker.js`)
 - [x] Anonymous write rate limiting for room creation (30/device + 60/IP per 15 min) and report submission (10/device + 20/IP per 15 min) — optional `supabase/migrations/0010_anonymous_write_rate_limiting.sql`; see [Optional feature migrations](DEPLOYMENT.md#optional-feature-migrations)
 
 ### Outside current demo scope
