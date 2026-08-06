@@ -148,7 +148,7 @@ test.describe('Live/Split surface rendering', () => {
     expect(color).toBe(bodyColor);
   });
 
-  test('[TOC] renders as a collapsed <details> that expands to reveal working links', async ({ page }) => {
+  test('[TOC] renders as an open <details> with its links visible immediately', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page, '# Title\n\n[TOC]\n\n## Section A\n\n## Section B\n');
     await setEditorMode(page, 'preview');
@@ -156,13 +156,16 @@ test.describe('Live/Split surface rendering', () => {
 
     const toc = page.locator('.note-live .cm-md-inline-toc');
     await expect(toc).toBeVisible();
-    await expect(toc).toHaveJSProperty('open', false);
-    await expect(toc.locator('a').first()).toBeHidden();
-
-    await toc.locator('summary').click();
+    // Live mode is the seamless, Typora-style surface — a rendered [TOC]
+    // stands in for real document content while writing, so it should be
+    // usable at a glance instead of hidden behind an extra click.
     await expect(toc).toHaveJSProperty('open', true);
     const links = toc.locator('a');
     await expect(links.first()).toBeVisible();
     expect(await links.count()).toBe(3);
+
+    await toc.locator('summary').click();
+    await expect(toc).toHaveJSProperty('open', false);
+    await expect(links.first()).toBeHidden();
   });
 });

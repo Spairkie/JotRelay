@@ -498,6 +498,20 @@ function _stripHeadingMarkup(raw) {
     .trim();
 }
 
+// Live mode is the seamless, Typora-style surface — the whole point is that
+// rendered constructs show their result immediately, not behind an extra
+// click. Unlike the static renderer's .md-inline-toc (export/non-live
+// preview, where a reader opting into a plain HTML document reasonably
+// expects a collapsed-by-default nav) and the floating .note-toc auto-nav
+// (a persistent chrome element, not part of the document being edited),
+// the [TOC] widget here stands in for real document content while you're
+// actively writing it, so it starts open. _liveTocOpen remembers a manual
+// collapse across re-renders (new transactions re-create the widget only
+// when the heading list itself changes — eq() above reuses the existing DOM
+// otherwise — so without this, editing an unrelated heading while the user
+// had deliberately collapsed the nav would silently pop it open again).
+let _liveTocOpen = true;
+
 class _TocWidget extends WidgetType {
   constructor(entries) { super(); this.entries = entries; }
   eq(other) {
@@ -505,14 +519,13 @@ class _TocWidget extends WidgetType {
       other.entries.every((e, i) => e.level === this.entries[i].level && e.text === this.entries[i].text && e.pos === this.entries[i].pos);
   }
   toDOM(view) {
-    // <details>/<summary> — same collapsed-by-default, native-toggle pattern
-    // as the static renderer's .md-inline-toc (src/markdown.js) and the
-    // floating .note-toc auto-nav, so all three "Contents" boxes behave
-    // identically. ignoreEvent() returning true below keeps CM6 from
-    // intercepting the <summary> click before the browser's native toggle
-    // runs.
+    // <details>/<summary> gives free keyboard toggling and native semantics;
+    // ignoreEvent() returning true below keeps CM6 from intercepting the
+    // <summary> click before the browser's native toggle runs.
     const nav = document.createElement('details');
     nav.className = 'cm-md-inline-toc';
+    if (_liveTocOpen) nav.open = true;
+    nav.addEventListener('toggle', () => { _liveTocOpen = nav.open; });
     const label = document.createElement('summary');
     label.textContent = 'Contents';
     nav.appendChild(label);
