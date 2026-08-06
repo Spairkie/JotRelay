@@ -33,6 +33,43 @@ test.describe('Coded hero demo (/)', () => {
     await expect(page.locator('.lp-demo-tab[data-scene="write"]')).toHaveAttribute('aria-selected', 'false');
   });
 
+  test('arrow keys move focus between scene tabs, Enter activates the focused one', async ({ page }) => {
+    await goToLanding(page);
+    const tabs = page.locator('.lp-demo-tab');
+    await tabs.first().scrollIntoViewIfNeeded();
+    await tabs.first().focus();
+
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('.lp-demo-tab[data-scene="collaborate"]')).toBeFocused();
+
+    await page.keyboard.press('End');
+    await expect(page.locator('.lp-demo-tab[data-scene="handoff"]')).toBeFocused();
+
+    await page.keyboard.press('Home');
+    await expect(page.locator('.lp-demo-tab[data-scene="write"]')).toBeFocused();
+
+    await page.keyboard.press('ArrowLeft'); // wraps around to the last tab
+    await expect(page.locator('.lp-demo-tab[data-scene="handoff"]')).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#lp-demo')).toHaveAttribute('data-scene', 'handoff');
+  });
+
+  test('only the active scene tab is a Tab stop (roving tabindex)', async ({ page }) => {
+    await goToLanding(page);
+    await page.locator('.lp-demo-tab[data-scene="review"]').click();
+    const tabIndices = await page.locator('.lp-demo-tab').evaluateAll(
+      (els) => els.map((e) => ({ scene: e.dataset.scene, tabIndex: e.tabIndex })),
+    );
+    expect(tabIndices).toEqual([
+      { scene: 'write', tabIndex: -1 },
+      { scene: 'collaborate', tabIndex: -1 },
+      { scene: 'review', tabIndex: 0 },
+      { scene: 'share', tabIndex: -1 },
+      { scene: 'handoff', tabIndex: -1 },
+    ]);
+  });
+
   test('manual scene selection stops autoplay', async ({ page }) => {
     await goToLanding(page);
     await page.locator('.lp-demo-tab[data-scene="review"]').click();

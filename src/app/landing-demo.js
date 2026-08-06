@@ -20,6 +20,8 @@
 // is what "old scene callbacks must not modify later scenes" means in
 // practice, without needing a queue or a full animation library.
 
+import { wireTabListKeyboardNav, syncTabListFocus } from '../utils.js';
+
 const SCENES = ['write', 'collaborate', 'review', 'share', 'handoff'];
 const SCENE_LABELS = {
   write: 'Write — typing a checklist',
@@ -240,11 +242,16 @@ function announce(scene) {
 }
 
 function updateTabs(scene) {
+  let activeTab = null;
   els.tabs.forEach((tab) => {
     const active = tab.dataset.scene === scene;
     tab.classList.toggle('active', active);
     tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    if (active) activeTab = tab;
   });
+  // Keeps Tab-into-the-tablist landing on whichever scene is current even
+  // when autoplay — not a keyboard event — is what changed it.
+  syncTabListFocus(els.tabs, activeTab);
 }
 
 // Thin fill under the active tab, reinforcing that autoplay is a running
@@ -356,6 +363,7 @@ export function initLandingDemo() {
     syncAutoplayToConditions();
   });
 
+  wireTabListKeyboardNav(els.tabs);
   els.tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
       playing = false;

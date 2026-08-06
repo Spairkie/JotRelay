@@ -4,7 +4,7 @@
 
 import {
   generateRoomId, sanitizeRoomId, escapeHtml, formatTimestamp,
-  buildRoomUrl, buildReadOnlyUrl,
+  buildRoomUrl, buildReadOnlyUrl, wireTabListKeyboardNav, syncTabListFocus,
 } from '../utils.js';
 import { getOrCreateReadOnlyShareLink, getOrCreateRoomCode, resolveRoomCode } from '../rooms.js';
 import * as UI from '../ui.js';
@@ -219,15 +219,21 @@ export function wireMarketingPageEvents() {
   // Feature tabs
   const tabsWrap = document.getElementById('lp-feature-tabs');
   const panelsWrap = document.getElementById('lp-feature-panels');
+  const featureTabs = tabsWrap ? Array.from(tabsWrap.querySelectorAll('.lp-feature-tab')) : [];
+  if (featureTabs.length) {
+    wireTabListKeyboardNav(featureTabs);
+    syncTabListFocus(featureTabs, featureTabs.find((t) => t.classList.contains('active')) || featureTabs[0]);
+  }
   tabsWrap?.addEventListener('click', (e) => {
     const tab = e.target.closest('.lp-feature-tab');
     if (!tab) return;
     const key = tab.dataset.feature;
-    tabsWrap.querySelectorAll('.lp-feature-tab').forEach((t) => {
+    featureTabs.forEach((t) => {
       const active = t === tab;
       t.classList.toggle('active', active);
       t.setAttribute('aria-selected', active ? 'true' : 'false');
     });
+    syncTabListFocus(featureTabs, tab);
     panelsWrap?.querySelectorAll('.lp-feature-panel').forEach((p) => {
       p.classList.toggle('active', p.dataset.featurePanel === key);
     });

@@ -120,6 +120,23 @@ test.describe('Marketing landing page (/)', () => {
     await expect(page.locator('.lp-feature-panel[data-feature-panel="sync"]')).not.toHaveClass(/active/);
   });
 
+  test('arrow keys move focus between feature tabs, wrapping at both ends', async ({ page }) => {
+    await goToLanding(page);
+    const tabs = page.locator('.lp-feature-tab');
+    await tabs.first().scrollIntoViewIfNeeded();
+    await tabs.first().focus();
+    await expect(tabs.first()).toBeFocused();
+
+    await page.keyboard.press('ArrowLeft'); // wraps around to the last tab
+    await expect(tabs.last()).toBeFocused();
+
+    await page.keyboard.press('ArrowRight'); // wraps back to the first
+    await expect(tabs.first()).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await expect(tabs.first()).toHaveClass(/active/);
+  });
+
   test('feature chips are visible on the hero', async ({ page }) => {
     await goToLanding(page);
     const chips = page.locator('.landing-chip');
