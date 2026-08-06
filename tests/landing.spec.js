@@ -109,6 +109,40 @@ test.describe('Marketing landing page (/)', () => {
     await expect(featuresLink).not.toHaveClass(/active/);
   });
 
+  test('nav highlighting never flickers to nothing and back while scrolling through tracked sections', async ({ page }) => {
+    // Regression test: IntersectionObserver callbacks only deliver
+    // *transitions*, not the full current state of every observed target.
+    // Deriving the active link from just the entries a single callback
+    // happens to receive (instead of tracking intersecting state
+    // persistently) could clear an already-active link when an adjacent
+    // section's exit was the only entry in that particular callback, even
+    // though another tracked section was still genuinely in view. Real
+    // wheel scrolling (not instant scrollTop jumps) reproduces the natural
+    // callback batching this depends on. A drop to no-active-link that
+    // *stays* dropped (scrolled past the last tracked section into the
+    // footer) is expected and correct — only a drop sandwiched between two
+    // active readings (a flicker) indicates the bug.
+    await goToLanding(page);
+    await page.locator('#lp-features').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+
+    const readings = [];
+    for (let i = 0; i < 30; i++) {
+      await page.mouse.wheel(0, 100);
+      await page.waitForTimeout(80);
+      const active = await page.evaluate(() => {
+        const a = document.querySelector('.lp-nav-links a.active');
+        return a ? a.getAttribute('href') : null;
+      });
+      readings.push(active);
+    }
+    let flickered = false;
+    for (let i = 1; i < readings.length - 1; i++) {
+      if (readings[i] === null && readings[i - 1] !== null && readings[i + 1] !== null) flickered = true;
+    }
+    expect(flickered).toBe(false);
+  });
+
   test('feature tabs switch the active panel', async ({ page }) => {
     await goToLanding(page);
     const encryptionTab = page.locator('.lp-feature-tab[data-feature="encryption"]');

@@ -285,12 +285,28 @@ export function wireMarketingPageEvents() {
     // default "any overlap counts" — otherwise two adjacent tall sections
     // both register as intersecting for most of the scroll and the active
     // link jitters between them.
+    //
+    // IntersectionObserver callbacks only deliver *transitions* (targets
+    // whose intersecting state changed since the last callback), not the
+    // full current state of every observed target — so filtering just the
+    // entries a single callback happens to receive is wrong: when section A
+    // is already intersecting and stays that way while section B exits,
+    // that callback's entries can contain only B's (non-intersecting) one,
+    // which would wrongly clear A's still-valid active link. Track
+    // intersecting state persistently across callbacks instead.
+    const intersecting = new Set();
     const spy = new IntersectionObserver((entries) => {
-      const visible = entries.filter((e) => e.isIntersecting);
+      entries.forEach((e) => {
+        if (e.isIntersecting) intersecting.add(e.target.id);
+        else intersecting.delete(e.target.id);
+      });
       // Scrolled back up into the intro/hero (above #lp-features) or down
       // past #lp-trust into the footer/CTA — no tracked section is in the
-      // band, so nothing should stay underlined either.
-      setActiveNav(visible.length ? visible[0].target.id : null);
+      // band, so nothing should stay underlined either. Document order
+      // (via navSections, not entries order) keeps the choice deterministic
+      // on the rare frame where the thin band spans two sections at once.
+      const activeId = navSections.find((el) => intersecting.has(el.id))?.id || null;
+      setActiveNav(activeId);
     }, { rootMargin: '-45% 0px -50% 0px' });
     navSections.forEach((el) => spy.observe(el));
   }
