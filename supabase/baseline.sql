@@ -1909,6 +1909,13 @@ create trigger syncpad_rooms_enforce_quarantine
 -- a temporary `raise notice` in enforce_syncpad_rooms_rate_limit() to
 -- confirm the IP path is actually populating in production traffic, not
 -- silently no-op'd the whole time.
+--
+-- Two real bugs found and fixed in review, both re-verified against the
+-- same local Postgres setup: a client-spoofable 'backend-cleanup' bypass
+-- (any anonymous caller could skip rate limiting by setting
+-- created_by_device to that literal string) and a check-then-insert race
+-- that let a concurrent burst through the count check before any of its
+-- own log rows committed — see "What this migration adds" below for both.
 -- Run this in your Supabase project → SQL Editor after 0001_base_schema.sql.
 --
 -- What this migration adds
@@ -1942,15 +1949,46 @@ create trigger syncpad_rooms_enforce_quarantine
 -- rate limiter with an ambiguous identity should never be the reason
 -- room creation stops working for everyone.
 --
--- A signed-in admin (is_syncpad_admin()) and the backend cleanup job
--- ('backend-cleanup') are exempt, same as the other write-gating triggers.
+-- Only a signed-in admin (is_syncpad_admin()) is exempt. The lock/quarantine
+-- triggers this pattern is borrowed from also exempt the backend cleanup job
+-- ('backend-cleanup', a sentinel the cleanup function itself writes to
+-- updated_by_device on the UPDATE it issues) — this trigger fires on INSERT,
+-- and cleanup_expired_syncpad_rooms() never inserts a room, only updates or
+-- deletes expired ones, so it has no legitimate reason to bypass room-
+-- creation limiting. An earlier version of this trigger carried the same
+-- exemption anyway, copied from the other triggers without checking whether
+-- it actually applied here — since created_by_device is a plain,
+-- unvalidated client-supplied INSERT column (see above), any anonymous
+-- caller could set it to the literal string 'backend-cleanup' and skip the
+-- rate limit entirely. Removed.
+--
+-- Both trigger functions also serialize on a per-identifier advisory lock
+-- before checking or logging: the original check-then-insert (read the
+-- count, then conditionally insert a new log row) had a window where N
+-- concurrent requests sharing an identifier could all read the same
+-- pre-burst count before any of their inserts committed, letting a whole
+-- concurrent burst through regardless of the advertised cap. The lock
+-- closes that window by serializing same-identifier requests through the
+-- check+insert critical section; different identifiers still run fully
+-- concurrently.
 -- ============================================================
 
 -- ── Log table ──────────────────────────────────────────────────────────────
--- Internal bookkeeping only — RLS enabled with zero policies (default deny
--- for anon/authenticated); only the SECURITY DEFINER trigger functions
--- below ever touch it, running as the table owner, which bypasses RLS
--- unless FORCE ROW LEVEL SECURITY is set (it deliberately is not here).
+-- Internal bookkeeping — RLS enabled with no anon/authenticated write or
+-- read access; the SECURITY DEFINER trigger functions below insert into it
+-- running as the table owner, which bypasses RLS unless FORCE ROW LEVEL
+-- SECURITY is set (it deliberately is not here). The one exception is the
+-- admin policies below: src/admin/shared.js's _resetEntireDatabase() clears
+-- this table as part of a full reset using the signed-in admin's own
+-- (authenticated-role) client, not a SECURITY DEFINER function, so without
+-- them that delete is silently blocked by RLS and rate-limit counters
+-- survive a reset that's supposed to clear everything.
+--
+-- Both a SELECT and a DELETE policy are needed, not DELETE alone — verified
+-- directly (not assumed) against a real Postgres instance: a DELETE-only
+-- policy left every delete attempt affecting zero rows even with
+-- is_syncpad_admin() independently confirmed true beforehand, and adding
+-- the companion SELECT policy is what actually made the delete work.
 
 create table if not exists public.syncpad_rate_limit_log (
   id          bigint generated always as identity primary key,
@@ -1963,6 +2001,19 @@ create index if not exists idx_syncpad_rate_limit_log_lookup
   on public.syncpad_rate_limit_log (action, identifier, created_at);
 
 alter table public.syncpad_rate_limit_log enable row level security;
+
+drop policy if exists "admin select rate limit log" on public.syncpad_rate_limit_log;
+drop policy if exists "admin delete rate limit log" on public.syncpad_rate_limit_log;
+
+create policy "admin select rate limit log"
+  on public.syncpad_rate_limit_log for select
+  to authenticated
+  using (is_syncpad_admin());
+
+create policy "admin delete rate limit log"
+  on public.syncpad_rate_limit_log for delete
+  to authenticated
+  using (is_syncpad_admin());
 
 -- ── Client IP helper ──────────────────────────────────────────────────────
 -- Reads PostgREST's `request.headers` GUC (a JSON object of the incoming
@@ -2034,8 +2085,27 @@ declare
   v_device text := nullif(trim(coalesce(NEW.created_by_device, '')), '');
   v_ip     text := public.syncpad_client_ip();
 begin
-  if coalesce(NEW.created_by_device, '') = 'backend-cleanup' or public.is_syncpad_admin() then
+  if public.is_syncpad_admin() then
     return NEW;
+  end if;
+
+  -- Serialize concurrent requests sharing the same device/IP identifier
+  -- before checking or logging anything: without this, N concurrent
+  -- transactions on the same identifier can all run the check below before
+  -- any of their own log inserts commit, so every one of them sees the
+  -- same pre-burst count and passes — letting an entire concurrent burst
+  -- through regardless of the advertised cap. Advisory locks are
+  -- transaction-scoped (released automatically at commit/rollback) and
+  -- hashed together with the action name so 'room_create' locks never
+  -- contend with 'room_report' locks over a coincidentally shared
+  -- identifier value. Always locks device before IP (the only place that
+  -- acquires both) so two triggers can never deadlock waiting on each
+  -- other in opposite orders.
+  if v_device is not null then
+    perform pg_advisory_xact_lock(hashtextextended('room_create:' || v_device, 0));
+  end if;
+  if v_ip is not null then
+    perform pg_advisory_xact_lock(hashtextextended('room_create:' || v_ip, 0));
   end if;
 
   if public.syncpad_rate_limit_exceeded('room_create', v_device, 30, 15)
@@ -2080,6 +2150,15 @@ declare
 begin
   if public.is_syncpad_admin() then
     return NEW;
+  end if;
+
+  -- Same check-then-insert race and same fix as enforce_syncpad_rooms_rate_limit()
+  -- above — see its comment for the full reasoning.
+  if v_device is not null then
+    perform pg_advisory_xact_lock(hashtextextended('room_report:' || v_device, 0));
+  end if;
+  if v_ip is not null then
+    perform pg_advisory_xact_lock(hashtextextended('room_report:' || v_ip, 0));
   end if;
 
   if public.syncpad_rate_limit_exceeded('room_report', v_device, 10, 15)
@@ -2192,25 +2271,33 @@ $do$;
 -- written before this migration keeps resolving unchanged — no note content
 -- needs to be rewritten.
 --
--- Concurrency: two devices uploading to the same room at nearly the same
--- moment must not be assigned the same file_no. The trigger locks the
--- room's own syncpad_rooms row (`for update`) before computing
--- max(file_no)+1 — since that lock is held for the trigger's own INSERT
--- transaction, a second concurrent insert's trigger blocks until the first
--- one commits, then correctly sees its row when computing its own next
--- number. Same "let Postgres's own row locking serialize it" idea as
--- rpc_consume_view_once's atomic UPDATE ... WHERE, just via a lock instead
--- of a conditional update (a plain insert has no existing row to condition
--- on).
+-- Concurrency AND non-reuse: two devices uploading to the same room at
+-- nearly the same moment must not be assigned the same file_no, and a
+-- number, once issued, must never be reissued to a different file even
+-- after the original is deleted — resolveFileRef() resolves a reference
+-- purely by (room_id, file_no), so a reused number would make an existing
+-- `syncpad-file:N` reference in someone's note content silently start
+-- opening a completely different file. An earlier version of this trigger
+-- computed max(file_no)+1 from the *currently existing* rows, which broke
+-- exactly that guarantee: deleting the highest-numbered file and uploading
+-- a new one reissued the deleted number. Fixed by tracking a persistent
+-- per-room counter (syncpad_rooms.file_no_seq) that only ever increases,
+-- independent of what's since been deleted — an atomic
+-- `update ... set file_no_seq = file_no_seq + 1 returning file_no_seq`
+-- both assigns the next number and provides the same row-level-locking
+-- serialization the old `for update` lock did (a second concurrent
+-- insert's trigger blocks on this same UPDATE until the first commits),
+-- so the concurrency guarantee is unchanged.
 -- ============================================================
 
 alter table public.syncpad_files add column if not exists file_no integer;
+alter table public.syncpad_rooms add column if not exists file_no_seq integer not null default 0;
 
 -- Backfill any pre-existing rows, oldest-first per room, before the
 -- uniqueness constraint below is added. A no-op on a fresh install (no rows
 -- yet) or a re-run (no rows left with a null file_no).
 with numbered as (
-  select id, row_number() over (partition by room_id order by uploaded_at, id) as rn
+  select id, room_id, row_number() over (partition by room_id order by uploaded_at, id) as rn
   from public.syncpad_files
   where file_no is null
 )
@@ -2218,6 +2305,19 @@ update public.syncpad_files f
    set file_no = numbered.rn
   from numbered
  where f.id = numbered.id;
+
+-- Seed each room's counter to the highest file_no it has already issued
+-- (0 if none), so newly assigned numbers continue after existing ones
+-- instead of restarting at 1 and immediately colliding. Only touches rooms
+-- still at the column's default (0) — safe to rerun, and doesn't clobber a
+-- counter that's already advanced past its files (the expected state once
+-- deletions have happened, which is the entire point of this migration).
+update public.syncpad_rooms r
+   set file_no_seq = coalesce(
+     (select max(f.file_no) from public.syncpad_files f where f.room_id = r.room_id),
+     0
+   )
+ where file_no_seq = 0;
 
 do $$
 begin
@@ -2237,13 +2337,20 @@ set search_path = public
 as $$
 begin
   if new.file_no is null then
-    -- Best-effort lock: if the room row somehow doesn't exist yet (files
-    -- should never be uploadable before their room is created), this locks
-    -- nothing and the number below is still computed, just without the
-    -- concurrency guarantee — better than failing the upload outright.
-    perform 1 from public.syncpad_rooms where room_id = new.room_id for update;
-    select coalesce(max(file_no), 0) + 1 into new.file_no
-      from public.syncpad_files where room_id = new.room_id;
+    update public.syncpad_rooms
+       set file_no_seq = file_no_seq + 1
+     where room_id = new.room_id
+    returning file_no_seq into new.file_no;
+
+    if new.file_no is null then
+      -- Best-effort fallback: the room row somehow doesn't exist yet
+      -- (files should never be uploadable before their room is created),
+      -- so the UPDATE above matched nothing. Falls back to the old
+      -- max()-based computation rather than failing the upload outright —
+      -- loses the never-reused guarantee only in this shouldn't-happen case.
+      select coalesce(max(file_no), 0) + 1 into new.file_no
+        from public.syncpad_files where room_id = new.room_id;
+    end if;
   end if;
   return new;
 end;

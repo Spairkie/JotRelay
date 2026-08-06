@@ -18,25 +18,33 @@
 -- written before this migration keeps resolving unchanged — no note content
 -- needs to be rewritten.
 --
--- Concurrency: two devices uploading to the same room at nearly the same
--- moment must not be assigned the same file_no. The trigger locks the
--- room's own syncpad_rooms row (`for update`) before computing
--- max(file_no)+1 — since that lock is held for the trigger's own INSERT
--- transaction, a second concurrent insert's trigger blocks until the first
--- one commits, then correctly sees its row when computing its own next
--- number. Same "let Postgres's own row locking serialize it" idea as
--- rpc_consume_view_once's atomic UPDATE ... WHERE, just via a lock instead
--- of a conditional update (a plain insert has no existing row to condition
--- on).
+-- Concurrency AND non-reuse: two devices uploading to the same room at
+-- nearly the same moment must not be assigned the same file_no, and a
+-- number, once issued, must never be reissued to a different file even
+-- after the original is deleted — resolveFileRef() resolves a reference
+-- purely by (room_id, file_no), so a reused number would make an existing
+-- `syncpad-file:N` reference in someone's note content silently start
+-- opening a completely different file. An earlier version of this trigger
+-- computed max(file_no)+1 from the *currently existing* rows, which broke
+-- exactly that guarantee: deleting the highest-numbered file and uploading
+-- a new one reissued the deleted number. Fixed by tracking a persistent
+-- per-room counter (syncpad_rooms.file_no_seq) that only ever increases,
+-- independent of what's since been deleted — an atomic
+-- `update ... set file_no_seq = file_no_seq + 1 returning file_no_seq`
+-- both assigns the next number and provides the same row-level-locking
+-- serialization the old `for update` lock did (a second concurrent
+-- insert's trigger blocks on this same UPDATE until the first commits),
+-- so the concurrency guarantee is unchanged.
 -- ============================================================
 
 alter table public.syncpad_files add column if not exists file_no integer;
+alter table public.syncpad_rooms add column if not exists file_no_seq integer not null default 0;
 
 -- Backfill any pre-existing rows, oldest-first per room, before the
 -- uniqueness constraint below is added. A no-op on a fresh install (no rows
 -- yet) or a re-run (no rows left with a null file_no).
 with numbered as (
-  select id, row_number() over (partition by room_id order by uploaded_at, id) as rn
+  select id, room_id, row_number() over (partition by room_id order by uploaded_at, id) as rn
   from public.syncpad_files
   where file_no is null
 )
@@ -44,6 +52,19 @@ update public.syncpad_files f
    set file_no = numbered.rn
   from numbered
  where f.id = numbered.id;
+
+-- Seed each room's counter to the highest file_no it has already issued
+-- (0 if none), so newly assigned numbers continue after existing ones
+-- instead of restarting at 1 and immediately colliding. Only touches rooms
+-- still at the column's default (0) — safe to rerun, and doesn't clobber a
+-- counter that's already advanced past its files (the expected state once
+-- deletions have happened, which is the entire point of this migration).
+update public.syncpad_rooms r
+   set file_no_seq = coalesce(
+     (select max(f.file_no) from public.syncpad_files f where f.room_id = r.room_id),
+     0
+   )
+ where file_no_seq = 0;
 
 do $$
 begin
@@ -63,13 +84,20 @@ set search_path = public
 as $$
 begin
   if new.file_no is null then
-    -- Best-effort lock: if the room row somehow doesn't exist yet (files
-    -- should never be uploadable before their room is created), this locks
-    -- nothing and the number below is still computed, just without the
-    -- concurrency guarantee — better than failing the upload outright.
-    perform 1 from public.syncpad_rooms where room_id = new.room_id for update;
-    select coalesce(max(file_no), 0) + 1 into new.file_no
-      from public.syncpad_files where room_id = new.room_id;
+    update public.syncpad_rooms
+       set file_no_seq = file_no_seq + 1
+     where room_id = new.room_id
+    returning file_no_seq into new.file_no;
+
+    if new.file_no is null then
+      -- Best-effort fallback: the room row somehow doesn't exist yet
+      -- (files should never be uploadable before their room is created),
+      -- so the UPDATE above matched nothing. Falls back to the old
+      -- max()-based computation rather than failing the upload outright —
+      -- loses the never-reused guarantee only in this shouldn't-happen case.
+      select coalesce(max(file_no), 0) + 1 into new.file_no
+        from public.syncpad_files where room_id = new.room_id;
+    end if;
   end if;
   return new;
 end;

@@ -246,12 +246,13 @@ export async function _resetEntireDatabase() {
   if (reportsErr) return { error: reportsErr, roomsDeleted: roomIds.length };
 
   // Best-effort — this table is optional (Phase 40's rate-limiting
-  // migration) and its absence shouldn't fail the whole reset.
-  try {
-    await state.sb.from('syncpad_rate_limit_log').delete().not('id', 'is', null);
-  } catch (e) {
-    console.error('[admin] failed to clear syncpad_rate_limit_log during full reset', e);
-  }
+  // migration) and its absence shouldn't fail the whole reset. Supabase's
+  // client resolves with an { error } value on failure rather than
+  // throwing, so a bare try/catch here never actually caught anything —
+  // including a real failure like RLS silently blocking the delete, which
+  // left rate-limit counters intact while this still reported success.
+  const { error: rateLimitErr } = await state.sb.from('syncpad_rate_limit_log').delete().not('id', 'is', null);
+  if (rateLimitErr) console.error('[admin] failed to clear syncpad_rate_limit_log during full reset', rateLimitErr);
 
   return { error: null, roomsDeleted: roomIds.length };
 }
