@@ -9,7 +9,7 @@ SyncPad is a vanilla-JS realtime notepad built on Supabase with no build step. T
 ```
 Browser (HTML + CSS + ES Modules)
     ├── index.html               — shell, Supabase config, screen containers
-    ├── service-worker.js        — PWA cache (network-first navigations, stale-while-revalidate assets)
+    ├── service-worker.js        — PWA cache (cache-first, immutable per CACHE_VERSION)
     └── src/*.js                 — ES modules (no bundler)
             ├── app.js           — router, event wiring, global state
             ├── ui.js            — all DOM manipulation
@@ -228,10 +228,10 @@ The optional `supabase/functions/syncpad-cleanup` Edge Function runs with a serv
 
 ## 10. PWA / Service Worker
 
-`service-worker.js` implements two caching strategies for same-origin requests, split by request type:
+`service-worker.js` implements **cache-first** for every same-origin GET request — navigations and assets (JS modules, CSS, icons — the `PRECACHE_ASSETS` list) alike, scoped to the same open `CACHE_VERSION` cache. The cached copy is returned immediately if present; a cache miss falls back to the network (and, for navigations specifically, to the offline error response if that also fails).
 
-- **Navigations** (`req.mode === 'navigate'`, i.e. loading `index.html`): **network-first**. Every navigation is attempted over the network first so the app shell reflects the latest deploy when online; the cache is only used as a fallback on network failure (offline).
-- **Everything else same-origin** (JS modules, CSS, icons — the `PRECACHE_ASSETS` list): **stale-while-revalidate**. The cached copy (if present) is returned immediately — so repeat loads render instantly regardless of current network conditions — while a background fetch refreshes the cache for next time. Staleness here is bounded by the update-bar flow below, not indefinite.
+This cache is treated as **immutable once populated**: nothing writes to it at request time, only the install handler's one-shot `PRECACHE_ASSETS` pass. An earlier version of this handler also wrote each cache miss's network response back into the open cache opportunistically — which reads as harmless but isn't: a currently-active worker keeps answering every fetch for pages it already controls (including new navigations) for as long as it takes a newer worker to actually take over, and the network always serves whatever is *currently deployed* regardless of which worker generation is asking. Per-request cache writes during that window could drift the "coherent" `CACHE_VERSION` cache entry-by-entry as the user browsed — e.g. picking up a newly-deployed `app.js` while every module it imports is still the old cached copy. Not writing to the cache at request time removes that drift: the only way this cache's contents change is a whole new `CACHE_VERSION` being precached atomically on the next deploy.
+
 - **Cache name**: `CACHE_VERSION` in `service-worker.js`, bumped on every release that changes precached assets (see `CHANGELOG.md` for the current value)
 - **Bypass**: All requests to Supabase endpoints (different origin) bypass the service worker entirely and go directly to the network.
 - **Cache invalidation**: Increment `CACHE_VERSION` to force all clients to discard the old cache on next activation. Update detection itself doesn't depend on this value — the browser independently re-fetches and byte-diffs `service-worker.js` on its own schedule, which is what `src/app/pwa.js`'s `updatefound` listener and the resulting "update available" bar are driven by.

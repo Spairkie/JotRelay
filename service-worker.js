@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'syncpad-v47';
+const CACHE_VERSION = 'syncpad-v48';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -146,39 +146,38 @@ self.addEventListener('fetch', (event) => {
   // We don't cache them; let the browser/CDN handle it.
   if (!url.startsWith(self.location.origin)) return;
 
-  // Navigations and same-origin assets (JS/CSS/icons) both use
-  // stale-while-revalidate, scoped to the SAME open CACHE_VERSION cache —
-  // deliberately, not just for speed. A currently-active service worker
-  // instance keeps handling every fetch for pages it already controls,
-  // including new navigations, until a newer worker actually takes over
-  // (see app/pwa.js's controllerchange reload). If navigations fetched a
-  // fresh index.html over the network while assets kept serving the old
-  // cached copies, a deploy that changes both markup and its corresponding
-  // module/stylesheet could hand a client a split, broken version — a
-  // fresh document paired with stale assets from before the deploy — for
-  // as long as the new worker takes to activate. Keeping both request
-  // types on the same cache generation means they can only ever change
-  // together, in the same reload, when a new worker actually takes control.
-  // app/pwa.js's updatefound listener (backed by the browser's own
-  // byte-level diff of this file, independent of this fetch handler) is
-  // what actually detects and prompts for that new version, so staleness
-  // here is bounded by that update prompt, not indefinite — and repeat
-  // loads render instantly regardless of current network conditions
-  // instead of re-fetching the whole app shell on every visit.
+  // Navigations and same-origin assets (JS/CSS/icons) both use cache-first,
+  // scoped to the SAME open CACHE_VERSION cache — deliberately, not just
+  // for speed. This cache is treated as immutable once populated: the only
+  // thing that ever writes to it is the install handler's one-shot
+  // PRECACHE_ASSETS pass above, never this fetch handler. An earlier
+  // version of this handler also wrote each cache-miss's network response
+  // back into the SAME open cache at request time — which sounds harmless,
+  // but a currently-active worker instance keeps handling every fetch for
+  // pages it already controls, including new navigations, for as long as
+  // it takes a newer worker to actually take over (see app/pwa.js's
+  // controllerchange reload). Across that window, the network always
+  // serves whatever is *currently deployed*, regardless of which worker
+  // generation is asking — so opportunistic per-request cache.put() calls
+  // could drift the "coherent" CACHE_VERSION cache entry-by-entry as the
+  // user browsed, e.g. picking up a newly-deployed app.js while every
+  // other module it imports is still the old cached copy, and failing if
+  // the new module expects an export the old one doesn't have. Not writing
+  // to the cache at request time at all removes that drift entirely: the
+  // only way this cache's contents ever change is a whole new CACHE_VERSION
+  // being precached atomically on the next deploy, which app/pwa.js's
+  // updatefound listener (backed by the browser's own byte-level diff of
+  // this file) detects and prompts for via the update bar.
   const cacheKey = req.mode === 'navigate' ? `${BASE}/index.html` : req;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_VERSION);
     const cached = await cache.match(cacheKey);
-    const networkFetch = fetch(req)
-      .then((res) => {
-        if (res && res.ok) cache.put(cacheKey, res.clone());
-        return res;
-      })
-      .catch(() => null);
     if (cached) return cached;
-    const networkResponse = await networkFetch;
-    if (networkResponse) return networkResponse;
-    return new Response('Offline', { status: 503, statusText: 'Offline' });
+    try {
+      return await fetch(req);
+    } catch {
+      return new Response('Offline', { status: 503, statusText: 'Offline' });
+    }
   })());
 });
 
