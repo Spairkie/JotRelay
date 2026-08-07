@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'syncpad-v46';
+const CACHE_VERSION = 'syncpad-v52';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -26,6 +26,7 @@ const PRECACHE_ASSETS = [
   `${BASE}/styles/onboarding.css`,
   `${BASE}/styles/admin.css`,
   `${BASE}/src/app.js`,
+  `${BASE}/src/keyboard-viewport.js`,
   `${BASE}/src/app/state.js`,
   `${BASE}/src/app/routing.js`,
   `${BASE}/src/app/room-lifecycle.js`,
@@ -92,17 +93,37 @@ const PRECACHE_ASSETS = [
   `${BASE}/assets/favicon-16.png`,
 ];
 
-// ── Install: precache core assets (tolerant of individual misses) ──────────
+// Fast membership lookup for the fetch handler below — only these paths
+// ever go through this worker's cache.
+const PRECACHED_PATHS = new Set(PRECACHE_ASSETS);
 
+// ── Install: precache core assets (must ALL succeed to activate) ───────────
+//
+// An earlier version tolerated individual cache.add() failures so one flaky
+// asset wouldn't block install. That directly conflicts with treating a
+// CACHE_VERSION's cache as immutable once populated (see the fetch handler
+// below): the fetch handler has no way to repair a slot a tolerated failure
+// left empty, so that one asset would stay offline-broken until another
+// deploy — not what "immutable" is supposed to buy. Not catching per-asset
+// failures here lets a single miss reject the whole Promise.all, which
+// rejects this install event's waitUntil() promise, which the browser
+// treats as a failed install: this worker is discarded without ever
+// activating, any previously-active worker keeps controlling pages
+// unaffected, and the browser retries installation on its own next
+// opportunity. A transient blip self-heals across visits; a generation
+// only ever activates once every one of these has actually succeeded.
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_VERSION);
     await Promise.all(
       PRECACHE_ASSETS.map((url) =>
-        cache.add(url).catch(() => {
-          // One missing asset must not block install.
-          // (e.g. an optional source file that's not yet deployed)
-        })
+        // cache: 'reload' bypasses the browser's own HTTP cache for this
+        // fetch. Without it, a returning client whose HTTP cache still has
+        // a fresh (not-yet-expired) response from the PREVIOUS deploy would
+        // have cache.add() reuse those stale bytes instead of fetching the
+        // new ones — silently freezing part of a "new" generation as old
+        // content from the moment it's created.
+        cache.add(new Request(url, { cache: 'reload' }))
       )
     );
   })());
@@ -118,7 +139,7 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
-// ── Fetch: bypass Supabase + cross-origin, network-first for same-origin ──
+// ── Fetch: bypass Supabase + cross-origin, cache-first for same-origin ────
 
 function _isSupabase(urlString) {
   try {
@@ -145,31 +166,65 @@ self.addEventListener('fetch', (event) => {
   // We don't cache them; let the browser/CDN handle it.
   if (!url.startsWith(self.location.origin)) return;
 
-  // SPA navigation fallback: serve index.html if offline.
-  if (req.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        return await fetch(req);
-      } catch {
-        const cached = await caches.match(`${BASE}/index.html`);
-        return cached || new Response('Offline', { status: 503, statusText: 'Offline' });
-      }
-    })());
-    return;
-  }
+  // SPA-route navigations (no file extension in the path — an in-app route
+  // like /SyncPad/<room-id> or /SyncPad/admin) map to the cached shell.
+  // Navigations to an actual same-origin file — e.g. the landing page's
+  // "Watch recorded demo" link opening presskit/video/demo.mp4 in a new
+  // tab — are also `mode: 'navigate'` requests, but must serve their own
+  // real content, never the app shell, even while this worker is in
+  // control and even while fully online.
+  const pathname = new URL(url).pathname;
+  const isSpaRoute = req.mode === 'navigate' && !/\.[a-zA-Z0-9]+$/.test(pathname);
+  const cachePath = isSpaRoute ? `${BASE}/index.html` : pathname;
+  const cacheKey = isSpaRoute ? `${BASE}/index.html` : req;
 
-  // Same-origin assets: network-first with cache fallback.
+  // Only PRECACHE_ASSETS entries go through this worker's cache at all —
+  // e.g. NOT the landing page's presskit screenshots/demo video. Those are
+  // unversioned (no entry here, no CACHE_VERSION bump when they change) and
+  // large/streamed, which combine badly with "cache once, never revisit":
+  // caching one on first request would (a) permanently serve stale bytes to
+  // existing clients if a deploy ever replaces that file without also
+  // touching a precached asset, since nothing here would ever revalidate or
+  // evict it, and (b) break byte-range requests — a cached whole-file 200
+  // response matches a later Range request too, and gets returned in full,
+  // which video loaders can abort on. Plain pass-through (no respondWith
+  // call) leaves these to ordinary browser/HTTP caching instead.
+  if (!PRECACHED_PATHS.has(cachePath)) return;
+
+  // Cache-first, read-only at request time — scoped to the SAME open
+  // CACHE_VERSION cache, and NEVER written to here. The only thing that
+  // ever populates a given generation's cache is the install handler's
+  // one-shot PRECACHE_ASSETS pass above; this handler only ever reads it.
+  //
+  // An earlier version of this handler self-healed a genuine cache MISS by
+  // writing the network response back in — meant to recover from the
+  // install handler's per-asset tolerance of a transient cache.add()
+  // failure, so that one file wasn't permanently offline-broken for the
+  // rest of this generation's lifetime. That traded one bug for a worse
+  // one: a currently-active worker instance keeps answering every fetch for
+  // pages it already controls for as long as it takes a newer worker to
+  // take over (see app/pwa.js's controllerchange reload) — often much
+  // longer than a single page load, since nothing forces a reload on its
+  // own. If that missing slot were requested for the first time only AFTER
+  // a *subsequent* deploy went out (this worker's generation still hasn't
+  // been superseded on this client, but the server now serves newer bytes
+  // for that URL), the self-heal write would pull those newer bytes into
+  // the OLDER generation's cache — reintroducing the exact split-version
+  // problem the immutable-cache design exists to prevent, just via a
+  // different path. There's no way to verify a network response actually
+  // belongs to this generation without content-addressed URLs, which this
+  // project deliberately doesn't have (no build step). Read-only avoids the
+  // whole class of bug: the tradeoff is that a rare transient install
+  // failure leaves that one asset unavailable OFFLINE until the next
+  // deploy — every ONLINE load still succeeds regardless, since a cache
+  // miss always falls through to the network below.
   event.respondWith((async () => {
+    const cache = await caches.open(CACHE_VERSION);
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
     try {
-      const networkResponse = await fetch(req);
-      if (networkResponse && networkResponse.ok) {
-        const clone = networkResponse.clone();
-        caches.open(CACHE_VERSION).then((cache) => cache.put(req, clone)).catch(() => {});
-      }
-      return networkResponse;
+      return await fetch(req);
     } catch {
-      const cached = await caches.match(req);
-      if (cached) return cached;
       return new Response('Offline', { status: 503, statusText: 'Offline' });
     }
   })());

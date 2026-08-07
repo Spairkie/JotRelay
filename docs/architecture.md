@@ -9,7 +9,7 @@ SyncPad is a vanilla-JS realtime notepad built on Supabase with no build step. T
 ```
 Browser (HTML + CSS + ES Modules)
     ├── index.html               — shell, Supabase config, screen containers
-    ├── service-worker.js        — network-first PWA cache
+    ├── service-worker.js        — PWA cache (cache-first, immutable per CACHE_VERSION)
     └── src/*.js                 — ES modules (no bundler)
             ├── app.js           — router, event wiring, global state
             ├── ui.js            — all DOM manipulation
@@ -228,12 +228,15 @@ The optional `supabase/functions/syncpad-cleanup` Edge Function runs with a serv
 
 ## 10. PWA / Service Worker
 
-`service-worker.js` implements a **network-first** caching strategy for all same-origin assets.
+`service-worker.js` implements **cache-first, read-only** for every same-origin GET request whose path is listed in `PRECACHE_ASSETS` — scoped to the same open `CACHE_VERSION` cache, and never written to outside the install handler's one-shot precache pass. The cached copy is returned immediately if present; a cache miss falls back to the network (and, for navigations specifically, to the offline error response if that also fails), but is never written back into the cache. Same-origin paths that *aren't* in `PRECACHE_ASSETS` (e.g. the landing page's presskit screenshots/demo video) bypass this worker's cache entirely — plain pass-through to ordinary browser/HTTP caching. Two reasons: those assets are unversioned (no `CACHE_VERSION` bump tracks when they change, so a cached copy could go stale forever), and one of them is a `<video>` — a cached whole-file `200` response would also match a later byte-`Range` request and get returned in full, which video loaders can abort on.
+
+Navigations are split by whether the path looks like a real file (has an extension, e.g. `presskit/video/demo.mp4` opened in a new tab) or an in-app route (no extension, e.g. `/SyncPad/<room-id>`, `/SyncPad/admin`): only route-shaped navigations are mapped to the cached `index.html` shell. A direct navigation to an actual file always serves that file's own content, never the app shell, regardless of which worker is in control.
+
+Every populated cache slot is treated as **immutable**: nothing ever writes to it outside the install handler, and the fetch handler has no way to repair a slot that's missing. That's only safe because the install handler requires **every** `PRECACHE_ASSETS` entry to succeed before this generation is allowed to activate at all — an earlier revision instead tolerated individual `cache.add()` failures (so one flaky asset wouldn't block install) and either left that one slot permanently offline-broken for the rest of the generation's lifetime, or (an even earlier attempt) self-healed it by writing the network response back in at request time. Self-healing traded one bug for a worse one: a currently-active worker keeps answering every fetch for pages it already controls for as long as it takes a newer worker to take over (often much longer than one page load), and the network always serves whatever is *currently deployed* regardless of which worker generation is asking — so a slot healed only after a *subsequent* deploy would pull that deploy's bytes into the *older* generation's cache, the same split-version problem this immutable design exists to prevent, just via a different path, with no way to verify a response actually belongs to the requesting generation without content-addressed URLs (which this project deliberately doesn't have — no build step). Not catching per-asset install failures fixes this at the root: a single miss rejects the whole `Promise.all`, which rejects the `install` event's `waitUntil()` promise, which the browser treats as a failed install — this worker is discarded without ever activating, any previously-active worker keeps controlling pages unaffected, and the browser retries installation on its own next opportunity. Each `cache.add()` call also passes `{ cache: 'reload' }` to bypass the browser's own HTTP cache during precache — without it, a returning client whose HTTP cache still has a fresh (not-yet-expired) response from the *previous* deploy would have `cache.add()` reuse those stale bytes instead of fetching the new ones, silently freezing part of a "new" generation as old content from the moment it's created.
 
 - **Cache name**: `CACHE_VERSION` in `service-worker.js`, bumped on every release that changes precached assets (see `CHANGELOG.md` for the current value)
-- **Strategy**: Every request is attempted over the network first. On success, the response is cloned and stored in the cache. On network failure, the cache is used as a fallback.
 - **Bypass**: All requests to Supabase endpoints (different origin) bypass the service worker entirely and go directly to the network.
-- **Cache invalidation**: Increment `CACHE_VERSION` to force all clients to discard the old cache on next activation.
+- **Cache invalidation**: Increment `CACHE_VERSION` to force all clients to discard the old cache on next activation. Update detection itself doesn't depend on this value — the browser independently re-fetches and byte-diffs `service-worker.js` on its own schedule, which is what `src/app/pwa.js`'s `updatefound` listener and the resulting "update available" bar are driven by.
 
 ---
 

@@ -66,6 +66,20 @@ test.describe('PWA installability', () => {
     const scope = await waitForServiceWorkerReady(page);
     expect(scope).toContain('/SyncPad/');
   });
+
+  test('a direct navigation to a real same-origin file serves that file, not the app shell', async ({ page }) => {
+    // service-worker.js's fetch handler maps SPA-route navigations (no file
+    // extension, e.g. a room URL) to the cached index.html shell — but a
+    // navigation to an actual file (the landing page's "Watch recorded
+    // demo" link opens presskit/video/demo.mp4 in a new tab) must serve its
+    // own real content instead, even once this worker is in control.
+    await page.goto('/SyncPad/');
+    await waitForServiceWorkerReady(page);
+
+    const response = await page.goto('/SyncPad/presskit/video/demo.mp4', { waitUntil: 'domcontentloaded' });
+    expect(response?.status()).toBe(200);
+    expect(response?.headers()['content-type']).toContain('video/mp4');
+  });
 });
 
 test.describe('Offline behavior', () => {

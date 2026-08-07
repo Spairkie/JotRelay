@@ -2,7 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- interactive-widget=resizes-content (Chrome 108+/Android): makes the
+       browser actually shrink the *layout* viewport when the on-screen
+       keyboard opens, instead of only the *visual* viewport — which is
+       what every `100vh`/`100%`-sized container and `position:fixed;
+       bottom:0` element in this app already assumes. Without it, those
+       stay sized/anchored to the full (keyboard-including) screen height,
+       so a bottom bar or the tail of a long note can end up rendered
+       underneath the keyboard instead of shrinking to fit above it.
+       Unknown viewport tokens are ignored by browsers that don't support
+       them (safe to ship unconditionally) — src/keyboard-viewport.js
+       covers the platforms that don't (notably iOS Safari, which has no
+       equivalent). -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
   <meta name="description" content="SyncPad is a real-time shared notepad you can open and use in seconds — no account needed. Sync notes and files instantly, share read-only links, and encrypt what matters." />
   <meta name="theme-color" content="#0f0f11" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -74,6 +86,12 @@
   <link rel="stylesheet" href="/SyncPad/styles/room-tools.css" />
   <link rel="stylesheet" href="/SyncPad/styles/onboarding.css" />
 
+  <!-- preconnect: warms up DNS/TLS for jsdelivr and the Supabase project
+       ahead of the actual requests below/at boot, shaving a full
+       connection-setup round trip off each on slow/high-latency networks. -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://ddehkgdssdhhwpqljbiq.supabase.co" crossorigin />
+
   <!-- Supabase JS — pinned to an exact version (not the floating @2 tag) so the
        SRI hash below can never silently stop matching a newer release. Points
        at the package's own published dist/umd/supabase.js (unminified) rather
@@ -81,14 +99,53 @@
        in the npm package for any 2.x release — jsdelivr synthesizes it on the
        fly via its own minifier, which can't be independently reproduced to
        verify a hash against. See docs/security.md for how these hashes were
-       computed and verified against the npm registry's own tarball shasum. -->
+       computed and verified against the npm registry's own tarball shasum.
+       defer (not the default blocking load) so it doesn't block HTML parsing/
+       first paint on slow networks — but a classic `defer` script and a
+       module script (app.js below) are two SEPARATE execution queues, not
+       one shared ordered queue: the module graph can finish and start
+       running before this script has, especially once the cache-first
+       service worker makes the module graph load near-instantly on repeat
+       visits while this cross-origin CDN fetch (never SW-cached — see
+       service-worker.js's Supabase bypass) still takes real network time.
+       window.__supabaseReady below is the actual ordering guarantee;
+       boot() (src/app/room-lifecycle.js) awaits it before doing anything
+       Supabase-dependent, rather than relying on script tag position. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.9/dist/umd/supabase.js"
           integrity="sha384-6foGJ1oz/y3anEo0BXRtTgBK1GvpnR0GbJZb0ijG+nBAJ4rYT+VqlD/9e3CSiFIA"
-          crossorigin="anonymous"></script>
-  <!-- QR Code -->
+          crossorigin="anonymous" defer id="supabase-sdk-script"></script>
+  <script>
+    // Attached synchronously, immediately after the tag above — runs before
+    // that deferred script can possibly have fired its 'load' event yet, so
+    // there's no race with the listener itself. Resolves once, whichever
+    // happens: the script loads successfully, or it errors out (callers
+    // check window.supabase themselves and get their own clear failure
+    // rather than hanging forever on a script that will never load).
+    window.__supabaseReady = new Promise((resolve) => {
+      const el = document.getElementById('supabase-sdk-script');
+      el.addEventListener('load', resolve, { once: true });
+      el.addEventListener('error', resolve, { once: true });
+    });
+  </script>
+  <!-- QR Code — window.QRCode is only read inside a share-modal handler
+       (_renderQr() in src/ui/feature-modals.js) triggered by a later user
+       action, never at parse time — but that action can still happen
+       before this deferred script has loaded (e.g. Share opened moments
+       after the page itself finished, especially with the module graph
+       now loading near-instantly from a warm service-worker cache). Same
+       window.__*Ready pattern as Supabase above: _renderQr() awaits
+       window.__qrReady and retries once, rather than leaving the QR
+       container permanently empty on that first miss. -->
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"
           integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU"
-          crossorigin="anonymous"></script>
+          crossorigin="anonymous" defer id="qrcode-sdk-script"></script>
+  <script>
+    window.__qrReady = new Promise((resolve) => {
+      const el = document.getElementById('qrcode-sdk-script');
+      el.addEventListener('load', resolve, { once: true });
+      el.addEventListener('error', resolve, { once: true });
+    });
+  </script>
   <!-- Prism.js — syntax highlighting in markdown preview -->
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"
           integrity="sha384-MXybTpajaBV0AkcBaCPT4KIvo0FzoCiWXgcihYsw4FUkEz0Pv3JGV6tk2G8vJtDc"
@@ -116,6 +173,19 @@
   </script>
 </head>
 <body>
+
+<!-- SW update bar — a sibling of every screen container (not nested inside
+     any single one, e.g. #app-screen below), since a waiting service-worker
+     update can be discovered while on any screen (landing, admin, a room —
+     see app/pwa.js's updatefound listener) and the update prompt must stay
+     reachable regardless of which one is currently showing. Already
+     position: fixed (styles/app-shell.css), so its DOM position doesn't
+     affect where it renders — only whether an ancestor's `hidden` class
+     would otherwise remove it from rendering entirely. -->
+<div class="sw-update-bar" id="sw-update-bar" aria-hidden="true">
+  <span>A new version of SyncPad is available.</span>
+  <button class="sw-update-btn" disabled>Refresh</button>
+</div>
 
 <!-- ══════════════════════════════════════════════════════════════
      LANDING SCREEN  (shown when no room is in the URL)
@@ -672,12 +742,6 @@
      MAIN APP SCREEN
 ═══════════════════════════════════════════════════════════════ -->
 <div id="app-screen" class="hidden">
-
-  <!-- SW update bar -->
-  <div class="sw-update-bar" id="sw-update-bar">
-    <span>A new version of SyncPad is available.</span>
-    <button class="sw-update-btn">Refresh</button>
-  </div>
 
   <!-- Offline banner -->
   <div class="offline-banner" id="offline-banner">

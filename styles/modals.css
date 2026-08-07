@@ -248,7 +248,8 @@
    TOASTS
 ══════════════════════════════════════════════════════════════ */
 #toast-container {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: calc(24px + var(--kb-inset, 0px)); left: 50%; transform: translateX(-50%);
+  transition: bottom 0.15s ease;
   /* Must outrank every other fixed-position layer (.auth-screen: 900,
      #loading-screen: 1000) so toasts — including admin.js's own toasts,
      which share this container — are never hidden behind them. */
@@ -305,11 +306,19 @@
 ══════════════════════════════════════════════════════════════ */
 .mobile-action-bar {
   display: none;
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
+  position: fixed; left: 0; right: 0; z-index: 30;
+  /* --kb-inset (src/keyboard-viewport.js) is 0px whenever the on-screen
+     keyboard is closed, or on a platform where index.html's
+     interactive-widget=resizes-content viewport hint already shrinks the
+     layout viewport itself (so this bar's own bottom:0 is already correct
+     without any extra push) — this only ever does something on the
+     platforms neither of those covers. */
+  bottom: var(--kb-inset, 0px);
   background: var(--bg-surface); border-top: 1px solid var(--border);
   padding: 8px 0 max(8px, env(safe-area-inset-bottom));
   justify-content: space-around; align-items: center;
   box-shadow: 0 -4px 16px rgba(0,0,0,0.25);
+  transition: bottom 0.15s ease;
 }
 .mob-action-btn {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -325,12 +334,21 @@
    PWA / SW
 ══════════════════════════════════════════════════════════════ */
 .pwa-bar {
+  /* bottom stays a plain 0 (not --kb-inset) while hidden — translateY(100%)
+     below only pushes the bar offscreen by its OWN height, measured from
+     wherever `bottom` puts its resting position. If the hidden state
+     inherited --kb-inset's raise too, a keyboard taller than the bar
+     itself (routine — a keyboard is ~250-350px, the bar ~56-70px) would
+     still leave part of the "hidden" bar, including its inactive Install
+     button, visible above the true bottom edge. Only .visible below opts
+     into tracking --kb-inset, once the bar is actually meant to be shown
+     above the keyboard. */
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
   background: var(--bg-elevated); border-top: 1px solid var(--border);
   padding: 12px 20px; display: flex; align-items: center; gap: 12px;
-  box-shadow: var(--shadow-md); transform: translateY(100%); transition: transform 0.3s ease;
+  box-shadow: var(--shadow-md); transform: translateY(100%); transition: transform 0.3s ease, bottom 0.15s ease;
 }
-.pwa-bar.visible { transform: translateY(0); }
+.pwa-bar.visible { transform: translateY(0); bottom: var(--kb-inset, 0px); }
 .pwa-bar-text { flex: 1; font-size: 13px; color: var(--text-secondary); }
 .pwa-bar-text strong { color: var(--text-primary); }
 .pwa-bar-btn { padding: 7px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; transition: opacity var(--transition); }
@@ -370,8 +388,12 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 ══════════════════════════════════════════════════════════════ */
 @media (max-width: 639px) {
   .mobile-action-bar { display: flex; }
-  #app-screen { padding-bottom: 60px; }
-  #toast-container { bottom: 72px; }
+  /* Must track .mobile-action-bar's own bottom offset (below) — otherwise
+     the bar rises above the keyboard via --kb-inset while the editor's
+     scrollable area doesn't reserve the extra space, leaving its last
+     lines rendered underneath the now-raised bar. */
+  #app-screen { padding-bottom: calc(60px + var(--kb-inset, 0px)); transition: padding-bottom 0.15s ease; }
+  #toast-container { bottom: calc(72px + var(--kb-inset, 0px)); }
   .app-footer { display: none; }
   .app-header { padding: 9px 12px; }
   .header-room .room-name { max-width: 120px; }
@@ -625,12 +647,12 @@ kbd {
   /* Raise the fixed action bar above the PWA install bar when it slides in,
      and increase app-screen bottom padding to match. */
   body:has(#pwa-install-bar.visible) .mobile-action-bar {
-    bottom: 56px; /* approximate height of .pwa-bar */
+    bottom: calc(56px + var(--kb-inset, 0px)); /* 56px ≈ height of .pwa-bar */
   }
   body:has(#pwa-install-bar.visible) #app-screen {
-    padding-bottom: calc(60px + 56px);
+    padding-bottom: calc(60px + 56px + var(--kb-inset, 0px));
   }
   body:has(#pwa-install-bar.visible) #toast-container {
-    bottom: calc(72px + 56px);
+    bottom: calc(72px + 56px + var(--kb-inset, 0px));
   }
 }

@@ -1,8 +1,9 @@
 // SyncPad – app.js
 // Thin entry point: wires the file-image resolver and the passcode/
 // encryption auth-gate forms (the only top-level DOM listeners that exist
-// before a room is ever joined), pulls in the PWA/service-worker wiring for
-// its side effects, and starts the router.
+// before a room is ever joined), pulls in the PWA/service-worker wiring and
+// the on-screen-keyboard viewport tracking for their side effects, and
+// starts the router.
 //
 // Everything else — routing, the room join flow, startApp(), event wiring,
 // and every feature area (editor behavior, comments, files, panels,
@@ -15,6 +16,7 @@ import * as UI from './ui.js';
 import { onPasscodeSubmit, onEncryptionSubmit, boot } from './app/room-lifecycle.js';
 import { state } from './app/state.js';
 import './app/pwa.js';
+import './keyboard-viewport.js';
 
 // Pasted/dropped/inserted files reference a private-bucket file (markdown.js's
 // syncpad-file: scheme — either a short per-room number or, for content
