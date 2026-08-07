@@ -185,17 +185,24 @@ self.addEventListener('fetch', (event) => {
     const cache = await caches.open(CACHE_VERSION);
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
+    let networkResponse;
     try {
-      const networkResponse = await fetch(req);
-      // Awaited (not fire-and-forget): event.respondWith() only keeps this
-      // worker alive until the promise it was given resolves, so an
-      // un-awaited cache.put() here could still be cut off if the promise
-      // returned early.
-      if (networkResponse && networkResponse.ok) await cache.put(cacheKey, networkResponse.clone());
-      return networkResponse;
+      networkResponse = await fetch(req);
     } catch {
       return new Response('Offline', { status: 503, statusText: 'Offline' });
     }
+    // A cache-write failure must never turn an already-successful network
+    // response into a fake offline error — e.g. the Cache API rejects
+    // put() for a 206 Partial Content response outright (range requests,
+    // which a <video>'s scrubbing/seeking issues routinely), and a full
+    // storage quota would reject too. Isolated in its own try/catch, and
+    // awaited (not fire-and-forget) so event.respondWith() — which only
+    // keeps this worker alive until the promise it was given resolves —
+    // covers the write before the response goes out.
+    if (networkResponse && networkResponse.ok) {
+      try { await cache.put(cacheKey, networkResponse.clone()); } catch { /* e.g. 206, quota — non-fatal */ }
+    }
+    return networkResponse;
   })());
 });
 

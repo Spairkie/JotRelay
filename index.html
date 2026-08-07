@@ -100,13 +100,33 @@
        fly via its own minifier, which can't be independently reproduced to
        verify a hash against. See docs/security.md for how these hashes were
        computed and verified against the npm registry's own tarball shasum.
-       defer (not the default blocking load): getSupabaseClient() (src/supabase.js)
-       only reads window.supabase lazily, on first actual use, well after every
-       deferred/module script — including this one — has already run; deferring
-       it just stops it from blocking HTML parsing/first paint on slow networks. -->
+       defer (not the default blocking load) so it doesn't block HTML parsing/
+       first paint on slow networks — but a classic `defer` script and a
+       module script (app.js below) are two SEPARATE execution queues, not
+       one shared ordered queue: the module graph can finish and start
+       running before this script has, especially once the cache-first
+       service worker makes the module graph load near-instantly on repeat
+       visits while this cross-origin CDN fetch (never SW-cached — see
+       service-worker.js's Supabase bypass) still takes real network time.
+       window.__supabaseReady below is the actual ordering guarantee;
+       boot() (src/app/room-lifecycle.js) awaits it before doing anything
+       Supabase-dependent, rather than relying on script tag position. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.9/dist/umd/supabase.js"
           integrity="sha384-6foGJ1oz/y3anEo0BXRtTgBK1GvpnR0GbJZb0ijG+nBAJ4rYT+VqlD/9e3CSiFIA"
-          crossorigin="anonymous" defer></script>
+          crossorigin="anonymous" defer id="supabase-sdk-script"></script>
+  <script>
+    // Attached synchronously, immediately after the tag above — runs before
+    // that deferred script can possibly have fired its 'load' event yet, so
+    // there's no race with the listener itself. Resolves once, whichever
+    // happens: the script loads successfully, or it errors out (callers
+    // check window.supabase themselves and get their own clear failure
+    // rather than hanging forever on a script that will never load).
+    window.__supabaseReady = new Promise((resolve) => {
+      const el = document.getElementById('supabase-sdk-script');
+      el.addEventListener('load', resolve, { once: true });
+      el.addEventListener('error', resolve, { once: true });
+    });
+  </script>
   <!-- QR Code — same reasoning: window.QRCode is only read inside an
        already-guarded (`if (!window.QRCode) return;`) share-modal handler
        triggered by a later user action, never at parse time. -->
@@ -140,6 +160,19 @@
   </script>
 </head>
 <body>
+
+<!-- SW update bar — a sibling of every screen container (not nested inside
+     any single one, e.g. #app-screen below), since a waiting service-worker
+     update can be discovered while on any screen (landing, admin, a room —
+     see app/pwa.js's updatefound listener) and the update prompt must stay
+     reachable regardless of which one is currently showing. Already
+     position: fixed (styles/app-shell.css), so its DOM position doesn't
+     affect where it renders — only whether an ancestor's `hidden` class
+     would otherwise remove it from rendering entirely. -->
+<div class="sw-update-bar" id="sw-update-bar">
+  <span>A new version of SyncPad is available.</span>
+  <button class="sw-update-btn">Refresh</button>
+</div>
 
 <!-- ══════════════════════════════════════════════════════════════
      LANDING SCREEN  (shown when no room is in the URL)
@@ -696,12 +729,6 @@
      MAIN APP SCREEN
 ═══════════════════════════════════════════════════════════════ -->
 <div id="app-screen" class="hidden">
-
-  <!-- SW update bar -->
-  <div class="sw-update-bar" id="sw-update-bar">
-    <span>A new version of SyncPad is available.</span>
-    <button class="sw-update-btn">Refresh</button>
-  </div>
 
   <!-- Offline banner -->
   <div class="offline-banner" id="offline-banner">

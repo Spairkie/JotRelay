@@ -20,17 +20,32 @@ if ('serviceWorker' in navigator) {
     location.reload();
   });
 
+  const _promptForWaitingWorker = (worker) => {
+    UI.showUpdateBar(() => {
+      worker.postMessage({ type: 'SKIP_WAITING' });
+      // location.reload() now fires via controllerchange above.
+    });
+  };
+
   navigator.serviceWorker
     .register(`${BASE}/service-worker.js`, { scope: `${BASE}/` })
     .then((reg) => {
+      // A worker can already be sitting in `waiting` the instant this
+      // registration resolves — e.g. another tab triggered the install
+      // earlier in this session and the user hasn't accepted that update
+      // yet. reg.addEventListener('updatefound', ...) below only fires for
+      // an install that STARTS from this point forward, so without this
+      // check, a fresh tab/reload would never surface the prompt for an
+      // already-waiting worker until every other tab happened to close.
+      if (reg.waiting && navigator.serviceWorker.controller) {
+        _promptForWaitingWorker(reg.waiting);
+      }
+
       reg.addEventListener('updatefound', () => {
         const worker = reg.installing;
         worker?.addEventListener('statechange', () => {
           if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-            UI.showUpdateBar(() => {
-              worker.postMessage({ type: 'SKIP_WAITING' });
-              // location.reload() now fires via controllerchange above.
-            });
+            _promptForWaitingWorker(worker);
           }
         });
       });
