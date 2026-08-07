@@ -16,6 +16,14 @@ import { initLandingDemo } from './landing-demo.js';
 // ── Share modal ────────────────────────────────────────────────────────────────
 
 export async function _openShareModal() {
+  // Blur whatever's currently focused (typically the note editor) before
+  // doing anything else, so the on-screen keyboard starts closing right
+  // away instead of staying open under this full-screen modal — on the iOS
+  // visualViewport fallback path, the modal's own layout doesn't track
+  // --kb-inset, so its lower QR/copy controls would otherwise render behind
+  // a keyboard that never got a reason to dismiss.
+  document.activeElement?.blur?.();
+
   if (state.isReadOnly) {
     const currentReadOnlyUrl = location.origin + location.pathname + location.search + location.hash;
     UI.populateShareModal({

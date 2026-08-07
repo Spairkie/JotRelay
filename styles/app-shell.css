@@ -136,7 +136,18 @@
 
 /* ── System bars ────────────────────────────────────────────── */
 .sw-update-bar {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 600;
+  position: fixed; top: 0; left: 0; right: 0;
+  /* Must outrank every full-screen route container (.auth-screen /
+     .legal-screen / #landing-screen / #app-landing-screen: 900,
+     #loading-screen: 1000 — see index.html's own comment on this element
+     for why it's a global sibling of all of them, not nested inside any
+     one) — otherwise the bar renders behind whichever opaque screen is
+     currently showing and its Refresh action is unreachable on exactly
+     the screens (landing, admin, loading, auth) an update is most likely
+     to be discovered on. Matches #toast-container's tier (1100, same
+     reasoning, see modals.css) rather than the higher context-menu tier
+     (1300) — this is a persistent banner, not a transient popup. */
+  z-index: 1100;
   background: rgba(245,166,35,0.12); border-bottom: 1px solid rgba(245,166,35,0.3);
   padding: 10px 20px;
   display: flex; align-items: center; justify-content: center; gap: 14px;

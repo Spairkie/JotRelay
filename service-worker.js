@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'syncpad-v51';
+const CACHE_VERSION = 'syncpad-v52';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -97,17 +97,33 @@ const PRECACHE_ASSETS = [
 // ever go through this worker's cache.
 const PRECACHED_PATHS = new Set(PRECACHE_ASSETS);
 
-// ── Install: precache core assets (tolerant of individual misses) ──────────
-
+// ── Install: precache core assets (must ALL succeed to activate) ───────────
+//
+// An earlier version tolerated individual cache.add() failures so one flaky
+// asset wouldn't block install. That directly conflicts with treating a
+// CACHE_VERSION's cache as immutable once populated (see the fetch handler
+// below): the fetch handler has no way to repair a slot a tolerated failure
+// left empty, so that one asset would stay offline-broken until another
+// deploy — not what "immutable" is supposed to buy. Not catching per-asset
+// failures here lets a single miss reject the whole Promise.all, which
+// rejects this install event's waitUntil() promise, which the browser
+// treats as a failed install: this worker is discarded without ever
+// activating, any previously-active worker keeps controlling pages
+// unaffected, and the browser retries installation on its own next
+// opportunity. A transient blip self-heals across visits; a generation
+// only ever activates once every one of these has actually succeeded.
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_VERSION);
     await Promise.all(
       PRECACHE_ASSETS.map((url) =>
-        cache.add(url).catch(() => {
-          // One missing asset must not block install.
-          // (e.g. an optional source file that's not yet deployed)
-        })
+        // cache: 'reload' bypasses the browser's own HTTP cache for this
+        // fetch. Without it, a returning client whose HTTP cache still has
+        // a fresh (not-yet-expired) response from the PREVIOUS deploy would
+        // have cache.add() reuse those stale bytes instead of fetching the
+        // new ones — silently freezing part of a "new" generation as old
+        // content from the moment it's created.
+        cache.add(new Request(url, { cache: 'reload' }))
       )
     );
   })());
