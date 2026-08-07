@@ -47,9 +47,9 @@ window.SYNCPAD_CONFIG = {
 
 ### Brand-new project? Run one file.
 
-**[`supabase/baseline.sql`](supabase/baseline.sql)** covers every *core* table, function, trigger, RLS policy, and Storage bucket/policy SyncPad uses — concatenated from most of the numbered migrations below into one script. Paste it into the Supabase **SQL Editor** and run it once; the app works after that. It predates two optional feature migrations, though — **also run [`0010_anonymous_write_rate_limiting.sql`](supabase/migrations/0010_anonymous_write_rate_limiting.sql) and [`0011_short_file_references.sql`](supabase/migrations/0011_short_file_references.sql)** (see [Optional feature migrations](#optional-feature-migrations) below for what each enables) if you want those on a brand-new project too, then skip to [Step 3](#step-3--configure-credentials).
+**[`supabase/baseline.sql`](supabase/baseline.sql)** covers every *core* table, function, trigger, RLS policy, and Storage bucket/policy SyncPad uses — concatenated from most of the numbered migrations below into one script, now including `0010` and `0011`. Paste it into the Supabase **SQL Editor** and run it once; the app works after that — skip straight to [Step 3](#step-3--configure-credentials). One caveat worth knowing about before you rely on it: `0010`'s anonymous rate-limiting trigger depends on Supabase's edge network setting the `x-forwarded-for` header the way it assumes — see [Optional feature migrations](#optional-feature-migrations) below for the detail. If that assumption doesn't hold, effective abuse protection is much weaker than the advertised limits suggest, not just "somewhat reduced" — the remaining per-device limit is keyed on a plain client-supplied value with no server-side identity behind it, so a scripted caller can send a fresh one on every request and never trip it.
 
-It's verified end-to-end, not just assembled by hand: run twice in a row against a real Postgres 16 server (stubbed with minimal `auth`/`storage` schemas standing in for the Supabase-platform pieces the SQL assumes exist) with zero errors either time, confirming the whole file — not just each section individually — is genuinely idempotent and safe to rerun.
+It's verified end-to-end, not just assembled by hand: run twice in a row against a real Postgres 16 server (stubbed with minimal `auth`/`storage` schemas standing in for the Supabase-platform pieces the SQL assumes exist) with zero errors either time, confirming the whole file — not just each section individually — is genuinely idempotent and safe to rerun. `0010`'s rate limiting was also exercised under genuine concurrency (40 simultaneous room-creation attempts from one identifier — exactly 30 succeeded, 10 were rejected, matching the advertised cap under real concurrent load, not just sequentially) and its admin-reset delete path was verified as an admin vs. a non-admin authenticated user, not assumed from the policy definition alone.
 
 > **Important:** the Storage bucket it creates is private. SyncPad always accesses files via signed URLs. Do not make the bucket public.
 
@@ -70,7 +70,7 @@ If you previously deployed with the edit-token migrations (`0007_room_edit_token
 
 ### Optional feature migrations
 
-These genuinely are opt-in — the app works without them, and each feature just silently no-ops (or shows a "check Supabase setup" error) until its migration is run. `baseline.sql` includes `0002`–`0006` and `0008`; it predates `0010` and `0011`, so run those two separately (in either order, any time) even if you started from `baseline.sql`. If you're instead applying the numbered files one at a time to an existing project, run `0001` first, then any of these you want, in any order:
+These genuinely are opt-in — the app works without them, and each feature just silently no-ops (or shows a "check Supabase setup" error) until its migration is run. `baseline.sql` includes `0002`–`0006`, `0008`, `0010`, and `0011` — the table below is for applying them individually to an **existing** project that hasn't run them yet (run `0001` first, then any of these you want, in any order):
 
 | Migration | Enables | Symptom if skipped |
 |---|---|---|
@@ -81,7 +81,7 @@ These genuinely are opt-in — the app works without them, and each feature just
 | [`supabase/migrations/0006_admin_dashboard_improvements.sql`](supabase/migrations/0006_admin_dashboard_improvements.sql) | Admin audit log, room quarantine, and disabled-downloads support in `/admin` | Those admin actions are unavailable; the rest of `/admin` still works |
 | [`supabase/migrations/0008_quarantine_enforcement.sql`](supabase/migrations/0008_quarantine_enforcement.sql) | Server-enforced quarantine — a database trigger, same technique as room lock; requires `0006` first | Quarantine still works from `/admin`, but (as documented in `0006`'s own header) is frontend-only without this — a determined user could bypass it by calling the API directly |
 | [`supabase/migrations/0007_room_edit_tokens.sql`](supabase/migrations/0007_room_edit_tokens.sql) | Historical/optional — the edit-token table and RPCs, unused by the current client (see `0009`'s header). Only relevant if you want to build something else on top of it | Nothing — this is inert infrastructure, not a live feature |
-| [`supabase/migrations/0010_anonymous_write_rate_limiting.sql`](supabase/migrations/0010_anonymous_write_rate_limiting.sql) | Server-side rate limiting on anonymous room creation (30/device + 60/IP per 15 min) and report submission (10/device + 20/IP per 15 min) — a `BEFORE INSERT` trigger, same technique as the lock/quarantine triggers. See the migration's own header before applying: it depends on Supabase's edge network setting `x-forwarded-for` the way it assumes, which the author flagged as verified against a local Postgres instance but *not* yet against a live Supabase project | No rate limiting on room creation or report submission beyond whatever Supabase's own platform-level limits provide |
+| [`supabase/migrations/0010_anonymous_write_rate_limiting.sql`](supabase/migrations/0010_anonymous_write_rate_limiting.sql) | Server-side rate limiting on anonymous room creation (30/device + 60/IP per 15 min) and report submission (10/device + 20/IP per 15 min) — a `BEFORE INSERT` trigger, same technique as the lock/quarantine triggers. The per-device/IP counting logic itself is verified directly (30 inserts succeed, the 31st is rejected, tested against a real Postgres instance). The one still-open question is narrower: whether *this* project's PostgREST layer actually populates `x-forwarded-for` the way `syncpad_client_ip()` reads it — `select public.syncpad_client_ip()` from the SQL Editor is a quick way to check (it'll return `null` there regardless, since the SQL Editor isn't a PostgREST request; check via real anonymous traffic instead). If it doesn't, IP-based limiting silently no-ops — and since `created_by_device`/`reporter_device_id` are plain, unvalidated client-supplied values (see the migration's own header) with no server-side identity behind them, a determined scripted caller can defeat the remaining device-based limit for free by sending a fresh one on every request. Effective abuse protection genuinely depends on IP extraction working, not just a modest reduction in coverage | No rate limiting on room creation or report submission beyond whatever Supabase's own platform-level limits provide |
 | [`supabase/migrations/0011_short_file_references.sql`](supabase/migrations/0011_short_file_references.sql) | Short, sequential-per-room file references (`syncpad-file:3` instead of the full storage path) so inserted file links stay human-typeable; safe to rerun, and legacy long-form references keep resolving unchanged | New file references still embed the full storage path — longer links, but nothing breaks |
 
 If a feature you expect to see doesn't work, re-check that its migration was actually run — the Supabase SQL Editor's query history shows past runs.
@@ -152,6 +152,22 @@ SELECT * FROM public.cleanup_expired_syncpad_rooms();
 ```
 
 Unencrypted expired rooms are cleared in place. Encrypted expired rooms are deleted (the DB cannot recreate the encrypted empty payload without the user's passphrase).
+
+### Rate-limit log (Postgres-side, if `0010` is applied)
+
+`0010_anonymous_write_rate_limiting.sql` only needs the last 15 minutes of activity to enforce its limits, but every successful room creation and report insert leaves a row (including an IP address, if one was captured) — nothing prunes that table without `pg_cron`. If `pg_cron` is enabled, the same setup schedules a cleanup job every 30 minutes, same pattern as expired-room cleanup above:
+
+```sql
+-- Verify the job exists
+SELECT jobid, jobname, schedule, active
+FROM   cron.job
+WHERE  jobname = 'syncpad-rate-limit-log-cleanup';
+
+-- Run manually at any time (safe with or without pg_cron)
+SELECT public.cleanup_syncpad_rate_limit_log();
+```
+
+Without `pg_cron`, run the manual query above periodically yourself (a cron job hitting the SQL Editor's API, or just doing it by hand occasionally) — otherwise the table grows unbounded and accumulates IP addresses indefinitely, which is worth avoiding even though nothing else in the app reads or exposes this table.
 
 ### Storage orphan cleanup
 

@@ -26,6 +26,13 @@
 -- a temporary `raise notice` in enforce_syncpad_rooms_rate_limit() to
 -- confirm the IP path is actually populating in production traffic, not
 -- silently no-op'd the whole time.
+--
+-- Two real bugs found and fixed in review, both re-verified against the
+-- same local Postgres setup: a client-spoofable 'backend-cleanup' bypass
+-- (any anonymous caller could skip rate limiting by setting
+-- created_by_device to that literal string) and a check-then-insert race
+-- that let a concurrent burst through the count check before any of its
+-- own log rows committed — see "What this migration adds" below for both.
 -- Run this in your Supabase project → SQL Editor after 0001_base_schema.sql.
 --
 -- What this migration adds
@@ -59,15 +66,55 @@
 -- rate limiter with an ambiguous identity should never be the reason
 -- room creation stops working for everyone.
 --
--- A signed-in admin (is_syncpad_admin()) and the backend cleanup job
--- ('backend-cleanup') are exempt, same as the other write-gating triggers.
+-- Only a signed-in admin (is_syncpad_admin()) is exempt. The lock/quarantine
+-- triggers this pattern is borrowed from also exempt the backend cleanup job
+-- ('backend-cleanup', a sentinel the cleanup function itself writes to
+-- updated_by_device on the UPDATE it issues) — this trigger fires on INSERT,
+-- and cleanup_expired_syncpad_rooms() never inserts a room, only updates or
+-- deletes expired ones, so it has no legitimate reason to bypass room-
+-- creation limiting. An earlier version of this trigger carried the same
+-- exemption anyway, copied from the other triggers without checking whether
+-- it actually applied here — since created_by_device is a plain,
+-- unvalidated client-supplied INSERT column (see above), any anonymous
+-- caller could set it to the literal string 'backend-cleanup' and skip the
+-- rate limit entirely. Removed.
+--
+-- Both trigger functions also serialize on a per-identifier advisory lock
+-- before checking or logging: the original check-then-insert (read the
+-- count, then conditionally insert a new log row) had a window where N
+-- concurrent requests sharing an identifier could all read the same
+-- pre-burst count before any of their inserts committed, letting a whole
+-- concurrent burst through regardless of the advertised cap. The lock
+-- closes that window by serializing same-identifier requests through the
+-- check+insert critical section; different identifiers still run fully
+-- concurrently.
+--
+-- Both the advisory-lock keys AND the persisted/counted identifier values
+-- are prefixed with their own type ('device:'/'ip:'): device values are
+-- entirely client-controlled, so without the prefix a caller could set
+-- their device value to match an IP (their own or a victim's) and either
+-- burn through that IP's separate quota using their device budget, or —
+-- if it happens to equal their own real IP — reach their device cap after
+-- half as many real requests, since each one would log two identical rows
+-- that both count against the same unprefixed value.
 -- ============================================================
 
 -- ── Log table ──────────────────────────────────────────────────────────────
--- Internal bookkeeping only — RLS enabled with zero policies (default deny
--- for anon/authenticated); only the SECURITY DEFINER trigger functions
--- below ever touch it, running as the table owner, which bypasses RLS
--- unless FORCE ROW LEVEL SECURITY is set (it deliberately is not here).
+-- Internal bookkeeping — RLS enabled with no anon/authenticated write or
+-- read access; the SECURITY DEFINER trigger functions below insert into it
+-- running as the table owner, which bypasses RLS unless FORCE ROW LEVEL
+-- SECURITY is set (it deliberately is not here). The one exception is the
+-- admin policies below: src/admin/shared.js's _resetEntireDatabase() clears
+-- this table as part of a full reset using the signed-in admin's own
+-- (authenticated-role) client, not a SECURITY DEFINER function, so without
+-- them that delete is silently blocked by RLS and rate-limit counters
+-- survive a reset that's supposed to clear everything.
+--
+-- Both a SELECT and a DELETE policy are needed, not DELETE alone — verified
+-- directly (not assumed) against a real Postgres instance: a DELETE-only
+-- policy left every delete attempt affecting zero rows even with
+-- is_syncpad_admin() independently confirmed true beforehand, and adding
+-- the companion SELECT policy is what actually made the delete work.
 
 create table if not exists public.syncpad_rate_limit_log (
   id          bigint generated always as identity primary key,
@@ -80,6 +127,19 @@ create index if not exists idx_syncpad_rate_limit_log_lookup
   on public.syncpad_rate_limit_log (action, identifier, created_at);
 
 alter table public.syncpad_rate_limit_log enable row level security;
+
+drop policy if exists "admin select rate limit log" on public.syncpad_rate_limit_log;
+drop policy if exists "admin delete rate limit log" on public.syncpad_rate_limit_log;
+
+create policy "admin select rate limit log"
+  on public.syncpad_rate_limit_log for select
+  to authenticated
+  using (is_syncpad_admin());
+
+create policy "admin delete rate limit log"
+  on public.syncpad_rate_limit_log for delete
+  to authenticated
+  using (is_syncpad_admin());
 
 -- ── Client IP helper ──────────────────────────────────────────────────────
 -- Reads PostgREST's `request.headers` GUC (a JSON object of the incoming
@@ -151,21 +211,60 @@ declare
   v_device text := nullif(trim(coalesce(NEW.created_by_device, '')), '');
   v_ip     text := public.syncpad_client_ip();
 begin
-  if coalesce(NEW.created_by_device, '') = 'backend-cleanup' or public.is_syncpad_admin() then
+  if public.is_syncpad_admin() then
     return NEW;
   end if;
 
-  if public.syncpad_rate_limit_exceeded('room_create', v_device, 30, 15)
-     or public.syncpad_rate_limit_exceeded('room_create', v_ip, 60, 15)
+  -- Serialize concurrent requests sharing the same device/IP identifier
+  -- before checking or logging anything: without this, N concurrent
+  -- transactions on the same identifier can all run the check below before
+  -- any of their own log inserts commit, so every one of them sees the
+  -- same pre-burst count and passes — letting an entire concurrent burst
+  -- through regardless of the advertised cap. Advisory locks are
+  -- transaction-scoped (released automatically at commit/rollback) and
+  -- hashed together with the action name so 'room_create' locks never
+  -- contend with 'room_report' locks over a coincidentally shared
+  -- identifier value. Locks are also prefixed with the identifier's own
+  -- type ('device:'/'ip:') so a device lock and an IP lock can never
+  -- collide even when their raw values happen to coincide — v_device is
+  -- entirely client-controlled, so a caller could otherwise set it to
+  -- another concurrent request's real IP string on purpose. Without that
+  -- prefix, two such coordinated requests could each hold the other's
+  -- next-wanted lock (request A: device='B''s IP' locks that first, waits
+  -- on IP A; request B: device='A''s IP' locks that first, waits on IP B)
+  -- — a genuine deadlock cycle despite both always locking device before
+  -- IP, since "device before IP" alone only orders each transaction's own
+  -- two acquisitions, not which shared keys they resolve to across
+  -- transactions. Type-prefixing keeps every device-lock and every
+  -- IP-lock in disjoint hash spaces, so that cycle can't form.
+  if v_device is not null then
+    perform pg_advisory_xact_lock(hashtextextended('device:room_create:' || v_device, 0));
+  end if;
+  if v_ip is not null then
+    perform pg_advisory_xact_lock(hashtextextended('ip:room_create:' || v_ip, 0));
+  end if;
+
+  -- Same type-prefixing as the locks above, applied to the persisted/
+  -- counted identifier itself: without it, a device value and an IP value
+  -- that happen to coincide (v_device is entirely client-controlled, so a
+  -- caller can set it to any IP string on purpose) share the same
+  -- (action, identifier) rows here, letting a caller either burn through
+  -- a victim IP's separate 60-request allowance using only their own
+  -- device-limit budget, or — if their own device value equals their own
+  -- real IP — hit their device's 30-request cap after only 15 real
+  -- requests, since each one logs two identical rows that both count
+  -- against it.
+  if public.syncpad_rate_limit_exceeded('room_create', 'device:' || v_device, 30, 15)
+     or public.syncpad_rate_limit_exceeded('room_create', 'ip:' || v_ip, 60, 15)
   then
     raise exception 'Too many rooms created recently. Please wait a few minutes and try again.' using errcode = '42501';
   end if;
 
   if v_device is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', v_device);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', 'device:' || v_device);
   end if;
   if v_ip is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', v_ip);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', 'ip:' || v_ip);
   end if;
 
   return NEW;
@@ -199,17 +298,30 @@ begin
     return NEW;
   end if;
 
-  if public.syncpad_rate_limit_exceeded('room_report', v_device, 10, 15)
-     or public.syncpad_rate_limit_exceeded('room_report', v_ip, 20, 15)
+  -- Same check-then-insert race, same cross-type-collision deadlock risk,
+  -- and same fix as enforce_syncpad_rooms_rate_limit() above — see its
+  -- comment for the full reasoning.
+  if v_device is not null then
+    perform pg_advisory_xact_lock(hashtextextended('device:room_report:' || v_device, 0));
+  end if;
+  if v_ip is not null then
+    perform pg_advisory_xact_lock(hashtextextended('ip:room_report:' || v_ip, 0));
+  end if;
+
+  -- Same type-prefixing as the locks above, and for the same reason as
+  -- enforce_syncpad_rooms_rate_limit() — see its comment for the full
+  -- reasoning.
+  if public.syncpad_rate_limit_exceeded('room_report', 'device:' || v_device, 10, 15)
+     or public.syncpad_rate_limit_exceeded('room_report', 'ip:' || v_ip, 20, 15)
   then
     raise exception 'Too many reports submitted recently. Please wait a few minutes and try again.' using errcode = '42501';
   end if;
 
   if v_device is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', v_device);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', 'device:' || v_device);
   end if;
   if v_ip is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', v_ip);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', 'ip:' || v_ip);
   end if;
 
   return NEW;
