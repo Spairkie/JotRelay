@@ -2,7 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- interactive-widget=resizes-content (Chrome 108+/Android): makes the
+       browser actually shrink the *layout* viewport when the on-screen
+       keyboard opens, instead of only the *visual* viewport — which is
+       what every `100vh`/`100%`-sized container and `position:fixed;
+       bottom:0` element in this app already assumes. Without it, those
+       stay sized/anchored to the full (keyboard-including) screen height,
+       so a bottom bar or the tail of a long note can end up rendered
+       underneath the keyboard instead of shrinking to fit above it.
+       Unknown viewport tokens are ignored by browsers that don't support
+       them (safe to ship unconditionally) — src/keyboard-viewport.js
+       covers the platforms that don't (notably iOS Safari, which has no
+       equivalent). -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
   <meta name="description" content="SyncPad is a real-time shared notepad you can open and use in seconds — no account needed. Sync notes and files instantly, share read-only links, and encrypt what matters." />
   <meta name="theme-color" content="#0f0f11" />
   <meta name="mobile-web-app-capable" content="yes" />

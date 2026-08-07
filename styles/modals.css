@@ -248,7 +248,8 @@
    TOASTS
 ══════════════════════════════════════════════════════════════ */
 #toast-container {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: calc(24px + var(--kb-inset, 0px)); left: 50%; transform: translateX(-50%);
+  transition: bottom 0.15s ease;
   /* Must outrank every other fixed-position layer (.auth-screen: 900,
      #loading-screen: 1000) so toasts — including admin.js's own toasts,
      which share this container — are never hidden behind them. */
@@ -305,11 +306,19 @@
 ══════════════════════════════════════════════════════════════ */
 .mobile-action-bar {
   display: none;
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
+  position: fixed; left: 0; right: 0; z-index: 30;
+  /* --kb-inset (src/keyboard-viewport.js) is 0px whenever the on-screen
+     keyboard is closed, or on a platform where index.html's
+     interactive-widget=resizes-content viewport hint already shrinks the
+     layout viewport itself (so this bar's own bottom:0 is already correct
+     without any extra push) — this only ever does something on the
+     platforms neither of those covers. */
+  bottom: var(--kb-inset, 0px);
   background: var(--bg-surface); border-top: 1px solid var(--border);
   padding: 8px 0 max(8px, env(safe-area-inset-bottom));
   justify-content: space-around; align-items: center;
   box-shadow: 0 -4px 16px rgba(0,0,0,0.25);
+  transition: bottom 0.15s ease;
 }
 .mob-action-btn {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -325,10 +334,10 @@
    PWA / SW
 ══════════════════════════════════════════════════════════════ */
 .pwa-bar {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
+  position: fixed; bottom: var(--kb-inset, 0px); left: 0; right: 0; z-index: 300;
   background: var(--bg-elevated); border-top: 1px solid var(--border);
   padding: 12px 20px; display: flex; align-items: center; gap: 12px;
-  box-shadow: var(--shadow-md); transform: translateY(100%); transition: transform 0.3s ease;
+  box-shadow: var(--shadow-md); transform: translateY(100%); transition: transform 0.3s ease, bottom 0.15s ease;
 }
 .pwa-bar.visible { transform: translateY(0); }
 .pwa-bar-text { flex: 1; font-size: 13px; color: var(--text-secondary); }
@@ -371,7 +380,7 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 @media (max-width: 639px) {
   .mobile-action-bar { display: flex; }
   #app-screen { padding-bottom: 60px; }
-  #toast-container { bottom: 72px; }
+  #toast-container { bottom: calc(72px + var(--kb-inset, 0px)); }
   .app-footer { display: none; }
   .app-header { padding: 9px 12px; }
   .header-room .room-name { max-width: 120px; }
@@ -625,12 +634,12 @@ kbd {
   /* Raise the fixed action bar above the PWA install bar when it slides in,
      and increase app-screen bottom padding to match. */
   body:has(#pwa-install-bar.visible) .mobile-action-bar {
-    bottom: 56px; /* approximate height of .pwa-bar */
+    bottom: calc(56px + var(--kb-inset, 0px)); /* 56px ≈ height of .pwa-bar */
   }
   body:has(#pwa-install-bar.visible) #app-screen {
     padding-bottom: calc(60px + 56px);
   }
   body:has(#pwa-install-bar.visible) #toast-container {
-    bottom: calc(72px + 56px);
+    bottom: calc(72px + 56px + var(--kb-inset, 0px));
   }
 }

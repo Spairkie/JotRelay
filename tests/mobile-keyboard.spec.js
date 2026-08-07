@@ -1,0 +1,93 @@
+// tests/mobile-keyboard.spec.js
+// src/keyboard-viewport.js tracks the gap between window.innerHeight and
+// window.visualViewport (the on-screen keyboard, on platforms like iOS
+// Safari where innerHeight never shrinks for it) as a --kb-inset CSS custom
+// property, so the app's bottom-anchored fixed bars stay above the keyboard
+// instead of hiding behind it. No real headless browser ever opens an
+// on-screen keyboard, so this stubs window.visualViewport with a fake
+// EventTarget-like object before importing the module, then dispatches
+// synthetic resize/scroll events to drive it.
+
+import { test, expect } from '@playwright/test';
+import { goToLanding } from './helpers.js';
+
+async function stubVisualViewportAndImport(page) {
+  return page.evaluate(async () => {
+    const listeners = { resize: [], scroll: [] };
+    const fakeVV = {
+      height: window.innerHeight,
+      offsetTop: 0,
+      addEventListener: (type, fn) => listeners[type].push(fn),
+      removeEventListener: (type, fn) => {
+        listeners[type] = listeners[type].filter((f) => f !== fn);
+      },
+    };
+    Object.defineProperty(window, 'visualViewport', { value: fakeVV, configurable: true });
+    window.__fakeVV = fakeVV;
+    window.__fakeVVListeners = listeners;
+    // Cache-bust so this always re-executes the module's top-level side
+    // effect against the freshly-stubbed visualViewport, rather than
+    // reusing the already-evaluated real import from the page's own boot.
+    await import(`/SyncPad/src/keyboard-viewport.js?test=${Date.now()}`);
+  });
+}
+
+function getKbInset(page) {
+  return page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--kb-inset').trim()
+  );
+}
+
+async function simulateKeyboard(page, { heightDelta = 0, offsetTop = 0, via = 'resize' } = {}) {
+  await page.evaluate(({ heightDelta, offsetTop, via }) => {
+    window.__fakeVV.height = window.innerHeight - heightDelta;
+    window.__fakeVV.offsetTop = offsetTop;
+    window.__fakeVVListeners[via].forEach((fn) => fn());
+  }, { heightDelta, offsetTop, via });
+}
+
+test.describe('Mobile keyboard viewport tracking', () => {
+  test('--kb-inset starts at 0px and reflects the visualViewport/innerHeight gap', async ({ page }) => {
+    await goToLanding(page);
+    await stubVisualViewportAndImport(page);
+    expect(await getKbInset(page)).toBe('0px');
+
+    await simulateKeyboard(page, { heightDelta: 300 });
+    expect(await getKbInset(page)).toBe('300px');
+
+    await simulateKeyboard(page, { heightDelta: 0 });
+    expect(await getKbInset(page)).toBe('0px');
+  });
+
+  test('--kb-inset accounts for visualViewport.offsetTop on scroll events too', async ({ page }) => {
+    await goToLanding(page);
+    await stubVisualViewportAndImport(page);
+
+    await simulateKeyboard(page, { heightDelta: 300, offsetTop: 20, via: 'scroll' });
+    expect(await getKbInset(page)).toBe('280px');
+  });
+
+  test('--kb-inset never goes negative', async ({ page }) => {
+    await goToLanding(page);
+    await stubVisualViewportAndImport(page);
+
+    // A visualViewport taller than innerHeight shouldn't happen in practice,
+    // but the source clamps with Math.max(0, ...) defensively — verify it.
+    await simulateKeyboard(page, { heightDelta: -50 });
+    expect(await getKbInset(page)).toBe('0px');
+  });
+
+  test('bottom-anchored bars consume --kb-inset in their bottom offset', async ({ page }) => {
+    await goToLanding(page);
+    await page.evaluate(() => document.documentElement.style.setProperty('--kb-inset', '300px'));
+    // Allow the bars' own `transition: bottom` to settle so the computed
+    // value reflects the new custom property rather than a mid-animation
+    // interpolated one.
+    await page.waitForTimeout(250);
+
+    const toastBottom = await page.evaluate(
+      () => getComputedStyle(document.getElementById('toast-container')).bottom
+    );
+    expect(toastBottom).toBe('324px');
+  });
+});
