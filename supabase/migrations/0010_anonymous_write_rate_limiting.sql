@@ -215,14 +215,24 @@ begin
   -- transaction-scoped (released automatically at commit/rollback) and
   -- hashed together with the action name so 'room_create' locks never
   -- contend with 'room_report' locks over a coincidentally shared
-  -- identifier value. Always locks device before IP (the only place that
-  -- acquires both) so two triggers can never deadlock waiting on each
-  -- other in opposite orders.
+  -- identifier value. Locks are also prefixed with the identifier's own
+  -- type ('device:'/'ip:') so a device lock and an IP lock can never
+  -- collide even when their raw values happen to coincide — v_device is
+  -- entirely client-controlled, so a caller could otherwise set it to
+  -- another concurrent request's real IP string on purpose. Without that
+  -- prefix, two such coordinated requests could each hold the other's
+  -- next-wanted lock (request A: device='B''s IP' locks that first, waits
+  -- on IP A; request B: device='A''s IP' locks that first, waits on IP B)
+  -- — a genuine deadlock cycle despite both always locking device before
+  -- IP, since "device before IP" alone only orders each transaction's own
+  -- two acquisitions, not which shared keys they resolve to across
+  -- transactions. Type-prefixing keeps every device-lock and every
+  -- IP-lock in disjoint hash spaces, so that cycle can't form.
   if v_device is not null then
-    perform pg_advisory_xact_lock(hashtextextended('room_create:' || v_device, 0));
+    perform pg_advisory_xact_lock(hashtextextended('device:room_create:' || v_device, 0));
   end if;
   if v_ip is not null then
-    perform pg_advisory_xact_lock(hashtextextended('room_create:' || v_ip, 0));
+    perform pg_advisory_xact_lock(hashtextextended('ip:room_create:' || v_ip, 0));
   end if;
 
   if public.syncpad_rate_limit_exceeded('room_create', v_device, 30, 15)
@@ -269,13 +279,14 @@ begin
     return NEW;
   end if;
 
-  -- Same check-then-insert race and same fix as enforce_syncpad_rooms_rate_limit()
-  -- above — see its comment for the full reasoning.
+  -- Same check-then-insert race, same cross-type-collision deadlock risk,
+  -- and same fix as enforce_syncpad_rooms_rate_limit() above — see its
+  -- comment for the full reasoning.
   if v_device is not null then
-    perform pg_advisory_xact_lock(hashtextextended('room_report:' || v_device, 0));
+    perform pg_advisory_xact_lock(hashtextextended('device:room_report:' || v_device, 0));
   end if;
   if v_ip is not null then
-    perform pg_advisory_xact_lock(hashtextextended('room_report:' || v_ip, 0));
+    perform pg_advisory_xact_lock(hashtextextended('ip:room_report:' || v_ip, 0));
   end if;
 
   if public.syncpad_rate_limit_exceeded('room_report', v_device, 10, 15)

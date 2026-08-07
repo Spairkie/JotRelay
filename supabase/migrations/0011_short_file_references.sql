@@ -120,10 +120,19 @@ alter table public.syncpad_room_file_counters enable row level security;
 -- consecutive-from-1 numbering after an upgrade (new numbers start higher
 -- for rooms that had files before this migration) for that practical
 -- non-reuse guarantee, without needing to know a historical high-water
--- mark that may simply no longer exist anywhere. (`file_no` is a 32-bit
--- integer, so the offset also stays far short of overflow: even a room
--- that already had a large max(file_no) has well over 2 billion headroom
--- left after adding it.)
+-- mark that may simply no longer exist anywhere.
+--
+-- `file_no` is a 32-bit integer column, and — before the fix below that
+-- makes the assignment trigger always ignore client input — the insert
+-- policies on syncpad_files let any anon/authenticated caller set file_no
+-- directly to an arbitrary value, including one close to the int4 max
+-- (2,147,483,647). An installation that had such a row (planted before
+-- upgrading to this migration) would overflow plain `+ 50000000` integer
+-- arithmetic here and abort the whole seed statement — for every room,
+-- not just the offending one, since it's a single grouped INSERT...SELECT.
+-- Computed in bigint and clamped to the int4 max so the seed can never
+-- overflow the column it's about to be stored in, regardless of what a
+-- malicious pre-fix insert may have set file_no to.
 do $$
 begin
   if not exists (
@@ -131,7 +140,7 @@ begin
     where table_schema = 'public' and table_name = 'syncpad_room_file_counters_seeded_marker'
   ) then
     insert into public.syncpad_room_file_counters (room_id, next_file_no)
-    select f.room_id, max(f.file_no) + 50000000
+    select f.room_id, least(max(f.file_no)::bigint + 50000000, 2147483647)::integer
       from public.syncpad_files f
      group by f.room_id
     on conflict (room_id) do nothing;
@@ -139,10 +148,16 @@ begin
     -- A tiny marker table, not a real feature table, purely so the seed
     -- above never runs a second time (re-running it would add another
     -- +50000000 on top of whatever's already there). Nothing ever selects
-    -- from or deletes it.
+    -- from or deletes it. Same reasoning as syncpad_room_file_counters
+    -- above for enabling RLS with zero client policies below: Supabase's
+    -- default privileges would otherwise let any anon-key caller insert
+    -- unlimited rows into it directly (it has no uniqueness constraint
+    -- and nothing else reads it, so nothing else would notice).
     create table public.syncpad_room_file_counters_seeded_marker (seeded_at timestamptz not null default now());
   end if;
 end $$;
+
+alter table public.syncpad_room_file_counters_seeded_marker enable row level security;
 
 create or replace function public.syncpad_assign_file_no()
 returns trigger
@@ -151,13 +166,21 @@ security definer
 set search_path = public
 as $$
 begin
-  if new.file_no is null then
-    insert into public.syncpad_room_file_counters (room_id, next_file_no)
-    values (new.room_id, 1)
-    on conflict (room_id) do update
-      set next_file_no = public.syncpad_room_file_counters.next_file_no + 1
-    returning next_file_no into new.file_no;
-  end if;
+  -- Always overwrite file_no server-side, regardless of what (if
+  -- anything) the caller sent — file_no is pure internal bookkeeping,
+  -- the app's own client code never sets it, and the insert policies on
+  -- syncpad_files otherwise let any anon/authenticated caller supply an
+  -- arbitrary value directly. Previously this only assigned when
+  -- new.file_no was null: a caller could insert an explicit file_no
+  -- (e.g. 1) into a room with no counter row yet, after which every
+  -- subsequent *normal* app upload (file_no null, counter starts at 1)
+  -- would collide with that same value, roll back, and fail again on
+  -- every retry — the room's uploads would be permanently broken.
+  insert into public.syncpad_room_file_counters (room_id, next_file_no)
+  values (new.room_id, 1)
+  on conflict (room_id) do update
+    set next_file_no = public.syncpad_room_file_counters.next_file_no + 1
+  returning next_file_no into new.file_no;
   return new;
 exception
   when foreign_key_violation then
