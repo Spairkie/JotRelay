@@ -334,12 +334,21 @@
    PWA / SW
 ══════════════════════════════════════════════════════════════ */
 .pwa-bar {
-  position: fixed; bottom: var(--kb-inset, 0px); left: 0; right: 0; z-index: 300;
+  /* bottom stays a plain 0 (not --kb-inset) while hidden — translateY(100%)
+     below only pushes the bar offscreen by its OWN height, measured from
+     wherever `bottom` puts its resting position. If the hidden state
+     inherited --kb-inset's raise too, a keyboard taller than the bar
+     itself (routine — a keyboard is ~250-350px, the bar ~56-70px) would
+     still leave part of the "hidden" bar, including its inactive Install
+     button, visible above the true bottom edge. Only .visible below opts
+     into tracking --kb-inset, once the bar is actually meant to be shown
+     above the keyboard. */
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
   background: var(--bg-elevated); border-top: 1px solid var(--border);
   padding: 12px 20px; display: flex; align-items: center; gap: 12px;
   box-shadow: var(--shadow-md); transform: translateY(100%); transition: transform 0.3s ease, bottom 0.15s ease;
 }
-.pwa-bar.visible { transform: translateY(0); }
+.pwa-bar.visible { transform: translateY(0); bottom: var(--kb-inset, 0px); }
 .pwa-bar-text { flex: 1; font-size: 13px; color: var(--text-secondary); }
 .pwa-bar-text strong { color: var(--text-primary); }
 .pwa-bar-btn { padding: 7px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; transition: opacity var(--transition); }

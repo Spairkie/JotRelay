@@ -83,16 +83,24 @@ export function wireLandingEvents() {
   const joinBtn   = document.getElementById('landing-join-btn');
   const createBtn = document.getElementById('landing-create-btn');
 
+  // window.__supabaseReady: the /app route itself renders without waiting
+  // on the Supabase CDN script (see boot() in room-lifecycle.js — a static
+  // create/join screen shouldn't be held hostage by a slow/stalled CDN
+  // fetch), but every action below it ultimately reaches
+  // getSupabaseClient(). A click landing in that gap would otherwise call
+  // it before window.supabase exists and surface as a room-load failure.
   const handleCreateRoomClick = () => {
     const roomId = generateRoomId();
     history.pushState(null, '', `${BASE}/${roomId}`);
     UI.showScreen('loading');
-    joinRoom(roomId, { isNewRoom: true });
+    window.__supabaseReady.then(() => joinRoom(roomId, { isNewRoom: true }));
   };
 
   const joinRoom_ = async () => {
     const raw = joinInput?.value?.trim();
     if (!raw) return;
+
+    await window.__supabaseReady;
 
     if (SHORT_CODE_RE.test(raw)) {
       try {
@@ -155,7 +163,7 @@ function _renderRecentRooms() {
       const roomId = btn.dataset.roomId;
       history.pushState(null, '', `${BASE}/${roomId}`);
       UI.showScreen('loading');
-      joinRoom(roomId);
+      window.__supabaseReady.then(() => joinRoom(roomId));
     });
   });
   list.querySelectorAll('.landing-recent-remove').forEach((btn) => {
