@@ -119,7 +119,7 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
-// ── Fetch: bypass Supabase + cross-origin, network-first for same-origin ──
+// ── Fetch: bypass Supabase + cross-origin, cache-first for same-origin ────
 
 function _isSupabase(urlString) {
   try {
@@ -187,7 +187,11 @@ self.addEventListener('fetch', (event) => {
     if (cached) return cached;
     try {
       const networkResponse = await fetch(req);
-      if (networkResponse && networkResponse.ok) cache.put(cacheKey, networkResponse.clone());
+      // Awaited (not fire-and-forget): event.respondWith() only keeps this
+      // worker alive until the promise it was given resolves, so an
+      // un-awaited cache.put() here could still be cut off if the promise
+      // returned early.
+      if (networkResponse && networkResponse.ok) await cache.put(cacheKey, networkResponse.clone());
       return networkResponse;
     } catch {
       return new Response('Offline', { status: 503, statusText: 'Offline' });
