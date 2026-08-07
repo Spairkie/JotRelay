@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'syncpad-v50';
+const CACHE_VERSION = 'syncpad-v51';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -175,58 +175,42 @@ self.addEventListener('fetch', (event) => {
   // call) leaves these to ordinary browser/HTTP caching instead.
   if (!PRECACHED_PATHS.has(cachePath)) return;
 
-  // Cache-first, scoped to the SAME open CACHE_VERSION cache — deliberately,
-  // not just for speed. Once a slot is populated, it is treated as
-  // immutable: an earlier version of this handler wrote every cache-miss's
-  // network response back into the SAME open cache at request time, which
-  // sounds harmless but isn't. A currently-active worker instance keeps
-  // handling every fetch for pages it already controls, including new
-  // navigations, for as long as it takes a newer worker to actually take
-  // over (see app/pwa.js's controllerchange reload); the network always
-  // serves whatever is *currently deployed* regardless of which worker
-  // generation is asking, so overwriting an ALREADY-cached entry mid-session
-  // could drift the "coherent" cache entry-by-entry — e.g. picking up a
-  // newly-deployed app.js while every module it imports is still the old
-  // cached copy, and failing if the new module expects an export the old
-  // one doesn't have.
+  // Cache-first, read-only at request time — scoped to the SAME open
+  // CACHE_VERSION cache, and NEVER written to here. The only thing that
+  // ever populates a given generation's cache is the install handler's
+  // one-shot PRECACHE_ASSETS pass above; this handler only ever reads it.
   //
-  // Writing on a genuine MISS is still safe and worth keeping: the install
-  // handler above tolerates individual cache.add() failures (a transient
-  // network blip while precaching one file must not block the whole
-  // install), which without this would leave that one slot permanently
-  // unfillable — offline-broken for that asset until the next deploy bumps
-  // CACHE_VERSION — even though every later online visit succeeds. Filling
-  // an empty slot once can't reintroduce the drift above: once written, that
-  // slot hits on every subsequent request for the rest of this generation's
-  // lifetime and is never written to again.
+  // An earlier version of this handler self-healed a genuine cache MISS by
+  // writing the network response back in — meant to recover from the
+  // install handler's per-asset tolerance of a transient cache.add()
+  // failure, so that one file wasn't permanently offline-broken for the
+  // rest of this generation's lifetime. That traded one bug for a worse
+  // one: a currently-active worker instance keeps answering every fetch for
+  // pages it already controls for as long as it takes a newer worker to
+  // take over (see app/pwa.js's controllerchange reload) — often much
+  // longer than a single page load, since nothing forces a reload on its
+  // own. If that missing slot were requested for the first time only AFTER
+  // a *subsequent* deploy went out (this worker's generation still hasn't
+  // been superseded on this client, but the server now serves newer bytes
+  // for that URL), the self-heal write would pull those newer bytes into
+  // the OLDER generation's cache — reintroducing the exact split-version
+  // problem the immutable-cache design exists to prevent, just via a
+  // different path. There's no way to verify a network response actually
+  // belongs to this generation without content-addressed URLs, which this
+  // project deliberately doesn't have (no build step). Read-only avoids the
+  // whole class of bug: the tradeoff is that a rare transient install
+  // failure leaves that one asset unavailable OFFLINE until the next
+  // deploy — every ONLINE load still succeeds regardless, since a cache
+  // miss always falls through to the network below.
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_VERSION);
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
-    let networkResponse;
     try {
-      networkResponse = await fetch(req);
+      return await fetch(req);
     } catch {
       return new Response('Offline', { status: 503, statusText: 'Offline' });
     }
-    // Backgrounded via event.waitUntil() rather than awaited inline: this
-    // worker only needs to stay alive until the *write* finishes, not until
-    // the browser has the response — event.respondWith()'s own promise
-    // already resolves as soon as networkResponse is returned below, and
-    // awaiting the write first would have delayed that (Cache.put() only
-    // resolves once it has fully read the cloned body, so an inline await
-    // would hold the whole response back from the browser until the write —
-    // for a large precached asset, until the entire download — completed).
-    // A cache-write failure (e.g. a full storage quota) must also never
-    // turn an already-successful response into a fake offline error, which
-    // waitUntil()'s own catch here keeps entirely separate from the
-    // response path below.
-    if (networkResponse && networkResponse.ok) {
-      event.waitUntil(
-        cache.put(cacheKey, networkResponse.clone()).catch(() => { /* e.g. quota — non-fatal */ })
-      );
-    }
-    return networkResponse;
   })());
 });
 

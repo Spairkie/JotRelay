@@ -76,18 +76,6 @@ export async function boot() {
 
   UI.showScreen('loading');
 
-  // index.html's Supabase <script> tag is deferred (so it doesn't block
-  // first paint) but that's a SEPARATE execution queue from this module
-  // script, not one shared ordered queue — the module graph can start
-  // running before the deferred script has, especially with the cache-first
-  // service worker making repeat-visit module loads near-instant while the
-  // cross-origin CDN fetch still takes real network time. Every route below
-  // eventually reaches Supabase-dependent code (getSupabaseClient() in
-  // src/supabase.js, called from rooms.js/admin.js/etc.), so wait for the
-  // real readiness signal here once, up front, rather than relying on
-  // script-tag position or re-guarding every individual call site.
-  await window.__supabaseReady;
-
   // Load locally-stored monospace preference
   try { state.monospace = localStorage.getItem('syncpad_monospace') === '1'; } catch {}
 
@@ -107,6 +95,20 @@ export async function boot() {
   if (route.type === 'share') {
     state.isReadOnly = true;
     state.shareToken = route.token;
+    // index.html's Supabase <script> tag is deferred (so it doesn't block
+    // first paint) but that's a SEPARATE execution queue from this module
+    // script, not one shared ordered queue — the module graph can start
+    // running before the deferred script has, especially with the
+    // cache-first service worker making repeat-visit module loads
+    // near-instant while the cross-origin CDN fetch still takes real
+    // network time. window.__supabaseReady (resolved on that script's load
+    // or error event) is the real ordering guarantee. Awaited only here and
+    // at the other call sites below that actually reach Supabase-dependent
+    // code (getSupabaseClient() in src/supabase.js) — the purely static
+    // routes (app-landing, contact/privacy/terms, the no-resume landing
+    // screen) never touch Supabase and must not be held behind this on a
+    // slow/stalled CDN connection.
+    await window.__supabaseReady;
     await joinReadOnlyShareRoute(route.token);
     return;
   }
@@ -125,6 +127,7 @@ export async function boot() {
 
     if (lastRoom) {
       history.replaceState(null, '', `${BASE}/${lastRoom}`);
+      await window.__supabaseReady;
       await joinRoom(lastRoom);
       return;
     }
@@ -142,7 +145,7 @@ export async function boot() {
 
   if (route.type === 'admin') {
     UI.showScreen('admin');
-    initAdmin().catch((err) => {
+    window.__supabaseReady.then(() => initAdmin()).catch((err) => {
       console.error('[admin] initAdmin failed:', err);
     });
     return;
@@ -170,6 +173,7 @@ export async function boot() {
     history.replaceState(null, '', `${BASE}/${roomId}${qs}`);
   }
 
+  await window.__supabaseReady;
   await joinRoom(roomId);
 }
 

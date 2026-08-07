@@ -162,7 +162,7 @@ function _wireQrToggle(toggleId, wrapId, enabled) {
   };
 }
 
-function _renderQr(containerId, url) {
+function _renderQr(containerId, url, _isRetry = false) {
   const el = document.getElementById(containerId);
   if (!el) return;
   el.innerHTML = '';
@@ -173,8 +173,13 @@ function _renderQr(containerId, url) {
     // the container permanently empty — populateShareModal() is only ever
     // called again on a fresh modal open, not on every render, so without
     // this a share opened just after page load could show no QR code for
-    // the rest of that session.
-    window.__qrReady?.then(() => _renderQr(containerId, url));
+    // the rest of that session. Guarded to at most one retry (_isRetry):
+    // window.__qrReady also resolves on the script's error event (so a
+    // blocked/failed CDN load doesn't hang callers forever) without ever
+    // defining window.QRCode — without this guard, retrying unconditionally
+    // would immediately re-check, still find it missing, and re-attach to
+    // the already-resolved promise again, looping forever in microtasks.
+    if (!_isRetry) window.__qrReady?.then(() => _renderQr(containerId, url, true));
     return;
   }
   try {
