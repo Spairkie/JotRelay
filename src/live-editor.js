@@ -673,7 +673,19 @@ const _tocField = StateField.define({
     // still update this flag correctly for the following one to read —
     // though in practice only tr.selection ever changes it, so the order
     // only matters for readability, not correctness.
-    if (tr.selection) _tocSelectionIsUserDriven = !tr.annotation(External);
+    //
+    // tr.selection alone isn't enough to mean "the user moved the caret" —
+    // CM6's own drawSelection() extension needs to force its blink
+    // animation to restart on window focus/tab-visibility (see
+    // _restartCursorBlink()'s own comment), which it does by dispatching a
+    // same-position no-op reselect: tr.selection is set, but nothing about
+    // where the caret actually *is* changed. Comparing the selection value
+    // itself, not just whether a spec asked for one, excludes that (and
+    // any future synthetic reselect that works the same way) without
+    // needing to know about it specifically here.
+    if (tr.selection && !tr.startState.selection.eq(tr.state.selection)) {
+      _tocSelectionIsUserDriven = !tr.annotation(External);
+    }
     if (!tr.docChanged && !tr.selection) return value;
     return _computeTocBadges(tr.state, !_tocSelectionIsUserDriven);
   },

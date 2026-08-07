@@ -219,7 +219,23 @@ function _onOnboardingKey(e) {
   // underneath, none of which the trap or overlay actually prevented.
   e.stopPropagation();
   if (e.key === 'Escape') { e.preventDefault(); endOnboardingTour(); return; }
-  if (e.key !== 'Tab') return;
+  if (e.key !== 'Tab') {
+    // preventDefault() too, not just stopPropagation() — stopping JS
+    // propagation to *other listeners* does nothing about the browser's
+    // own native handling of the same key combo. The Command Palette
+    // step's own copy actively tells the user to press Ctrl/Cmd K; in a
+    // browser where that combo is bound to the address bar or
+    // browser-native search (varies by browser/OS), following that
+    // instruction while this handler only stopPropagation()'d would move
+    // focus out of the page entirely — out of this handler's reach and
+    // out of the tour's own focus trap. Deliberately excluded from Tab:
+    // its own handling below only preventDefault()s at the wrap-around
+    // boundary, letting a *middle* Tab press keep using the browser's
+    // native tab order across Skip/Back/Next — preventDefault()ing it
+    // unconditionally here would break that.
+    e.preventDefault();
+    return;
+  }
   const focusables = ['sp-onboarding-skip', 'sp-onboarding-back', 'sp-onboarding-next']
     .map((id) => document.getElementById(id))
     .filter((btn) => btn && !btn.disabled);
