@@ -24,11 +24,21 @@
 .onboarding-tooltip {
   position: fixed; z-index: 1;
   width: min(300px, calc(100vw - 24px));
+  /* A viewport shorter than the tooltip (a landscape phone, high browser
+     zoom) would otherwise push the actions row — Skip/Back/Next — off
+     screen entirely, since _positionStep()'s clamp only keeps `top` inside
+     the viewport, not the tooltip's own rendered height. Capping the
+     height and scrolling the content instead keeps the actions always
+     reachable. */
+  max-height: calc(100vh - 24px);
+  display: flex; flex-direction: column;
   background: var(--bg-elevated); border: 1px solid var(--border);
   border-radius: var(--radius-lg); padding: 16px 18px;
   box-shadow: var(--shadow-lg);
   transition: top 0.2s ease, left 0.2s ease;
 }
+#sp-onboarding-content { overflow-y: auto; min-height: 0; }
+.onboarding-tooltip-actions { flex-shrink: 0; }
 .onboarding-tooltip-count {
   font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--accent); margin-bottom: 6px;

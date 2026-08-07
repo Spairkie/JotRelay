@@ -38,13 +38,22 @@ const STEPS = [
 let _stepIndex = 0;
 let _resizeHandler = null;
 let _previouslyFocused = null;
+// In-memory fallback for the same page session: if localStorage.setItem()
+// throws (quota exceeded, private-browsing restrictions, etc.) while
+// getItem() still works, hasSeenOnboarding() would otherwise keep
+// returning false forever, re-triggering the tour on every single room
+// created in that session. This doesn't survive a reload, but it stops
+// the tour from repeating for as long as the page stays open.
+let _seenThisSession = false;
 
 export function hasSeenOnboarding() {
+  if (_seenThisSession) return true;
   try { return localStorage.getItem(SEEN_KEY) === 'true'; }
   catch { return true; } // storage unavailable — don't force the tour on every load
 }
 
 function _markOnboardingSeen() {
+  _seenThisSession = true;
   try { localStorage.setItem(SEEN_KEY, 'true'); } catch {}
 }
 
@@ -175,9 +184,15 @@ function _ensureOnboardingDom() {
   el.innerHTML = `
     <div id="sp-onboarding-highlight" class="onboarding-highlight"></div>
     <div id="sp-onboarding-tooltip" class="onboarding-tooltip">
-      <div class="onboarding-tooltip-count" id="sp-onboarding-count"></div>
-      <h3 class="onboarding-tooltip-title" id="sp-onboarding-title"></h3>
-      <p class="onboarding-tooltip-text" id="sp-onboarding-text"></p>
+      <!-- Focus stays on Next across Back/Next clicks (see _showStep()), so
+           refocusing it doesn't fire a new focus event and a screen reader
+           never hears the step actually changed. aria-live announces the
+           updated count/title/text on every change regardless of focus. -->
+      <div id="sp-onboarding-content" aria-live="polite" aria-atomic="true">
+        <div class="onboarding-tooltip-count" id="sp-onboarding-count"></div>
+        <h3 class="onboarding-tooltip-title" id="sp-onboarding-title"></h3>
+        <p class="onboarding-tooltip-text" id="sp-onboarding-text"></p>
+      </div>
       <div class="onboarding-tooltip-actions">
         <button type="button" class="onboarding-skip" id="sp-onboarding-skip">Skip tour</button>
         <div class="onboarding-tooltip-nav">
