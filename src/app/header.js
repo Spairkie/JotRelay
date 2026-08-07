@@ -37,7 +37,28 @@ export function _wireHeader() {
   // gates the automatic first-room trigger in room-lifecycle.js, and
   // startOnboardingTour() itself has no such check, so calling it directly
   // here just works regardless of whether the tour has already been seen.
-  document.getElementById('btn-replay-tour')?.addEventListener('click', () => { closeMoreDropdown(); UI.startOnboardingTour(); });
+  // The button itself is data-readonly-hide'd, but that only hides it
+  // visually — the command palette's "Take the tour" entry reaches this
+  // same handler via a plain .click(), which fires regardless of visibility
+  // — so the canEdit() guard belongs here too, the one place this action's
+  // wired (command-palette.js's own header comment: "one source of truth
+  // per action"). A read-only viewer's tour would open on a "start typing"
+  // step and a Share step pointing at a Settings panel they can't reach.
+  document.getElementById('btn-replay-tour')?.addEventListener('click', () => {
+    if (!canEdit()) return;
+    closeMoreDropdown();
+    // startOnboardingTour() captures document.activeElement to restore on
+    // close — closeMoreDropdown() above hides the dropdown but never moves
+    // focus off whatever's still nominally focused inside it (this button
+    // itself for a direct click; the command palette's own search input
+    // for the "Take the tour" palette entry, which reaches this same
+    // handler via a synthetic click after its modal closes). Either way
+    // that's now an invisible element, so ending the tour would restore
+    // focus to something a keyboard user can't see. #btn-more is the one
+    // guaranteed-visible anchor both paths share.
+    document.getElementById('btn-more')?.focus();
+    UI.startOnboardingTour();
+  });
   // A-3: device-count-badge — keyboard accessibility (role="button" set in HTML)
   const deviceCountBtn = document.getElementById('device-count-btn');
   deviceCountBtn?.addEventListener('click', () => UI.togglePanel('presence-panel'));

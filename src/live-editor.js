@@ -630,14 +630,27 @@ function _computeTocBadges(state, bypassTouchReveal) {
 
 const _tocField = StateField.define({
   create: (state) => _computeTocBadges(state, true),
-  // Recomputed on every transaction, not just docChanged — whether the
-  // marker line renders as the widget or reveals its raw "[TOC]" text now
+  // Recomputed when the doc changed or this transaction set an explicit
+  // new selection — not unconditionally on every transaction. Whether the
+  // marker line renders as the widget or reveals its raw "[TOC]" text
   // depends on the *selection* too (reveal-while-touched, same as
-  // Image/HorizontalRule/_tableField below). A transaction carrying the
-  // External annotation (syncFromText — see its own comment) is a
-  // programmatic content replacement, not a real user edit/selection, so it
-  // gets the same touch-check bypass as the field's very first computation.
-  update(value, tr) { return _computeTocBadges(tr.state, !!tr.annotation(External)); },
+  // Image/HorizontalRule/_tableField below), and a transaction carrying
+  // the External annotation (syncFromText — see its own comment) gets the
+  // same touch-check bypass as the field's very first computation. But a
+  // transaction that touches neither — a bare effects-only reconfigure,
+  // e.g. the setReadOnly() call _applyMarkdownMode() makes switching back
+  // into Live/Split from Source — used to still recompute against
+  // tr.state's *current* selection, which could still be sitting wherever
+  // an earlier External-bypassed sync left it mapped. That silently
+  // reverted an already-correctly-shown widget back to raw text with no
+  // doc change, no selection change, and no user interaction of any kind
+  // in between. Reusing the previous value outright for those no-op-for-us
+  // transactions is exact, not approximate: with docChanged false, the
+  // decoration set's positions are still valid against the identical doc.
+  update(value, tr) {
+    if (!tr.docChanged && !tr.selection) return value;
+    return _computeTocBadges(tr.state, !!tr.annotation(External));
+  },
   provide: (f) => EditorView.decorations.from(f),
 });
 
