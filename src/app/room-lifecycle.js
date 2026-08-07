@@ -285,7 +285,14 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
     return;
   }
 
-  await startApp();
+  // isNewRoom only ever reaches here — a freshly created room has neither
+  // a passcode nor encryption yet (both are Settings-panel opt-ins applied
+  // after creation), so the two gates above can never intercept it. The
+  // onPasscodeSubmit()/onEncryptionSubmit() handlers below call startApp()
+  // with no argument for exactly that reason — they're wired to DOM form
+  // submissions, entirely disconnected from this closure, and can only ever
+  // be reached for an existing room being unlocked, never a new one.
+  await startApp(isNewRoom);
 }
 
 // ── Auth handlers ─────────────────────────────────────────────────────────────
@@ -350,7 +357,7 @@ export async function onEncryptionSubmit() {
 
 // ── Start app ─────────────────────────────────────────────────────────────────
 
-async function startApp() {
+async function startApp(isNewRoom = false) {
   UI.setLoadingMessage('Starting…');
   UI.showScreen('loading');
 
@@ -617,6 +624,12 @@ async function startApp() {
       _updatePermissionContext();
     }
   }
+
+  // First-ever room creation in this browser gets a short coachmark tour —
+  // gated by a localStorage flag (see ui/onboarding.js), not room state, so
+  // it never shows again regardless of how many rooms this device creates
+  // afterward. isNewRoom is never true for a forced-read-only route.
+  if (isNewRoom && !UI.hasSeenOnboarding()) UI.startOnboardingTour();
 }
 
 async function _decodeLocalDraft(draft) {
@@ -926,6 +939,12 @@ export function teardownRealtimeSession() {
   destroyBroadcast();
   destroySync();
   UI.clearFloatingComments();
+  // The onboarding tour isn't room-scoped state either (its "seen" flag is
+  // deliberately never reset — see startOnboardingTour()), but an open tour
+  // spotlights elements by CSS selector, not a stable reference, so leaving
+  // it up across a navigation could end up highlighting the wrong element
+  // once the new room's DOM settles.
+  UI.endOnboardingTour();
   // A footnote popover isn't room-scoped state, but leaving one open across
   // a navigation would point it at a trigger element that's about to be
   // torn down/replaced.

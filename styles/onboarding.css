@@ -1,0 +1,53 @@
+/* ══════════════════════════════════════════════════════════════
+   FIRST-TIME ONBOARDING TOUR
+   A small coachmark sequence — see src/ui/onboarding.js. Deliberately
+   simpler than the confirm/alert/prompt modals in modals.css: no dimmed
+   full-page backdrop punched with a hole, just a highlight ring positioned
+   over the current target plus a tooltip card, so the rest of the app stays
+   visible (if not interactive) throughout the tour.
+══════════════════════════════════════════════════════════════ */
+
+.onboarding-overlay {
+  position: fixed; inset: 0; z-index: 1250;
+  opacity: 0; pointer-events: none; transition: opacity 0.18s ease;
+}
+.onboarding-overlay.visible { opacity: 1; pointer-events: auto; }
+
+.onboarding-highlight {
+  position: fixed; border-radius: var(--radius-md);
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 4000px rgba(0,0,0,0.55), 0 0 0 4px var(--accent-glow);
+  transition: top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease;
+  pointer-events: none;
+}
+
+.onboarding-tooltip {
+  position: fixed; z-index: 1;
+  width: min(300px, calc(100vw - 24px));
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 16px 18px;
+  box-shadow: var(--shadow-lg);
+  transition: top 0.2s ease, left 0.2s ease;
+}
+.onboarding-tooltip-count {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 6px;
+}
+.onboarding-tooltip-title { font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.onboarding-tooltip-text  { font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 14px; }
+.onboarding-tooltip-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.onboarding-skip {
+  background: none; border: none; padding: 0; font-size: 13px; color: var(--text-muted);
+  cursor: pointer; transition: color var(--transition);
+}
+.onboarding-skip:hover { color: var(--text-secondary); }
+.onboarding-tooltip-nav { display: flex; gap: 8px; }
+.onboarding-nav-btn {
+  padding: 7px 14px; border-radius: var(--radius-md); font-size: 13px; font-weight: 500;
+  background: var(--bg-base); border: 1px solid var(--border); color: var(--text-primary);
+  cursor: pointer; transition: background var(--transition);
+}
+.onboarding-nav-btn:hover:not(:disabled) { background: var(--bg-surface); }
+.onboarding-nav-btn:disabled { opacity: 0.4; cursor: default; }
+.onboarding-nav-btn--primary { background: var(--accent); border-color: var(--accent); color: var(--text-inverse); }
+.onboarding-nav-btn--primary:hover { opacity: 0.9; background: var(--accent); }

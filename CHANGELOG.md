@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 50 — First-time onboarding tour
+
+#### Added
+- **A 4-step coachmark tour on a device's first-ever room creation.** Spotlights the editor area, the Source/Live/Split mode toggle, the Share button, and the More menu in turn, each with a short callout and Next/Back/Skip controls. Shown once, ever, per browser — gated by a `localStorage` flag (`syncpad_onboarding_seen`) set the moment the tour starts, not on completion, so dismissing it mid-tour (navigating away, closing the tab) never leaves it re-triggering on the next room. New module `src/ui/onboarding.js`; wired from `joinRoom()` in `src/app/room-lifecycle.js`, gated on the existing `isNewRoom` flag so it never fires for a room joined via URL or share link. `teardownRealtimeSession()` force-closes an in-progress tour on navigation, since it spotlights elements by CSS selector rather than a stable reference and could otherwise end up highlighting the wrong element in the next room's DOM.
+- Positioning is computed from the target element's live bounding rect (recomputed on window resize) rather than fixed offsets, and a step whose target isn't present or visible at the current viewport size is skipped automatically rather than spotlighting nothing.
+
+#### Fixed
+- **The first version of this wiring would have thrown on every single room load, not just new ones.** `isNewRoom` is a parameter of `joinRoom()`; the actual "render and wire up an interactive room" work happens in a separate function, `startApp()`, which `joinRoom()` calls (along with two other call sites reached via the passcode/encryption submit handlers, which run as independent DOM event callbacks with no access to `joinRoom()`'s closure at all). The trigger was first added at the end of `startApp()`'s body, where `isNewRoom` doesn't exist — caught by re-reading the diff's function context rather than trusting the initial read, before it ever ran against a real page load. Fixed by threading `isNewRoom` through as an explicit parameter (`startApp(isNewRoom)`), passed only from the one call site directly inside `joinRoom()` — the two passcode/encryption-gated call sites correctly default to `false`, since a freshly created room can never have either set yet (both are Settings-panel opt-ins applied after creation, not at creation time).
+- Caught during manual verification, not by the automated test: a target tall enough to leave no room for the tooltip either above or below it (the full-height editor area on step 1) fell through the placement logic's "below" default and pushed the tooltip off the bottom of the viewport entirely. Fixed by clamping the computed position into the viewport bounds after the above/below decision, the same way horizontal centering was already clamped.
+
 ### Phase 49 — Baseline SQL refresh
 
 #### Fixed

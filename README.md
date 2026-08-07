@@ -50,6 +50,7 @@ how they were generated.
 
 ### Core
 - **Landing screen** — create a new room or join by URL or room ID
+- **First-time tour** — a short 4-step coachmark walkthrough (editor, mode toggle, share, more menu) the first time this browser ever creates a room; shown once, never again
 - **Realtime note sync** — Supabase Broadcast, ~250 ms latency
 - **Durable saves** — Postgres write after 1 s of idle; local draft backup
 - **Offline drafts** — keystrokes saved to localStorage; sync on reconnect

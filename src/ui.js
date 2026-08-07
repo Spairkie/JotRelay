@@ -16,6 +16,7 @@
 //   ui/collab.js          – Floating comments (composer + margin dots/bubble),
 //                            Comments panel, remote-update notice, typing indicator
 //   ui/feature-modals.js  – Command palette, Share modal, Templates modal
+//   ui/onboarding.js      – First-time product tour (coachmark sequence)
 //
 // Adding a new UI function: put it in whichever of the above it belongs to
 // (or add a new src/ui/*.js file and re-export it below) — don't add it
@@ -27,3 +28,4 @@ export * from './ui/panels.js';
 export * from './ui/editor.js';
 export * from './ui/collab.js';
 export * from './ui/feature-modals.js';
+export * from './ui/onboarding.js';
