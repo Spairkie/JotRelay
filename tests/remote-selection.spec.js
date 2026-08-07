@@ -84,3 +84,48 @@ test.describe('Follow mode', () => {
     expect(followedId).toBe('dev-a');
   });
 });
+
+test.describe('Devices panel — joined time & followed-by indicator', () => {
+  test('a non-self device with joined_at shows a relative "joined" chip; self never does', async ({ page }) => {
+    await createRoom(page);
+    await openPanel(page, 'presence');
+
+    await page.evaluate(async () => {
+      const UI = await import('/SyncPad/src/ui.js');
+      UI.renderDevicesList(
+        [
+          { device_id: 'me', device_name: 'Me', isMe: true, read_only: false, typing: false, cursor_line: null, joined_at: Date.now() - 5000 },
+          { device_id: 'dev-a', device_name: 'Alice', isMe: false, read_only: false, typing: false, cursor_line: null, joined_at: Date.now() - 5 * 60 * 1000 },
+        ],
+        'me',
+        () => {},
+        { followedDeviceId: null, onToggleFollow: () => {} },
+      );
+    });
+
+    await expect(page.locator('.device-joined')).toHaveCount(1);
+    await expect(page.locator('.device-joined')).toHaveText('5m ago');
+  });
+
+  test('a device followed by others shows a "Followed by N" chip on its own row only', async ({ page }) => {
+    await createRoom(page);
+    await openPanel(page, 'presence');
+
+    await page.evaluate(async () => {
+      const UI = await import('/SyncPad/src/ui.js');
+      UI.renderDevicesList(
+        [
+          { device_id: 'me', device_name: 'Me', isMe: true, read_only: false, typing: false, cursor_line: null, followedByCount: 2 },
+          { device_id: 'dev-a', device_name: 'Alice', isMe: false, read_only: false, typing: false, cursor_line: null, followedByCount: 0 },
+        ],
+        'me',
+        () => {},
+        { followedDeviceId: null, onToggleFollow: () => {} },
+      );
+    });
+
+    const followedBy = page.locator('.device-followed-by');
+    await expect(followedBy).toHaveCount(1);
+    await expect(followedBy).toHaveText('👀 Followed by 2');
+  });
+});

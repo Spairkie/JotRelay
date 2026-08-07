@@ -18,7 +18,7 @@ import {
   broadcastSettingsChange, cancelPendingTypingBroadcast, cancelPendingLiveContentBroadcast,
   broadcastClear, broadcastViewOnceCleared,
 } from '../live-broadcast.js';
-import { initPresence, destroyPresence, setPresenceHidden, updatePresenceDeviceName } from '../presence.js';
+import { initPresence, destroyPresence, setPresenceHidden, updatePresenceDeviceName, setFollowing } from '../presence.js';
 import {
   initSync, destroySync,
   flushSave, cancelPendingSave, snapshotBeforeDestructiveChange,
@@ -569,13 +569,17 @@ async function startApp(isNewRoom = false) {
     // followed anymore — drop it rather than leaving a dead toggle active.
     if (state.followedDeviceId && !devices.some((d) => d.device_id === state.followedDeviceId && !d.isMe)) {
       state.followedDeviceId = null;
+      setFollowing(null);
     }
     UI.renderDevicesList(devices, deviceId, (name) => {
       setDeviceName(name);
       updatePresenceDeviceName(getDeviceName());
     }, {
       followedDeviceId: state.followedDeviceId,
-      onToggleFollow: (id) => { state.followedDeviceId = state.followedDeviceId === id ? null : id; },
+      onToggleFollow: (id) => {
+        state.followedDeviceId = state.followedDeviceId === id ? null : id;
+        setFollowing(state.followedDeviceId);
+      },
     });
     // Render remote collaborators' carets/selections in the live surface
     // (no-op when it isn't mounted).

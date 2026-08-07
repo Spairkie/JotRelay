@@ -67,6 +67,7 @@ export function initPresence(roomId, onPresenceChange, { readOnly = false } = {}
           hidden:        _hidden,
           joined_at:     Date.now(),
           tab_id:        tabId,
+          following:     null,
         });
         notify();
       }
@@ -90,6 +91,7 @@ async function _track(updates) {
     cursor_pos:    null,
     cursor_anchor: null,
     hidden:        _hidden,
+    following:     null,
     ..._lastTracked,
     ...updates,
   };
@@ -131,6 +133,17 @@ export function setPresenceHidden(hidden) {
   _hidden = !!hidden;
   if (_hidden) clearTimeout(_typingTimer);
   _track({});
+}
+
+/**
+ * Broadcast which device (if any) this device is currently following, so
+ * that device can show a reciprocal "N people are following you" indicator
+ * (see getConnectedDevices()'s followedByCount and ui/panels.js's
+ * renderDevicesList()). Not affected by "Hide my cursor & typing" — following
+ * someone is a deliberate, visible action you took, not passive activity.
+ */
+export function setFollowing(deviceId) {
+  _track({ following: deviceId || null });
 }
 
 /**
@@ -192,12 +205,18 @@ export function getConnectedDevices() {
         cursor_pos:    useCurrent ? (e.cursor_pos    ?? null) : (prev.cursor_pos    ?? null),
         cursor_anchor: useCurrent ? (e.cursor_anchor ?? null) : (prev.cursor_anchor ?? null),
         joined_at:   useCurrent ? joined : prevJoined,
+        following:   useCurrent ? (e.following ?? null) : (prev.following ?? null),
         isMe:        id === myId,
       });
     }
   }
 
   const devices = Array.from(byDevice.values());
+  // Reciprocal of `following`: how many OTHER devices currently have this
+  // one as their followed target — see ui/panels.js's renderDevicesList().
+  for (const d of devices) {
+    d.followedByCount = devices.filter((o) => o.device_id !== d.device_id && o.following === d.device_id).length;
+  }
   devices.sort((a, b) => a.isMe ? -1 : b.isMe ? 1 : a.device_name.localeCompare(b.device_name));
   return devices;
 }

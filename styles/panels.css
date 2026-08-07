@@ -374,6 +374,8 @@
 .device-activity { font-size: 11px; color: var(--text-muted); }
 .device-activity.typing { color: var(--accent); font-style: italic; }
 .device-activity.muted  { color: var(--text-muted); }
+.device-joined { font-size: 11px; color: var(--text-muted); }
+.device-followed-by { font-size: 11px; color: var(--accent); }
 .device-role { font-size: 10px; color: var(--blue); background: rgba(96,165,250,0.1); border-radius: 10px; padding: 1px 7px; }
 .device-you  { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
 .device-empty { font-size: 13px; color: var(--text-muted); padding: 6px 2px; }

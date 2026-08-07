@@ -295,6 +295,22 @@ export function formatTimestamp(date) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** "5m ago" / "2h ago" — coarser and terser than formatTimestamp(), for
+ *  short-lived/live-session contexts (a remote update notice, a connected
+ *  device's join time) rather than a durable record's timestamp. */
+export function relativeTimeShort(ts) {
+  if (!ts) return '';
+  // ts may be a Unix ms number (e.g. presence.js's joined_at) or an ISO
+  // string (e.g. a DB row's updated_at) — coerce to ms so arithmetic
+  // doesn't produce NaN.
+  const msTs  = typeof ts === 'number' ? ts : new Date(ts).getTime();
+  const diffMs = Date.now() - msTs;
+  if (!isFinite(diffMs) || diffMs < 0) return 'just now';
+  if (diffMs < 60_000) return 'just now';
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m ago`;
+  return `${Math.floor(diffMs / 3_600_000)}h ago`;
+}
+
 export function insertTimestamp() {
   return new Date().toLocaleString([], {
     year: 'numeric', month: '2-digit', day: '2-digit',
