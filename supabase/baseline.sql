@@ -2333,6 +2333,18 @@ create table if not exists public.syncpad_room_file_counters (
   next_file_no  integer not null default 0
 );
 
+-- Pure server-side bookkeeping — no client (anon or authenticated) ever
+-- has a legitimate reason to read or write this table directly; every
+-- access goes through the SECURITY DEFINER trigger function below, which
+-- runs as the table owner and bypasses RLS regardless. Supabase grants its
+-- API roles broad default privileges on newly created public tables, so
+-- without this, any anon-key caller could enumerate every room_id that has
+-- ever had a file uploaded (a privacy leak on its own, and a stepping
+-- stone into the room via syncpad_rooms' own open policies), or write
+-- directly to next_file_no to force collisions or reissue deleted
+-- references. Enabling RLS with zero policies denies both.
+alter table public.syncpad_room_file_counters enable row level security;
+
 -- Seed a counter row for every room that already has files, ONLY the
 -- first time this migration ever runs on a given database (gated on the
 -- counters table not existing yet, checked before it's created above, so
@@ -2342,13 +2354,29 @@ create table if not exists public.syncpad_room_file_counters (
 -- earlier version of this migration (the max(file_no)+1 one, or the
 -- syncpad_rooms.file_no_seq one both reverted above) may have already
 -- deleted a file that held a higher number than anything currently
--- present — that number is genuinely unrecoverable once deleted, so
--- seeding exactly at the current max would silently reissue it, one more
--- time, for exactly the rooms where it matters. The buffer trades
+-- present — that number is genuinely unrecoverable once deleted (no
+-- audit trail of every number ever issued exists), so seeding exactly at
+-- the current max would silently reissue it, one more time, for exactly
+-- the rooms where it matters.
+--
+-- IMPORTANT: this buffer is a practical mitigation, not a mathematical
+-- guarantee. A room's true historical high-water mark is bounded only by
+-- how many times a file was ever inserted into it, which this migration
+-- has no record of for installs that ran an older, reuse-prone version of
+-- this trigger — so no finite offset can be *proven* collision-free in
+-- the abstract. What makes 50,000,000 the right practical choice: getting
+-- a real collision requires a single room to have historically issued,
+-- and then lost to a pre-migration deletion, more than 50 million file
+-- references — for a notepad app's file-attachment feature (realistic
+-- usage: tens to low thousands of files per room, ever), that's not a
+-- plausible operational history, only a theoretical one. The buffer trades
 -- consecutive-from-1 numbering after an upgrade (new numbers start higher
--- for rooms that had files before this migration) for a hard guarantee
--- against ever reissuing anything, without needing to know a historical
--- high-water mark that may simply no longer exist anywhere.
+-- for rooms that had files before this migration) for that practical
+-- non-reuse guarantee, without needing to know a historical high-water
+-- mark that may simply no longer exist anywhere. (`file_no` is a 32-bit
+-- integer, so the offset also stays far short of overflow: even a room
+-- that already had a large max(file_no) has well over 2 billion headroom
+-- left after adding it.)
 do $$
 begin
   if not exists (
@@ -2356,14 +2384,14 @@ begin
     where table_schema = 'public' and table_name = 'syncpad_room_file_counters_seeded_marker'
   ) then
     insert into public.syncpad_room_file_counters (room_id, next_file_no)
-    select f.room_id, max(f.file_no) + 100000
+    select f.room_id, max(f.file_no) + 50000000
       from public.syncpad_files f
      group by f.room_id
     on conflict (room_id) do nothing;
 
     -- A tiny marker table, not a real feature table, purely so the seed
     -- above never runs a second time (re-running it would add another
-    -- +100000 on top of whatever's already there). Nothing ever selects
+    -- +50000000 on top of whatever's already there). Nothing ever selects
     -- from or deletes it.
     create table public.syncpad_room_file_counters_seeded_marker (seeded_at timestamptz not null default now());
   end if;
