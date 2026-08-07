@@ -58,6 +58,29 @@ test.describe('URL routing', () => {
     await expect(page.locator('#terms-screen')).not.toHaveClass(/hidden/);
   });
 
+  test('a legal page reached directly (no prior visit this session) falls back to the marketing root', async ({ page }) => {
+    await page.goto('/SyncPad/privacy');
+    await expect(page.locator('#privacy-screen .legal-back-link')).toHaveAttribute('href', '/SyncPad/');
+  });
+
+  test('"Back to SyncPad" returns to /app, not the marketing root, after visiting from there', async ({ page }) => {
+    await page.goto('/SyncPad/app/');
+    await page.goto('/SyncPad/privacy');
+    await expect(page.locator('#privacy-screen .legal-back-link')).toHaveAttribute('href', '/SyncPad/app/');
+  });
+
+  test('"Back to SyncPad" is unaffected by chaining through other legal pages', async ({ page }) => {
+    // Three real sequential navigations, each independently slow in this
+    // environment (blocked external CDN fetches add real seconds per
+    // page.goto — see other single-navigation tests in this file already
+    // taking 15-27s), can comfortably exceed the default 30s test budget.
+    test.setTimeout(90_000);
+    await page.goto('/SyncPad/app/');
+    await page.goto('/SyncPad/privacy');
+    await page.goto('/SyncPad/terms');
+    await expect(page.locator('#terms-screen .legal-back-link')).toHaveAttribute('href', '/SyncPad/app/');
+  });
+
   test('/SyncPad/some-room-id shows app screen', async ({ page }) => {
     if (!(await supabaseAvailable(page))) {
       test.skip(true, 'Supabase JS CDN blocked — room loading requires network access');
