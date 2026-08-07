@@ -146,33 +146,32 @@ self.addEventListener('fetch', (event) => {
   // We don't cache them; let the browser/CDN handle it.
   if (!url.startsWith(self.location.origin)) return;
 
-  // SPA navigation fallback: serve index.html if offline.
-  if (req.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        return await fetch(req);
-      } catch {
-        const cached = await caches.match(`${BASE}/index.html`);
-        return cached || new Response('Offline', { status: 503, statusText: 'Offline' });
-      }
-    })());
-    return;
-  }
-
-  // Same-origin assets: stale-while-revalidate. Precached JS/CSS/icons are
-  // versioned by CACHE_VERSION above, and app/pwa.js's updatefound listener
-  // (backed by the browser's own byte-level diff of this file, independent
-  // of this fetch handler) is what actually detects and prompts for a new
-  // version — so serving the cached copy immediately here and refreshing it
-  // in the background is safe: staleness is bounded by that update prompt,
-  // not indefinite, and repeat loads render instantly regardless of current
-  // network conditions instead of re-fetching every module on every visit.
+  // Navigations and same-origin assets (JS/CSS/icons) both use
+  // stale-while-revalidate, scoped to the SAME open CACHE_VERSION cache —
+  // deliberately, not just for speed. A currently-active service worker
+  // instance keeps handling every fetch for pages it already controls,
+  // including new navigations, until a newer worker actually takes over
+  // (see app/pwa.js's controllerchange reload). If navigations fetched a
+  // fresh index.html over the network while assets kept serving the old
+  // cached copies, a deploy that changes both markup and its corresponding
+  // module/stylesheet could hand a client a split, broken version — a
+  // fresh document paired with stale assets from before the deploy — for
+  // as long as the new worker takes to activate. Keeping both request
+  // types on the same cache generation means they can only ever change
+  // together, in the same reload, when a new worker actually takes control.
+  // app/pwa.js's updatefound listener (backed by the browser's own
+  // byte-level diff of this file, independent of this fetch handler) is
+  // what actually detects and prompts for that new version, so staleness
+  // here is bounded by that update prompt, not indefinite — and repeat
+  // loads render instantly regardless of current network conditions
+  // instead of re-fetching the whole app shell on every visit.
+  const cacheKey = req.mode === 'navigate' ? `${BASE}/index.html` : req;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_VERSION);
-    const cached = await cache.match(req);
+    const cached = await cache.match(cacheKey);
     const networkFetch = fetch(req)
       .then((res) => {
-        if (res && res.ok) cache.put(req, res.clone());
+        if (res && res.ok) cache.put(cacheKey, res.clone());
         return res;
       })
       .catch(() => null);

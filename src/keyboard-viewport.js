@@ -19,6 +19,16 @@ if (window.visualViewport) {
   const root = document.documentElement;
   const _updateKeyboardInset = () => {
     const vv = window.visualViewport;
+    // Pinch-zoom also shrinks visualViewport.height and shifts offsetTop —
+    // indistinguishable from a keyboard using those two values alone. A
+    // non-1 scale means the user is zoomed in, not (necessarily) facing a
+    // keyboard; treat that as "no inset" rather than risk reflowing the
+    // editor under a zoomed-in user's fingers as they pan, which would be
+    // an accessibility regression for anyone relying on pinch-zoom.
+    if (Math.abs(vv.scale - 1) > 0.01) {
+      root.style.setProperty('--kb-inset', '0px');
+      return;
+    }
     const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
     root.style.setProperty('--kb-inset', `${inset}px`);
   };

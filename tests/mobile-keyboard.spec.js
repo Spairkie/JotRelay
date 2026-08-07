@@ -17,6 +17,7 @@ async function stubVisualViewportAndImport(page) {
     const fakeVV = {
       height: window.innerHeight,
       offsetTop: 0,
+      scale: 1,
       addEventListener: (type, fn) => listeners[type].push(fn),
       removeEventListener: (type, fn) => {
         listeners[type] = listeners[type].filter((f) => f !== fn);
@@ -38,12 +39,13 @@ function getKbInset(page) {
   );
 }
 
-async function simulateKeyboard(page, { heightDelta = 0, offsetTop = 0, via = 'resize' } = {}) {
-  await page.evaluate(({ heightDelta, offsetTop, via }) => {
+async function simulateKeyboard(page, { heightDelta = 0, offsetTop = 0, scale = 1, via = 'resize' } = {}) {
+  await page.evaluate(({ heightDelta, offsetTop, scale, via }) => {
     window.__fakeVV.height = window.innerHeight - heightDelta;
     window.__fakeVV.offsetTop = offsetTop;
+    window.__fakeVV.scale = scale;
     window.__fakeVVListeners[via].forEach((fn) => fn());
-  }, { heightDelta, offsetTop, via });
+  }, { heightDelta, offsetTop, scale, via });
 }
 
 test.describe('Mobile keyboard viewport tracking', () => {
@@ -65,6 +67,23 @@ test.describe('Mobile keyboard viewport tracking', () => {
 
     await simulateKeyboard(page, { heightDelta: 300, offsetTop: 20, via: 'scroll' });
     expect(await getKbInset(page)).toBe('280px');
+  });
+
+  test('--kb-inset ignores pinch-zoom (non-1 visualViewport.scale)', async ({ page }) => {
+    await goToLanding(page);
+    await stubVisualViewportAndImport(page);
+
+    // Pinch-zooming in also shrinks visualViewport.height/shifts offsetTop —
+    // indistinguishable from a keyboard using those two values alone. Must
+    // report 0px rather than misreading the zoom as a keyboard and
+    // reflowing the editor under a zoomed-in user's fingers.
+    await simulateKeyboard(page, { heightDelta: 300, scale: 2 });
+    expect(await getKbInset(page)).toBe('0px');
+
+    // Zooming back out to 1:1 with the same height gap now present (e.g. a
+    // real keyboard actually is open) should resume reporting it normally.
+    await simulateKeyboard(page, { heightDelta: 300, scale: 1 });
+    expect(await getKbInset(page)).toBe('300px');
   });
 
   test('--kb-inset never goes negative', async ({ page }) => {
