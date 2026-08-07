@@ -351,18 +351,22 @@ function _ensureOnboardingDom() {
   const dots = document.getElementById('sp-onboarding-dots');
   dots.innerHTML = STEPS.map(() => '<span class="onboarding-dot"></span>').join('');
 
-  // stopPropagation on every tour button, not just these three's own
-  // handlers: a click here bubbling up to document reaches header.js's
-  // "click outside the More dropdown closes it" listener, which sees a
-  // target that's neither inside #more-dropdown nor #btn-more and closes
-  // it right away — undoing this exact click's own _setMoreMenuOpen(true)
-  // (in _showStep(), triggered synchronously by the click that navigated
-  // INTO the Command Palette step) before the frame ever paints. Without
-  // this, that step's real, correctly-positioned dropdown target would be
-  // yanked shut (and its bounding rect back to its closed/transformed
-  // geometry) the instant the user clicked Next to reach it.
-  const stopBubble = (fn) => (e) => { e.stopPropagation(); fn(); };
-  document.getElementById('sp-onboarding-skip').onclick = stopBubble(() => endOnboardingTour());
-  document.getElementById('sp-onboarding-back').onclick = stopBubble(() => _showStep(_stepIndex - 1));
-  document.getElementById('sp-onboarding-next').onclick = stopBubble(() => _showStep(_stepIndex + 1));
+  // stopPropagation for every click anywhere in the tour — not just its
+  // three buttons — bubbling up to document reaches header.js's "click
+  // outside the More dropdown closes it" listener, which sees a target
+  // that's neither inside #more-dropdown nor #btn-more and closes it right
+  // away. That's true of a click on Next (undoing this exact click's own
+  // _setMoreMenuOpen(true) in _showStep(), triggered by the click that
+  // navigated INTO the Command Palette step, before the frame ever paints)
+  // just as much as it's true of a click on the tooltip's body text, the
+  // progress dots, or the dimmed background — anywhere inside this dialog
+  // a user might plausibly click while it's open. One listener on the
+  // overlay itself, in the bubble phase, catches all of them before they
+  // ever reach document — simpler and more complete than wrapping each
+  // interactive element's own handler individually.
+  el.addEventListener('click', (e) => e.stopPropagation());
+
+  document.getElementById('sp-onboarding-skip').onclick = () => endOnboardingTour();
+  document.getElementById('sp-onboarding-back').onclick = () => _showStep(_stepIndex - 1);
+  document.getElementById('sp-onboarding-next').onclick = () => _showStep(_stepIndex + 1);
 }

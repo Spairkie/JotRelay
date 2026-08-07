@@ -73,8 +73,19 @@ export function _wireHeader() {
     e.stopPropagation();
     const open = moreDropdown?.classList.toggle('open');
     moreBtn.setAttribute('aria-expanded', String(!!open));
-    // A-4: move focus to the first menu item when the dropdown opens.
     if (open) {
+      // data-readonly-hide (styles/modals.css) only reacts to
+      // body.read-only-mode — deliberately narrow, since e.g. #btn-settings
+      // also carries it and must stay reachable in a *locked* room (not
+      // read-only-mode) so its owner can reach the very control that
+      // unlocks it. "Take the tour" has no such reason to stay reachable
+      // in any canEdit()-false state — locked, encrypted-without-key, or a
+      // consumed view-once room all block it exactly like read-only-mode
+      // does — so it needs the full predicate, computed here (menu-open
+      // time is the one moment this actually needs to be current, rather
+      // than kept reactively in sync with every permission-changing event).
+      document.getElementById('btn-replay-tour')?.classList.toggle('hidden', !canEdit());
+      // A-4: move focus to the first menu item when the dropdown opens.
       const firstItem = moreDropdown?.querySelector('[role="menuitem"]');
       requestAnimationFrame(() => firstItem?.focus());
     }
