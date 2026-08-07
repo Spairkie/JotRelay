@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'syncpad-v48';
+const CACHE_VERSION = 'syncpad-v49';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -146,35 +146,49 @@ self.addEventListener('fetch', (event) => {
   // We don't cache them; let the browser/CDN handle it.
   if (!url.startsWith(self.location.origin)) return;
 
-  // Navigations and same-origin assets (JS/CSS/icons) both use cache-first,
-  // scoped to the SAME open CACHE_VERSION cache — deliberately, not just
-  // for speed. This cache is treated as immutable once populated: the only
-  // thing that ever writes to it is the install handler's one-shot
-  // PRECACHE_ASSETS pass above, never this fetch handler. An earlier
-  // version of this handler also wrote each cache-miss's network response
-  // back into the SAME open cache at request time — which sounds harmless,
-  // but a currently-active worker instance keeps handling every fetch for
-  // pages it already controls, including new navigations, for as long as
-  // it takes a newer worker to actually take over (see app/pwa.js's
-  // controllerchange reload). Across that window, the network always
-  // serves whatever is *currently deployed*, regardless of which worker
-  // generation is asking — so opportunistic per-request cache.put() calls
-  // could drift the "coherent" CACHE_VERSION cache entry-by-entry as the
-  // user browsed, e.g. picking up a newly-deployed app.js while every
-  // other module it imports is still the old cached copy, and failing if
-  // the new module expects an export the old one doesn't have. Not writing
-  // to the cache at request time at all removes that drift entirely: the
-  // only way this cache's contents ever change is a whole new CACHE_VERSION
-  // being precached atomically on the next deploy, which app/pwa.js's
-  // updatefound listener (backed by the browser's own byte-level diff of
-  // this file) detects and prompts for via the update bar.
-  const cacheKey = req.mode === 'navigate' ? `${BASE}/index.html` : req;
+  // SPA-route navigations (no file extension in the path — an in-app route
+  // like /SyncPad/<room-id> or /SyncPad/admin) map to the cached shell.
+  // Navigations to an actual same-origin file — e.g. the landing page's
+  // "Watch recorded demo" link opening presskit/video/demo.mp4 in a new
+  // tab — are also `mode: 'navigate'` requests, but must serve their own
+  // real content, never the app shell, even while this worker is in
+  // control and even while fully online.
+  const pathname = new URL(url).pathname;
+  const isSpaRoute = req.mode === 'navigate' && !/\.[a-zA-Z0-9]+$/.test(pathname);
+  const cacheKey = isSpaRoute ? `${BASE}/index.html` : req;
+
+  // Cache-first, scoped to the SAME open CACHE_VERSION cache — deliberately,
+  // not just for speed. Once a slot is populated, it is treated as
+  // immutable: an earlier version of this handler wrote every cache-miss's
+  // network response back into the SAME open cache at request time, which
+  // sounds harmless but isn't. A currently-active worker instance keeps
+  // handling every fetch for pages it already controls, including new
+  // navigations, for as long as it takes a newer worker to actually take
+  // over (see app/pwa.js's controllerchange reload); the network always
+  // serves whatever is *currently deployed* regardless of which worker
+  // generation is asking, so overwriting an ALREADY-cached entry mid-session
+  // could drift the "coherent" cache entry-by-entry — e.g. picking up a
+  // newly-deployed app.js while every module it imports is still the old
+  // cached copy, and failing if the new module expects an export the old
+  // one doesn't have.
+  //
+  // Writing on a genuine MISS is still safe and worth keeping: the install
+  // handler above tolerates individual cache.add() failures (a transient
+  // network blip while precaching one file must not block the whole
+  // install), which without this would leave that one slot permanently
+  // unfillable — offline-broken for that asset until the next deploy bumps
+  // CACHE_VERSION — even though every later online visit succeeds. Filling
+  // an empty slot once can't reintroduce the drift above: once written, that
+  // slot hits on every subsequent request for the rest of this generation's
+  // lifetime and is never written to again.
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_VERSION);
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
     try {
-      return await fetch(req);
+      const networkResponse = await fetch(req);
+      if (networkResponse && networkResponse.ok) cache.put(cacheKey, networkResponse.clone());
+      return networkResponse;
     } catch {
       return new Response('Offline', { status: 503, statusText: 'Offline' });
     }
