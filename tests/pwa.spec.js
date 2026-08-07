@@ -47,12 +47,18 @@ test.describe('PWA installability', () => {
     const client = await page.context().newCDPSession(page);
     await client.send('Page.enable');
     await page.goto('/SyncPad/');
-    // Chrome's own installability parser — the real signal it uses to
-    // decide whether to fire beforeinstallprompt, not just "the file
-    // fetches and JSON.parses".
+    await waitForServiceWorkerReady(page);
+    // getAppManifest().errors only covers manifest retrieval/parsing (a
+    // missing field, invalid JSON) — a manifest that parses fine but whose
+    // icons are unreachable or undecodable would still pass that check
+    // while never actually being installable. getInstallabilityErrors()
+    // is Chrome's real beforeinstallprompt verdict, so assert both.
     const manifest = await client.send('Page.getAppManifest');
     expect(manifest.url).toContain('/SyncPad/manifest.json');
     expect(manifest.errors).toEqual([]);
+
+    const installability = await client.send('Page.getInstallabilityErrors');
+    expect(installability.installabilityErrors).toEqual([]);
   });
 
   test('service worker registers, activates, and takes control of the page', async ({ page }) => {
@@ -90,9 +96,23 @@ test.describe('Offline behavior', () => {
     await page.goto('/SyncPad/app/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#app-landing-screen')).toBeVisible();
 
+    // The priming navigation above leaves the browser's ordinary HTTP
+    // cache warm with cross-origin CDN responses (Supabase, etc.) —
+    // service-worker.js deliberately bypasses every cross-origin request
+    // (only same-origin gets the SPA-shell fallback), so without clearing
+    // that cache this room check would silently pass off the back of an
+    // HTTP cache hit rather than exercising a genuine cold offline boot.
+    const client = await page.context().newCDPSession(page);
+    await client.send('Network.clearBrowserCache');
+
     const roomResponse = await page.goto('/SyncPad/offline-shell-check-room', { waitUntil: 'domcontentloaded' });
     expect(roomResponse?.status()).toBe(200);
-    await expect(page.locator('body')).toBeVisible();
+    // The room's own JS can't reach Supabase (cross-origin, un-cached, and
+    // offline) and correctly surfaces the app's loading-error/retry UI
+    // rather than hanging or crashing — asserting on that element, not
+    // just <body>, actually exercises room boot instead of only the
+    // always-present cached index.html shell underneath it.
+    await expect(page.locator('#loading-retry-btn')).toBeVisible();
     await context.setOffline(false);
   });
 });
