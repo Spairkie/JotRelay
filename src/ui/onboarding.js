@@ -26,7 +26,10 @@ const STEPS = [
   {
     selector: '#btn-share',
     title: 'Share this room',
-    text: 'Anyone with the link can view and edit. Need a read-only link, a passcode, or a hard guarantee nobody else can edit? They’re all in here.',
+    // The Share modal itself only covers the editable/read-only links and
+    // the short code — passcode and the server-enforced editing lock live
+    // in Settings (More → Settings), not here, so don't imply otherwise.
+    text: 'Anyone with the link can view and edit. Get a read-only link or a short spoken code here — for a passcode or to lock editing entirely, look in More → Settings.',
   },
   {
     selector: '#btn-more',
@@ -84,6 +87,12 @@ export function startOnboardingTour() {
 }
 
 function _repositionLoop() {
+  // The mode-toggle step's title/text are viewport-dependent (see STEPS
+  // above) — re-applying them every frame, not just on step entry, keeps
+  // them correct if the user narrows or rotates the viewport across the
+  // 640px breakpoint while sitting on that step, the same way the
+  // position itself already tracks any layout change live.
+  _applyStepContent(STEPS[_stepIndex]);
   _positionStep();
   // _positionStep() itself calls endOnboardingTour() (clearing 'visible')
   // if the current target has vanished — check afterward rather than
@@ -93,6 +102,20 @@ function _repositionLoop() {
   if (overlay?.classList.contains('visible')) {
     _rafId = requestAnimationFrame(_repositionLoop);
   }
+}
+
+function _applyStepContent(step) {
+  if (!step) return;
+  const titleEl = document.getElementById('sp-onboarding-title');
+  const textEl  = document.getElementById('sp-onboarding-text');
+  const newTitle = typeof step.title === 'function' ? step.title() : step.title;
+  const newText  = typeof step.text  === 'function' ? step.text()  : step.text;
+  // Guard against writing identical text every frame — a real change still
+  // updates the aria-live region correctly, but an unconditional write
+  // could read to some screen readers as the content "changing" on every
+  // single frame even when the string is byte-identical.
+  if (titleEl.textContent !== newTitle) titleEl.textContent = newTitle;
+  if (textEl.textContent  !== newText)  textEl.textContent  = newText;
 }
 
 export function endOnboardingTour() {
@@ -137,8 +160,7 @@ function _showStep(index) {
     return;
   }
   _stepIndex = index;
-  document.getElementById('sp-onboarding-title').textContent = typeof step.title === 'function' ? step.title() : step.title;
-  document.getElementById('sp-onboarding-text').textContent  = typeof step.text  === 'function' ? step.text()  : step.text;
+  _applyStepContent(step);
   document.getElementById('sp-onboarding-count').textContent = `${index + 1} of ${STEPS.length}`;
   const backBtn = document.getElementById('sp-onboarding-back');
   const nextBtn = document.getElementById('sp-onboarding-next');
