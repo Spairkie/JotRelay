@@ -90,4 +90,20 @@ test.describe('Mobile keyboard viewport tracking', () => {
     );
     expect(toastBottom).toBe('324px');
   });
+
+  test('#app-screen reserves bottom space for the raised mobile action bar', async ({ page }) => {
+    // padding-bottom on #app-screen only applies under the mobile
+    // (max-width: 639px) breakpoint — without a matching viewport, this
+    // regression (the editor's last lines rendering under the bar once it
+    // rises for the keyboard) can't be observed at all.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await goToLanding(page);
+    await page.evaluate(() => document.documentElement.style.setProperty('--kb-inset', '300px'));
+    await page.waitForTimeout(250);
+
+    const paddingBottom = await page.evaluate(
+      () => getComputedStyle(document.getElementById('app-screen')).paddingBottom
+    );
+    expect(paddingBottom).toBe('360px'); // 60px base bar height + 300px keyboard inset
+  });
 });

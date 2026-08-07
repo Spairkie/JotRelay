@@ -379,7 +379,11 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 ══════════════════════════════════════════════════════════════ */
 @media (max-width: 639px) {
   .mobile-action-bar { display: flex; }
-  #app-screen { padding-bottom: 60px; }
+  /* Must track .mobile-action-bar's own bottom offset (below) — otherwise
+     the bar rises above the keyboard via --kb-inset while the editor's
+     scrollable area doesn't reserve the extra space, leaving its last
+     lines rendered underneath the now-raised bar. */
+  #app-screen { padding-bottom: calc(60px + var(--kb-inset, 0px)); transition: padding-bottom 0.15s ease; }
   #toast-container { bottom: calc(72px + var(--kb-inset, 0px)); }
   .app-footer { display: none; }
   .app-header { padding: 9px 12px; }
@@ -637,7 +641,7 @@ kbd {
     bottom: calc(56px + var(--kb-inset, 0px)); /* 56px ≈ height of .pwa-bar */
   }
   body:has(#pwa-install-bar.visible) #app-screen {
-    padding-bottom: calc(60px + 56px);
+    padding-bottom: calc(60px + 56px + var(--kb-inset, 0px));
   }
   body:has(#pwa-install-bar.visible) #toast-container {
     bottom: calc(72px + 56px + var(--kb-inset, 0px));

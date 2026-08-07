@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'syncpad-v46';
+const CACHE_VERSION = 'syncpad-v47';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -26,6 +26,7 @@ const PRECACHE_ASSETS = [
   `${BASE}/styles/onboarding.css`,
   `${BASE}/styles/admin.css`,
   `${BASE}/src/app.js`,
+  `${BASE}/src/keyboard-viewport.js`,
   `${BASE}/src/app/state.js`,
   `${BASE}/src/app/routing.js`,
   `${BASE}/src/app/room-lifecycle.js`,
@@ -158,20 +159,27 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Same-origin assets: network-first with cache fallback.
+  // Same-origin assets: stale-while-revalidate. Precached JS/CSS/icons are
+  // versioned by CACHE_VERSION above, and app/pwa.js's updatefound listener
+  // (backed by the browser's own byte-level diff of this file, independent
+  // of this fetch handler) is what actually detects and prompts for a new
+  // version — so serving the cached copy immediately here and refreshing it
+  // in the background is safe: staleness is bounded by that update prompt,
+  // not indefinite, and repeat loads render instantly regardless of current
+  // network conditions instead of re-fetching every module on every visit.
   event.respondWith((async () => {
-    try {
-      const networkResponse = await fetch(req);
-      if (networkResponse && networkResponse.ok) {
-        const clone = networkResponse.clone();
-        caches.open(CACHE_VERSION).then((cache) => cache.put(req, clone)).catch(() => {});
-      }
-      return networkResponse;
-    } catch {
-      const cached = await caches.match(req);
-      if (cached) return cached;
-      return new Response('Offline', { status: 503, statusText: 'Offline' });
-    }
+    const cache = await caches.open(CACHE_VERSION);
+    const cached = await cache.match(req);
+    const networkFetch = fetch(req)
+      .then((res) => {
+        if (res && res.ok) cache.put(req, res.clone());
+        return res;
+      })
+      .catch(() => null);
+    if (cached) return cached;
+    const networkResponse = await networkFetch;
+    if (networkResponse) return networkResponse;
+    return new Response('Offline', { status: 503, statusText: 'Offline' });
   })());
 });
 
