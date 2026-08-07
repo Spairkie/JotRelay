@@ -498,19 +498,16 @@ function _stripHeadingMarkup(raw) {
     .trim();
 }
 
-// Live mode is the seamless, Typora-style surface — the whole point is that
-// rendered constructs show their result immediately, not behind an extra
-// click. Unlike the static renderer's .md-inline-toc (export/non-live
-// preview, where a reader opting into a plain HTML document reasonably
-// expects a collapsed-by-default nav) and the floating .note-toc auto-nav
-// (a persistent chrome element, not part of the document being edited),
-// the [TOC] widget here stands in for real document content while you're
-// actively writing it, so it starts open. _liveTocOpen remembers a manual
-// collapse across re-renders (new transactions re-create the widget only
-// when the heading list itself changes — eq() above reuses the existing DOM
-// otherwise — so without this, editing an unrelated heading while the user
-// had deliberately collapsed the nav would silently pop it open again).
-let _liveTocOpen = true;
+// Same collapsed-by-default convention as the static renderer's
+// .md-inline-toc (export/non-live preview) and the floating .note-toc
+// auto-nav — a [TOC] block is a navigation aid, not primary content, so it
+// shouldn't dominate the screen with a full link list the moment a document
+// loads. _liveTocOpen remembers a manual expand/collapse across re-renders
+// (new transactions re-create the widget only when the heading list itself
+// changes — eq() above reuses the existing DOM otherwise — so without this,
+// editing an unrelated heading after the user had deliberately expanded the
+// nav would silently collapse it again).
+let _liveTocOpen = false;
 
 class _TocWidget extends WidgetType {
   constructor(entries) { super(); this.entries = entries; }
@@ -594,7 +591,7 @@ function _collectHeadings(state) {
   return headings;
 }
 
-function _computeTocBadges(state, isInitial) {
+function _computeTocBadges(state, bypassTouchReveal) {
   const headings = _collectHeadings(state);
   if (headings.length < 2) return Decoration.none;
 
@@ -605,15 +602,20 @@ function _computeTocBadges(state, isInitial) {
     // Reveal the raw "[TOC]" marker while the cursor is actually on it (same
     // pattern as every other hideable construct in this file) — otherwise
     // there's no way to select/delete the line without leaving Live mode.
-    // Skipped on the field's very first computation (isInitial): mount()
-    // never gives EditorState.create() an explicit selection, so CM6
-    // defaults to a bare cursor at position 0 — an arbitrary artifact of
-    // state construction, not a real "the user is editing this" signal. If
-    // [TOC] happens to sit on line 1 (a natural place to put one), that
-    // default cursor "touches" it and the widget would render as raw text
-    // until the first real click/selection change moved the cursor away,
-    // which reads as "the TOC doesn't render until the editor is focused."
-    if (!isInitial && _selectionTouches(state, line.from, line.to)) continue;
+    // Skipped whenever bypassTouchReveal is set: mount() never gives
+    // EditorState.create() an explicit selection, so CM6 defaults to a bare
+    // cursor at position 0 — an arbitrary artifact of state construction,
+    // not a real "the user is editing this" signal. The same is true of any
+    // *programmatic* doc replacement after mount (syncFromText — a remote
+    // content update, or a room-load race that mounts before real content
+    // arrives and syncs it in right after): CM6 maps the old selection
+    // through the change, which can just as easily leave it sitting at/near
+    // position 0. If [TOC] happens to sit on line 1 (a natural place to put
+    // one) in either case, that non-user-driven cursor "touches" it and the
+    // widget would render as raw text until an unrelated real interaction
+    // moved the cursor away, which reads as "the TOC doesn't render until
+    // the editor is focused."
+    if (!bypassTouchReveal && _selectionTouches(state, line.from, line.to)) continue;
     // A *replace*, not an insertion: this was previously Decoration.widget()
     // (additive), which left the literal "[TOC]" text sitting right below
     // the rendered Contents box instead of being hidden by it — the one
@@ -631,8 +633,11 @@ const _tocField = StateField.define({
   // Recomputed on every transaction, not just docChanged — whether the
   // marker line renders as the widget or reveals its raw "[TOC]" text now
   // depends on the *selection* too (reveal-while-touched, same as
-  // Image/HorizontalRule/_tableField below).
-  update(value, tr) { return _computeTocBadges(tr.state); },
+  // Image/HorizontalRule/_tableField below). A transaction carrying the
+  // External annotation (syncFromText — see its own comment) is a
+  // programmatic content replacement, not a real user edit/selection, so it
+  // gets the same touch-check bypass as the field's very first computation.
+  update(value, tr) { return _computeTocBadges(tr.state, !!tr.annotation(External)); },
   provide: (f) => EditorView.decorations.from(f),
 });
 
@@ -1209,12 +1214,12 @@ export function estimateViewportY(pos) {
  */
 export function mount(container, initialValue, { onChange, onCursorActivity, onImageFiles, readOnly = false } = {}) {
   destroy();
-  // _liveTocOpen is module-global so a manual collapse survives this file's
+  // _liveTocOpen is module-global so a manual expand survives this file's
   // own re-renders (widget reuse via eq() — see its declaration above), but
   // that means it would otherwise leak across an unrelated destroy()/mount()
-  // pair too — collapsing the TOC in one room would leave a freshly opened
-  // room's TOC starting collapsed as well. Reset it per mounted document.
-  _liveTocOpen = true;
+  // pair too — expanding the TOC in one room would leave a freshly opened
+  // room's TOC starting expanded as well. Reset it per mounted document.
+  _liveTocOpen = false;
   _onChange = onChange || null;
   _onCursorActivity = onCursorActivity || null;
   _onImageFiles = onImageFiles || null;

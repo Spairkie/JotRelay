@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 51 — Live-mode [TOC] and code-block regressions
+
+#### Fixed
+- **[TOC] could get permanently stuck showing raw `[TOC]` text instead of the rendered Contents widget, with no click or focus able to fix it.** The existing "don't reveal raw text while the cursor merely defaults to position 0" fix (Phase 48) only covered the *very first* `EditorState.create()` call. Any later *programmatic* full-document replacement via `syncFromText()` — a room-load race where `mount()` runs before real content arrives and gets synced in right after, or a remote edit arriving over Broadcast on an already-mounted surface — goes through the field's `update()` path instead, where CM6 maps the old selection through the change rather than resetting it. A selection sitting at position 0 (the default right after an empty mount) stayed mapped there, "touching" a `[TOC]` on line 1 forever, since nothing else was going to move that device's cursor on its own. Fixed by checking the transaction's existing `External` annotation (already used elsewhere in this file to distinguish `syncFromText()`'s programmatic syncs from real user edits) and bypassing the touch-reveal check for those too, not just the field's initial computation. Verified directly against the real module (`mount('')` + `syncFromText(docWithTocOnLine1)`, no interaction) via both a throwaway harness and a new Playwright regression test.
+- **The Live-mode `[TOC]` widget started expanded by default**, unlike the static/export renderer's `.md-inline-toc`, which has always been collapsed-by-default. Changed `_liveTocOpen`'s default (and its per-mount reset) to `false` for parity — a `[TOC]` block is a navigation aid, not primary content, in both surfaces now. `tests/live-editor-rendering.spec.js`'s TOC tests updated to match.
+
+#### Changed
+- **Fenced code blocks in both the Live surface and the static/export preview no longer render visibly narrower than surrounding paragraph text.** A `max-width: 90%` rule on desktop (added in an earlier "narrow the code fence for visual proportion" pass) left a code block's right edge stopping well short of the paragraph column's own edge — in practice this read as broken/misaligned rather than intentionally proportioned, not the "premium" look it was going for. Removed on both `.note-preview pre` and `.note-live .cm-md-codeblock`; both now span the full reading-column width, matching paragraph text, GitHub, Notion, and Typora's own convention for rendered code blocks.
+- **The Live surface's code-block background was invisible.** `.note-live` itself is painted `--bg-surface`, and `.cm-md-codeblock` was *also* `--bg-surface` — identical colors, so the "box" had no visible fill at all, just a top/bottom border line floating over otherwise-plain text (the static preview's equivalent looked fine only because `.note-preview` itself has no background of its own, leaving real contrast against `--bg-base`). Changed to `--bg-elevated`, the same "one step up from the surface it sits on" relationship the static preview's `pre` already has against the page background. Verified visually via harness screenshots in both a dark and the `paper-light` theme.
+
 ### Phase 50 — First-time onboarding tour
 
 #### Added
