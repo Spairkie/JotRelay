@@ -46,12 +46,25 @@ function _skipIfSupabaseUnavailable(sbAvail) {
  * cases those are). Automatically skips the calling test when Supabase is
  * not reachable (CDN blocked, network policy) so flaky timeouts become
  * clean skips.
+ *
+ * Every call here goes through the same isNewRoom: true path the
+ * first-time onboarding tour (src/ui/onboarding.js) triggers on — so by
+ * default this seeds the tour's "seen" flag before creating the room, or
+ * its full-screen overlay would intercept every subsequent click any
+ * *other* test makes with the room this helper hands back. Pass
+ * `{ skipOnboarding: false }` only from tests that specifically want to
+ * exercise the tour itself (see tests/onboarding.spec.js).
+ * @param {import('@playwright/test').Page} page
+ * @param {{ skipOnboarding?: boolean }} [options]
  * @returns {string} The room path (e.g. "abc123")
  */
-export async function createFreshRoom(page) {
+export async function createFreshRoom(page, { skipOnboarding = true } = {}) {
   await goToAppLanding(page);
   const sbAvail = await page.evaluate(() => typeof window.supabase !== 'undefined');
   _skipIfSupabaseUnavailable(sbAvail);
+  if (skipOnboarding) {
+    await page.evaluate(() => { try { localStorage.setItem('syncpad_onboarding_seen', 'true'); } catch {} });
+  }
   await page.click('.landing-create-btn');
   await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
   await page.waitForFunction(() => window.__syncpadEventsWired === true, null, { timeout: 5000 });

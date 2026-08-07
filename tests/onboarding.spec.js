@@ -1,14 +1,18 @@
 // tests/onboarding.spec.js
 // First-time product tour — see src/ui/onboarding.js. Every scenario needs
 // a genuinely fresh room (isNewRoom: true triggers the tour), so these all
-// use createFreshRoom() rather than the shared fixture room.
+// use createFreshRoom() rather than the shared fixture room — and every
+// call passes { skipOnboarding: false }, since createFreshRoom() seeds the
+// tour's "seen" flag by default so its full-screen overlay doesn't
+// intercept clicks in every *other* suite that uses it for an unrelated
+// fresh room (settings.spec.js, history.spec.js, short-room-code.spec.js).
 
 import { test, expect } from '@playwright/test';
 import { createFreshRoom } from './helpers.js';
 
 test.describe('First-time onboarding tour', () => {
   test('walks through all 4 steps end to end and marks itself seen', async ({ page }) => {
-    await createFreshRoom(page);
+    await createFreshRoom(page, { skipOnboarding: false });
 
     const overlay = page.locator('#sp-onboarding-overlay');
     await expect(overlay).toHaveClass(/visible/);
@@ -35,7 +39,7 @@ test.describe('First-time onboarding tour', () => {
   });
 
   test('Back navigates to the previous step', async ({ page }) => {
-    await createFreshRoom(page);
+    await createFreshRoom(page, { skipOnboarding: false });
     await expect(page.locator('#sp-onboarding-overlay')).toHaveClass(/visible/);
 
     await page.click('#sp-onboarding-next');
@@ -46,7 +50,7 @@ test.describe('First-time onboarding tour', () => {
   });
 
   test('Skip tour dismisses immediately and marks the tour seen', async ({ page }) => {
-    await createFreshRoom(page);
+    await createFreshRoom(page, { skipOnboarding: false });
     const overlay = page.locator('#sp-onboarding-overlay');
     await expect(overlay).toHaveClass(/visible/);
 
@@ -58,7 +62,7 @@ test.describe('First-time onboarding tour', () => {
   });
 
   test('Escape closes the tour', async ({ page }) => {
-    await createFreshRoom(page);
+    await createFreshRoom(page, { skipOnboarding: false });
     const overlay = page.locator('#sp-onboarding-overlay');
     await expect(overlay).toHaveClass(/visible/);
 
@@ -67,11 +71,11 @@ test.describe('First-time onboarding tour', () => {
   });
 
   test('does not reappear on a second room creation in the same browser', async ({ page }) => {
-    await createFreshRoom(page);
+    await createFreshRoom(page, { skipOnboarding: false });
     await expect(page.locator('#sp-onboarding-overlay')).toHaveClass(/visible/);
     await page.click('#sp-onboarding-skip');
 
-    await createFreshRoom(page);
+    await createFreshRoom(page, { skipOnboarding: false });
     // The overlay element only exists once the tour has ever been started,
     // so on this second room it should never even be created — asserting
     // "not visible" on a possibly-absent element via .count() rather than
@@ -81,7 +85,7 @@ test.describe('First-time onboarding tour', () => {
   });
 
   test('focuses the Next button on open, traps Tab, and restores focus on close', async ({ page }) => {
-    await createFreshRoom(page);
+    await createFreshRoom(page, { skipOnboarding: false });
     await expect(page.locator('#sp-onboarding-overlay')).toHaveClass(/visible/);
 
     // startApp() focuses the editor before the tour opens; the tour must
@@ -106,14 +110,14 @@ test.describe('First-time onboarding tour', () => {
   });
 
   test('is removed from the tab order and accessibility tree once closed', async ({ page }) => {
-    await createFreshRoom(page);
+    await createFreshRoom(page, { skipOnboarding: false });
     await page.click('#sp-onboarding-skip');
     await expect(page.locator('#sp-onboarding-overlay')).toHaveAttribute('inert', '');
   });
 
   test('does not advertise Split mode on a narrow viewport where it is hidden', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 700 });
-    await createFreshRoom(page);
+    await createFreshRoom(page, { skipOnboarding: false });
     await page.click('#sp-onboarding-next');
     await expect(page.locator('#sp-onboarding-title')).toHaveText('Source or Live');
     const text = await page.locator('#sp-onboarding-text').textContent();

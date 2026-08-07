@@ -36,7 +36,7 @@ const STEPS = [
 ];
 
 let _stepIndex = 0;
-let _resizeHandler = null;
+let _rafId = null;
 let _previouslyFocused = null;
 // In-memory fallback for the same page session: if localStorage.setItem()
 // throws (quota exceeded, private-browsing restrictions, etc.) while
@@ -71,9 +71,28 @@ export function startOnboardingTour() {
   // interaction but never claimed the actual focus.
   _previouslyFocused = document.activeElement;
   document.addEventListener('keydown', _onOnboardingKey);
-  _resizeHandler = () => _positionStep();
-  window.addEventListener('resize', _resizeHandler);
+  // A window resize isn't the only thing that can move the spotlighted
+  // target: e.g. going offline mid-tour inserts an offline banner above
+  // the header (UI.showOfflineBanner()), shifting the Share/More buttons
+  // down without changing window dimensions at all, so a resize-only
+  // listener would leave the highlight ring pointing at empty space until
+  // the next step change. Polling every frame while the tour is open
+  // catches any layout-affecting cause, not just the ones this module
+  // happens to know about.
+  _rafId = requestAnimationFrame(_repositionLoop);
   _showStep(0);
+}
+
+function _repositionLoop() {
+  _positionStep();
+  // _positionStep() itself calls endOnboardingTour() (clearing 'visible')
+  // if the current target has vanished — check afterward rather than
+  // unconditionally rescheduling, or the loop would keep re-arming itself
+  // forever even after the tour has already closed.
+  const overlay = document.getElementById('sp-onboarding-overlay');
+  if (overlay?.classList.contains('visible')) {
+    _rafId = requestAnimationFrame(_repositionLoop);
+  }
 }
 
 export function endOnboardingTour() {
@@ -85,7 +104,7 @@ export function endOnboardingTour() {
   // whole subtree from both until the tour opens again.
   overlay.setAttribute('inert', '');
   document.removeEventListener('keydown', _onOnboardingKey);
-  if (_resizeHandler) { window.removeEventListener('resize', _resizeHandler); _resizeHandler = null; }
+  if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
   if (_previouslyFocused && document.contains(_previouslyFocused)) _previouslyFocused.focus();
   _previouslyFocused = null;
 }
