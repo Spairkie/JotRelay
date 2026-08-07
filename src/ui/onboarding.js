@@ -1,9 +1,13 @@
 // SyncPad – ui/onboarding.js
 // First-time product tour: a small coachmark sequence spotlighting the
-// editor, mode toggle, share button, and more-menu the first time anyone
-// ever creates a room in this browser. Shown once, ever — gated by a
-// localStorage flag, not room state (same category as the other
-// user-global preferences in src/app/state.js).
+// editor, mode toggle, command palette, share button, and more-menu, shown
+// the first time anyone ever creates a room in this browser. Auto-triggered
+// once, ever — gated by a localStorage flag, not room state (same category
+// as the other user-global preferences in src/app/state.js) — but also
+// replayable any time afterward via the More menu's "Take the Tour" item
+// (see src/app/header.js), which calls startOnboardingTour() directly and
+// so bypasses that gate entirely; hasSeenOnboarding() only governs the
+// automatic first-room trigger in room-lifecycle.js.
 
 const SEEN_KEY = 'syncpad_onboarding_seen';
 
@@ -24,6 +28,18 @@ const STEPS = [
       : 'Switch between raw Markdown, a live rendered view you can edit directly, or both side by side.'),
   },
   {
+    // Lives inside the (normally closed) More dropdown — see
+    // opensMoreMenu below and _setMoreMenuOpen().
+    selector: '#btn-command-palette',
+    opensMoreMenu: true,
+    title: 'Command palette',
+    // Not "anytime": shortcuts.js keeps Ctrl/Cmd+K as "insert a Markdown
+    // link" while either editing surface has focus, and only opens this
+    // outside the editor — the exact opposite of what a user landing back
+    // in the editor after this tour and pressing it would expect.
+    text: () => `Click here, or press ${_isMac() ? 'Cmd' : 'Ctrl'} K outside the editor, to jump straight to any feature — Templates, Find, Settings, Export, and more.`,
+  },
+  {
     selector: '#btn-share',
     title: 'Share this room',
     // The Share modal itself only covers the editable/read-only links and
@@ -34,9 +50,13 @@ const STEPS = [
   {
     selector: '#btn-more',
     title: 'Everything else',
-    text: 'Files, Settings, Templates, keyboard shortcuts, and more all live behind this menu.',
+    text: 'Files, Settings, Templates, keyboard shortcuts, and more all live behind this menu — including this tour, any time you want to see it again.',
   },
 ];
+
+function _isMac() {
+  return /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
+}
 
 let _stepIndex = 0;
 let _rafId = null;
@@ -60,6 +80,20 @@ function _markOnboardingSeen() {
   try { localStorage.setItem(SEEN_KEY, 'true'); } catch {}
 }
 
+// Opens/closes the real header "More" dropdown so a step whose target lives
+// inside it (Command Palette) has something real, correctly positioned to
+// spotlight — the dropdown's own CSS lays it out (position:absolute) even
+// while visually hidden via opacity/transform, so its items already have a
+// non-zero bounding rect closed, at the *wrong* scaled/shifted geometry, so
+// skipping this would point the highlight ring at empty space or the wrong
+// spot. Duplicated here rather than importing app/header.js's own
+// closeMoreDropdown(): src/ui/* is a leaf DOM layer app/* builds on, and
+// reaching back up to app/* from here would invert that dependency.
+function _setMoreMenuOpen(open) {
+  document.getElementById('more-dropdown')?.classList.toggle('open', open);
+  document.getElementById('btn-more')?.setAttribute('aria-expanded', String(open));
+}
+
 export function startOnboardingTour() {
   _markOnboardingSeen(); // once offered, never auto-shown again — even if dismissed mid-tour
   _ensureOnboardingDom();
@@ -73,7 +107,19 @@ export function startOnboardingTour() {
   // keeps landing on the page behind the overlay, which visually blocks
   // interaction but never claimed the actual focus.
   _previouslyFocused = document.activeElement;
-  document.addEventListener('keydown', _onOnboardingKey);
+  // Capture phase, not the default bubble phase: the app's own global
+  // shortcut handlers (shortcuts.js's document keydown listener, the More
+  // dropdown's Escape-closer in header.js, the command palette's Ctrl K
+  // opener) are all registered on `document` too, in the bubble phase. Tab
+  // and Escape aside, nothing here previously stopped a key from *also*
+  // reaching those once it left this handler — Ctrl K would open the real
+  // command palette behind the tour's own overlay, Ctrl+/ would open the
+  // shortcuts modal, Alt+Shift+T would edit the note underneath, all while
+  // the tour's focus trap and pointer-blocking overlay made it look like
+  // none of that could happen. Listening in capture fires this handler
+  // before any of those bubble-phase ones even see the event, and
+  // stopPropagation() below keeps it from ever reaching them.
+  document.addEventListener('keydown', _onOnboardingKey, true);
   // A window resize isn't the only thing that can move the spotlighted
   // target: e.g. going offline mid-tour inserts an offline banner above
   // the header (UI.showOfflineBanner()), shifting the Share/More buttons
@@ -104,6 +150,24 @@ function _repositionLoop() {
   }
 }
 
+// Restarts the tooltip's content-in and highlight-pop CSS animations on
+// every real step change (called only from _showStep(), never from the
+// per-frame _repositionLoop() — replaying it every frame would turn a
+// one-shot "new step arrived" cue into a distracting constant flicker).
+// Removing then reflowing then re-adding the class is the standard trick
+// for restarting a CSS animation that's already applied from the previous
+// step — just re-adding the same class name is a no-op to the browser.
+function _playStepTransition() {
+  const content   = document.getElementById('sp-onboarding-content');
+  const highlight = document.getElementById('sp-onboarding-highlight');
+  for (const el of [content, highlight]) {
+    if (!el) continue;
+    el.classList.remove('onboarding-pop-in');
+    void el.offsetWidth;
+    el.classList.add('onboarding-pop-in');
+  }
+}
+
 function _applyStepContent(step) {
   if (!step) return;
   const titleEl = document.getElementById('sp-onboarding-title');
@@ -126,15 +190,64 @@ export function endOnboardingTour() {
   // the tab order and accessibility tree indefinitely — inert removes the
   // whole subtree from both until the tour opens again.
   overlay.setAttribute('inert', '');
-  document.removeEventListener('keydown', _onOnboardingKey);
+  // The `true` (capture) here must match the `true` addEventListener was
+  // called with in startOnboardingTour() — addEventListener/
+  // removeEventListener only match a listener when the capture flag is
+  // identical; a bare removeEventListener('keydown', _onOnboardingKey)
+  // targets the (nonexistent) bubble-phase registration and silently
+  // leaves the real capture-phase one attached forever.
+  document.removeEventListener('keydown', _onOnboardingKey, true);
   if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
+  // Unconditional, not just for whichever step happened to be showing:
+  // cheap no-op if it was already closed, and guarantees the tour never
+  // leaves the real More menu stuck open behind itself on any exit path
+  // (Escape, Skip, Done, or a forced close from room navigation).
+  _setMoreMenuOpen(false);
   if (_previouslyFocused && document.contains(_previouslyFocused)) _previouslyFocused.focus();
   _previouslyFocused = null;
 }
 
 function _onOnboardingKey(e) {
+  // Swallow every key while the tour is open, not just Tab/Escape — this
+  // runs in the capture phase (see startOnboardingTour()'s comment), so
+  // stopping it here keeps it from ever reaching shortcuts.js's global
+  // handler, the More dropdown's own Escape-closer, the command palette's
+  // Ctrl K opener, or anything else listening on document. Without this,
+  // the tour's focus trap and pointer-blocking overlay only *looked*
+  // modal — Ctrl K could still open the real command palette behind it,
+  // Ctrl+/ the shortcuts modal, or a text-insert shortcut edit the note
+  // underneath, none of which the trap or overlay actually prevented.
+  e.stopPropagation();
   if (e.key === 'Escape') { e.preventDefault(); endOnboardingTour(); return; }
-  if (e.key !== 'Tab') return;
+  // Enter/Space's browser default on a focused <button> *is* activating
+  // it — Enter fires click on keydown, Space fires it on keyup — and focus
+  // is always on Skip/Back/Next while the tour is open, never anywhere
+  // preventDefault() would need to suppress that for. The blanket
+  // preventDefault() below is for genuine browser-shortcut collisions
+  // (Ctrl/Cmd K et al.), not for a button doing exactly what a keyboard
+  // user pressing Enter/Space on it expects; catching these first and
+  // returning without it was the one gap in the previous round's fix —
+  // it preventDefault()'d *every* non-Tab key, silently cancelling the
+  // synthesized click and leaving Tab able to move focus among the tour's
+  // controls but nothing able to actually activate any of them.
+  if (e.key === 'Enter' || e.key === ' ') return;
+  if (e.key !== 'Tab') {
+    // preventDefault() too, not just stopPropagation() — stopping JS
+    // propagation to *other listeners* does nothing about the browser's
+    // own native handling of the same key combo. The Command Palette
+    // step's own copy actively tells the user to press Ctrl/Cmd K; in a
+    // browser where that combo is bound to the address bar or
+    // browser-native search (varies by browser/OS), following that
+    // instruction while this handler only stopPropagation()'d would move
+    // focus out of the page entirely — out of this handler's reach and
+    // out of the tour's own focus trap. Deliberately excluded from Tab:
+    // its own handling below only preventDefault()s at the wrap-around
+    // boundary, letting a *middle* Tab press keep using the browser's
+    // native tab order across Skip/Back/Next — preventDefault()ing it
+    // unconditionally here would break that.
+    e.preventDefault();
+    return;
+  }
   const focusables = ['sp-onboarding-skip', 'sp-onboarding-back', 'sp-onboarding-next']
     .map((id) => document.getElementById(id))
     .filter((btn) => btn && !btn.disabled);
@@ -150,6 +263,14 @@ function _onOnboardingKey(e) {
 function _showStep(index) {
   if (index >= STEPS.length) { endOnboardingTour(); return; }
   const step = STEPS[index];
+  // Must happen before measuring below: the real dropdown is scaled/shifted
+  // via CSS transform while closed (see _setMoreMenuOpen()'s comment), so
+  // its items' bounding rects are only correct once actually opened — and
+  // this unconditionally reflects *this* step's own need either way, so a
+  // step that doesn't use it (including the recursive skip-ahead call
+  // below) always leaves it closed rather than stuck open from a previous
+  // step.
+  _setMoreMenuOpen(!!step.opensMoreMenu);
   const target = document.querySelector(step.selector);
   const rect = target?.getBoundingClientRect();
   if (!target || !rect || rect.width === 0 || rect.height === 0) {
@@ -162,6 +283,11 @@ function _showStep(index) {
   _stepIndex = index;
   _applyStepContent(step);
   document.getElementById('sp-onboarding-count').textContent = `${index + 1} of ${STEPS.length}`;
+  document.querySelectorAll('#sp-onboarding-dots .onboarding-dot').forEach((dot, i) => {
+    dot.classList.toggle('is-active', i === index);
+    dot.classList.toggle('is-done', i < index);
+  });
+  _playStepTransition();
   const backBtn = document.getElementById('sp-onboarding-back');
   const nextBtn = document.getElementById('sp-onboarding-next');
   backBtn.disabled = index === 0;
@@ -234,6 +360,12 @@ function _ensureOnboardingDom() {
         <h3 class="onboarding-tooltip-title" id="sp-onboarding-title"></h3>
         <p class="onboarding-tooltip-text" id="sp-onboarding-text"></p>
       </div>
+      <!-- Purely decorative echo of sp-onboarding-count above — aria-hidden
+           since the aria-live text already announces progress; a screen
+           reader describing "dot 2, dot 3 not selected..." on every step
+           would be noise, not information. Built once here since STEPS.length
+           is fixed; _showStep() only ever toggles which dot is active. -->
+      <div class="onboarding-dots" id="sp-onboarding-dots" aria-hidden="true"></div>
       <div class="onboarding-tooltip-actions">
         <button type="button" class="onboarding-skip" id="sp-onboarding-skip">Skip tour</button>
         <div class="onboarding-tooltip-nav">
@@ -243,6 +375,24 @@ function _ensureOnboardingDom() {
       </div>
     </div>`;
   document.body.appendChild(el);
+
+  const dots = document.getElementById('sp-onboarding-dots');
+  dots.innerHTML = STEPS.map(() => '<span class="onboarding-dot"></span>').join('');
+
+  // stopPropagation for every click anywhere in the tour — not just its
+  // three buttons — bubbling up to document reaches header.js's "click
+  // outside the More dropdown closes it" listener, which sees a target
+  // that's neither inside #more-dropdown nor #btn-more and closes it right
+  // away. That's true of a click on Next (undoing this exact click's own
+  // _setMoreMenuOpen(true) in _showStep(), triggered by the click that
+  // navigated INTO the Command Palette step, before the frame ever paints)
+  // just as much as it's true of a click on the tooltip's body text, the
+  // progress dots, or the dimmed background — anywhere inside this dialog
+  // a user might plausibly click while it's open. One listener on the
+  // overlay itself, in the bubble phase, catches all of them before they
+  // ever reach document — simpler and more complete than wrapping each
+  // interactive element's own handler individually.
+  el.addEventListener('click', (e) => e.stopPropagation());
 
   document.getElementById('sp-onboarding-skip').onclick = () => endOnboardingTour();
   document.getElementById('sp-onboarding-back').onclick = () => _showStep(_stepIndex - 1);

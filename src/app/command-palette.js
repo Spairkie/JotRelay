@@ -7,6 +7,7 @@
 
 import { filterCommands } from '../utils.js';
 import { THEMES, applyTheme } from '../theme.js';
+import { canEdit } from '../permissions.js';
 import * as UI from '../ui.js';
 import { state } from './state.js';
 import { _applyMarkdownMode } from './comments-preview.js';
@@ -59,6 +60,14 @@ function _paletteCommands() {
 
     { id: 'about',      label: 'About SyncPad',       group: 'Help', run: _clickById('btn-about') },
     { id: 'shortcuts',  label: 'Keyboard shortcuts',  group: 'Help', shortcut: 'Ctrl /', run: _clickById('btn-shortcuts') },
+    // #btn-replay-tour's own handler already guards on canEdit() (a
+    // read-only viewer's tour would describe editing/autosave and a
+    // Settings panel they can't reach) — but filtering only there still
+    // let this entry render in the palette itself, so selecting it closed
+    // the palette and then silently did nothing with no explanation. Same
+    // predicate here keeps the entry from being offered at all instead of
+    // exposing a no-op action.
+    ...(canEdit() ? [{ id: 'replay-tour', label: 'Take the tour', group: 'Help', keywords: ['onboarding', 'walkthrough', 'help'], run: _clickById('btn-replay-tour') }] : []),
   ];
 }
 

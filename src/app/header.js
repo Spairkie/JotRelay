@@ -19,6 +19,14 @@ export function closeMoreDropdown() {
   document.getElementById('btn-more')?.setAttribute('aria-expanded', 'false');
 }
 
+// Menu items the dropdown's own focus/arrow-key handling should ever land
+// on — excludes anything currently display:none, regardless of which
+// mechanism hid it (data-readonly-hide's CSS rule, or #btn-replay-tour's
+// own canEdit()-driven .hidden toggle).
+function _visibleMenuItems(dropdown) {
+  return [...dropdown.querySelectorAll('[role="menuitem"]')].filter((el) => el.offsetParent !== null);
+}
+
 export function _copyNoteToClipboard() {
   return copyToClipboard(UI.getEditorValue())
     .then(ok => ok
@@ -33,6 +41,32 @@ export function _wireHeader() {
   document.getElementById('btn-presence')?.addEventListener('click', () => { closeMoreDropdown(); UI.togglePanel('presence-panel'); });
   document.getElementById('btn-settings')?.addEventListener('click', () => { closeMoreDropdown(); UI.togglePanel('settings-panel'); });
   document.getElementById('btn-about')?.addEventListener('click', () => { closeMoreDropdown(); UI.openModal('about-modal'); });
+  // Manual replay bypasses hasSeenOnboarding() entirely — that flag only
+  // gates the automatic first-room trigger in room-lifecycle.js, and
+  // startOnboardingTour() itself has no such check, so calling it directly
+  // here just works regardless of whether the tour has already been seen.
+  // The button itself is data-readonly-hide'd, but that only hides it
+  // visually — the command palette's "Take the tour" entry reaches this
+  // same handler via a plain .click(), which fires regardless of visibility
+  // — so the canEdit() guard belongs here too, the one place this action's
+  // wired (command-palette.js's own header comment: "one source of truth
+  // per action"). A read-only viewer's tour would open on a "start typing"
+  // step and a Share step pointing at a Settings panel they can't reach.
+  document.getElementById('btn-replay-tour')?.addEventListener('click', () => {
+    if (!canEdit()) return;
+    closeMoreDropdown();
+    // startOnboardingTour() captures document.activeElement to restore on
+    // close — closeMoreDropdown() above hides the dropdown but never moves
+    // focus off whatever's still nominally focused inside it (this button
+    // itself for a direct click; the command palette's own search input
+    // for the "Take the tour" palette entry, which reaches this same
+    // handler via a synthetic click after its modal closes). Either way
+    // that's now an invisible element, so ending the tour would restore
+    // focus to something a keyboard user can't see. #btn-more is the one
+    // guaranteed-visible anchor both paths share.
+    document.getElementById('btn-more')?.focus();
+    UI.startOnboardingTour();
+  });
   // A-3: device-count-badge — keyboard accessibility (role="button" set in HTML)
   const deviceCountBtn = document.getElementById('device-count-btn');
   deviceCountBtn?.addEventListener('click', () => UI.togglePanel('presence-panel'));
@@ -47,15 +81,34 @@ export function _wireHeader() {
     e.stopPropagation();
     const open = moreDropdown?.classList.toggle('open');
     moreBtn.setAttribute('aria-expanded', String(!!open));
-    // A-4: move focus to the first menu item when the dropdown opens.
     if (open) {
-      const firstItem = moreDropdown?.querySelector('[role="menuitem"]');
+      // data-readonly-hide (styles/modals.css) only reacts to
+      // body.read-only-mode — deliberately narrow, since e.g. #btn-settings
+      // also carries it and must stay reachable in a *locked* room (not
+      // read-only-mode) so its owner can reach the very control that
+      // unlocks it. "Take the tour" has no such reason to stay reachable
+      // in any canEdit()-false state — locked, encrypted-without-key, or a
+      // consumed view-once room all block it exactly like read-only-mode
+      // does — so it needs the full predicate, computed here (menu-open
+      // time is the one moment this actually needs to be current, rather
+      // than kept reactively in sync with every permission-changing event).
+      document.getElementById('btn-replay-tour')?.classList.toggle('hidden', !canEdit());
+      // A-4: move focus to the first menu item when the dropdown opens.
+      const firstItem = _visibleMenuItems(moreDropdown)[0];
       requestAnimationFrame(() => firstItem?.focus());
     }
   });
   // A-4: Arrow-key navigation and Escape within the more-dropdown.
   moreDropdown?.addEventListener('keydown', (e) => {
-    const items = [...(moreDropdown.querySelectorAll('[role="menuitem"]'))];
+    // offsetParent is null for a display:none element regardless of which
+    // mechanism hid it — data-readonly-hide's CSS rule (styles/modals.css)
+    // or #btn-replay-tour's own canEdit()-driven .hidden toggle just above
+    // — so this doesn't need to know which one applies. Without this, Arrow
+    // navigation could try to focus a hidden item (a no-op — focus() does
+    // nothing on a display:none element), leaving the actually-focused item
+    // unchanged and every further press repeating the same no-op instead of
+    // reaching the next real item.
+    const items = _visibleMenuItems(moreDropdown);
     const idx   = items.indexOf(document.activeElement);
     if (e.key === 'ArrowDown') {
       e.preventDefault();

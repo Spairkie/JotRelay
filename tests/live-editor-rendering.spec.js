@@ -148,7 +148,7 @@ test.describe('Live/Split surface rendering', () => {
     expect(color).toBe(bodyColor);
   });
 
-  test('[TOC] renders as an open <details> with its links visible immediately', async ({ page }) => {
+  test('[TOC] renders as a collapsed <details>, expanding its links on click', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page, '# Title\n\n[TOC]\n\n## Section A\n\n## Section B\n');
     await setEditorMode(page, 'preview');
@@ -156,20 +156,21 @@ test.describe('Live/Split surface rendering', () => {
 
     const toc = page.locator('.note-live .cm-md-inline-toc');
     await expect(toc).toBeVisible();
-    // Live mode is the seamless, Typora-style surface — a rendered [TOC]
-    // stands in for real document content while writing, so it should be
-    // usable at a glance instead of hidden behind an extra click.
-    await expect(toc).toHaveJSProperty('open', true);
+    // Same collapsed-by-default convention as the static renderer's
+    // .md-inline-toc — a [TOC] block is a navigation aid, not primary
+    // content, so it shouldn't dominate the screen with a full link list
+    // the moment a document loads.
+    await expect(toc).toHaveJSProperty('open', false);
     const links = toc.locator('a');
-    await expect(links.first()).toBeVisible();
+    await expect(links.first()).toBeHidden();
     expect(await links.count()).toBe(3);
 
     await toc.locator('summary').click();
-    await expect(toc).toHaveJSProperty('open', false);
-    await expect(links.first()).toBeHidden();
+    await expect(toc).toHaveJSProperty('open', true);
+    await expect(links.first()).toBeVisible();
   });
 
-  test('[TOC] as the very first line renders immediately, before any click or keypress', async ({ page }) => {
+  test('[TOC] as the very first line renders immediately (collapsed), before any click or keypress', async ({ page }) => {
     // Regression test: mount() never gives EditorState.create() an explicit
     // selection, so CM6 defaults to a bare cursor at position 0 — landing
     // exactly on this line since [TOC] is the first thing in the document.
@@ -184,7 +185,38 @@ test.describe('Live/Split surface rendering', () => {
 
     const toc = page.locator('.note-live .cm-md-inline-toc');
     await expect(toc).toBeVisible();
-    await expect(toc).toHaveJSProperty('open', true);
+    await expect(toc).toHaveJSProperty('open', false);
+    await expect(toc.locator('a')).toHaveCount(2);
+  });
+
+  test('[TOC] on line 1 renders immediately even when content arrives via a programmatic sync after mount', async ({ page }) => {
+    // Regression test for a variant of the bug above that the "no click or
+    // keypress" test doesn't cover: mount() can be called before real room
+    // content is available (a room-load race) or the surface can already be
+    // mounted and simply receive a full-document replacement afterward (a
+    // remote edit arriving over Broadcast) — both go through syncFromText()
+    // rather than EditorState.create(), so they never took the fix above's
+    // isInitial path. CM6 maps the old selection through a syncFromText
+    // change rather than resetting it, so a selection that was sitting at
+    // position 0 (the default right after an empty mount) stayed touching a
+    // [TOC] on line 1, and the marker was stuck rendering raw text forever
+    // — "forever" because nothing else ever moves that cursor for a device
+    // that hasn't interacted with the editor. Exercised directly against the
+    // real module (no Supabase needed) per this repo's convention for
+    // browser-only module logic.
+    await page.goto('/SyncPad/');
+    await page.evaluate(async () => {
+      const { mount, syncFromText } = await import('/SyncPad/src/live-editor.js');
+      const container = document.createElement('div');
+      container.id = 'note-live-harness';
+      document.body.appendChild(container);
+      mount(container, '', {});
+      syncFromText('[TOC]\n\n## Section A\n\n## Section B\n');
+    });
+
+    const toc = page.locator('#note-live-harness .cm-md-inline-toc');
+    await expect(toc).toBeVisible();
+    await expect(toc).toHaveJSProperty('open', false);
     await expect(toc.locator('a')).toHaveCount(2);
   });
 

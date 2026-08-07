@@ -498,19 +498,31 @@ function _stripHeadingMarkup(raw) {
     .trim();
 }
 
-// Live mode is the seamless, Typora-style surface — the whole point is that
-// rendered constructs show their result immediately, not behind an extra
-// click. Unlike the static renderer's .md-inline-toc (export/non-live
-// preview, where a reader opting into a plain HTML document reasonably
-// expects a collapsed-by-default nav) and the floating .note-toc auto-nav
-// (a persistent chrome element, not part of the document being edited),
-// the [TOC] widget here stands in for real document content while you're
-// actively writing it, so it starts open. _liveTocOpen remembers a manual
-// collapse across re-renders (new transactions re-create the widget only
-// when the heading list itself changes — eq() above reuses the existing DOM
-// otherwise — so without this, editing an unrelated heading while the user
-// had deliberately collapsed the nav would silently pop it open again).
-let _liveTocOpen = true;
+// Same collapsed-by-default convention as the static renderer's
+// .md-inline-toc (export/non-live preview) and the floating .note-toc
+// auto-nav — a [TOC] block is a navigation aid, not primary content, so it
+// shouldn't dominate the screen with a full link list the moment a document
+// loads. _liveTocOpen remembers a manual expand/collapse across re-renders
+// (new transactions re-create the widget only when the heading list itself
+// changes — eq() above reuses the existing DOM otherwise — so without this,
+// editing an unrelated heading after the user had deliberately expanded the
+// nav would silently collapse it again).
+let _liveTocOpen = false;
+
+// Tracks whether the *current* selection was established by a real,
+// explicit selection-setting transaction that wasn't itself a programmatic
+// External sync (a genuine click, keyboard caret move, or the TOC widget's
+// own click-to-navigate) — as opposed to merely being wherever CM6 mapped
+// some earlier selection forward through an unrelated change. See
+// _tocField's update() for why this, not "is the current transaction
+// External," is the right signal to gate the touch-check bypass on: an
+// External sync should never manufacture a fake "touch" out of a stale
+// mapped-forward cursor, but it also must never erase a *real* one a user
+// is actively sitting on when that sync happens to arrive. Reset on mount()
+// alongside _liveTocOpen for the same reason — this is module-global so it
+// survives this file's own re-renders, but a fresh document has no
+// meaningful prior selection to inherit "user-driven"-ness from.
+let _tocSelectionIsUserDriven = false;
 
 class _TocWidget extends WidgetType {
   constructor(entries) { super(); this.entries = entries; }
@@ -594,7 +606,7 @@ function _collectHeadings(state) {
   return headings;
 }
 
-function _computeTocBadges(state, isInitial) {
+function _computeTocBadges(state, bypassTouchReveal) {
   const headings = _collectHeadings(state);
   if (headings.length < 2) return Decoration.none;
 
@@ -605,15 +617,20 @@ function _computeTocBadges(state, isInitial) {
     // Reveal the raw "[TOC]" marker while the cursor is actually on it (same
     // pattern as every other hideable construct in this file) — otherwise
     // there's no way to select/delete the line without leaving Live mode.
-    // Skipped on the field's very first computation (isInitial): mount()
-    // never gives EditorState.create() an explicit selection, so CM6
-    // defaults to a bare cursor at position 0 — an arbitrary artifact of
-    // state construction, not a real "the user is editing this" signal. If
-    // [TOC] happens to sit on line 1 (a natural place to put one), that
-    // default cursor "touches" it and the widget would render as raw text
-    // until the first real click/selection change moved the cursor away,
-    // which reads as "the TOC doesn't render until the editor is focused."
-    if (!isInitial && _selectionTouches(state, line.from, line.to)) continue;
+    // Skipped whenever bypassTouchReveal is set: mount() never gives
+    // EditorState.create() an explicit selection, so CM6 defaults to a bare
+    // cursor at position 0 — an arbitrary artifact of state construction,
+    // not a real "the user is editing this" signal. The same is true of any
+    // *programmatic* doc replacement after mount (syncFromText — a remote
+    // content update, or a room-load race that mounts before real content
+    // arrives and syncs it in right after): CM6 maps the old selection
+    // through the change, which can just as easily leave it sitting at/near
+    // position 0. If [TOC] happens to sit on line 1 (a natural place to put
+    // one) in either case, that non-user-driven cursor "touches" it and the
+    // widget would render as raw text until an unrelated real interaction
+    // moved the cursor away, which reads as "the TOC doesn't render until
+    // the editor is focused."
+    if (!bypassTouchReveal && _selectionTouches(state, line.from, line.to)) continue;
     // A *replace*, not an insertion: this was previously Decoration.widget()
     // (additive), which left the literal "[TOC]" text sitting right below
     // the rendered Contents box instead of being hidden by it — the one
@@ -628,11 +645,50 @@ function _computeTocBadges(state, isInitial) {
 
 const _tocField = StateField.define({
   create: (state) => _computeTocBadges(state, true),
-  // Recomputed on every transaction, not just docChanged — whether the
-  // marker line renders as the widget or reveals its raw "[TOC]" text now
+  // Recomputed when the doc changed or this transaction set an explicit
+  // new selection — not unconditionally on every transaction. Whether the
+  // marker line renders as the widget or reveals its raw "[TOC]" text
   // depends on the *selection* too (reveal-while-touched, same as
-  // Image/HorizontalRule/_tableField below).
-  update(value, tr) { return _computeTocBadges(tr.state); },
+  // Image/HorizontalRule/_tableField below), and the touch-check is
+  // bypassed whenever the current selection *isn't* one a real user
+  // interaction established (_tocSelectionIsUserDriven — see its own
+  // comment). Gating the bypass on "was this transaction External,"
+  // rather than that, has two distinct failure modes, both since fixed:
+  // a bare effects-only reconfigure with no doc/selection change of its
+  // own (e.g. setReadOnly() switching back into Live/Split from Source)
+  // isn't External, but re-checking a stale mapped-forward selection
+  // against it could still wrongly revert an already-correct widget —
+  // handled by reusing the previous value outright when a transaction
+  // changes neither. And an External sync (a remote edit arriving over
+  // Broadcast) unconditionally bypassing the check regardless of *why*
+  // the selection is sitting on the marker line would erase a real user's
+  // deliberately-touched raw view out from under them the instant a
+  // remote edit happened to land — this is what _tocSelectionIsUserDriven
+  // actually distinguishes: a real prior click/selection stays "touching"
+  // (raw text preserved) across a later External sync, while a merely
+  // inherited/default position does not (bypassed, widget shown).
+  update(value, tr) {
+    // Track *before* the early-return below: even a transaction this field
+    // has nothing else to do for (no doc change, no new selection) must
+    // still update this flag correctly for the following one to read —
+    // though in practice only tr.selection ever changes it, so the order
+    // only matters for readability, not correctness.
+    //
+    // tr.selection alone isn't enough to mean "the user moved the caret" —
+    // CM6's own drawSelection() extension needs to force its blink
+    // animation to restart on window focus/tab-visibility (see
+    // _restartCursorBlink()'s own comment), which it does by dispatching a
+    // same-position no-op reselect: tr.selection is set, but nothing about
+    // where the caret actually *is* changed. Comparing the selection value
+    // itself, not just whether a spec asked for one, excludes that (and
+    // any future synthetic reselect that works the same way) without
+    // needing to know about it specifically here.
+    if (tr.selection && !tr.startState.selection.eq(tr.state.selection)) {
+      _tocSelectionIsUserDriven = !tr.annotation(External);
+    }
+    if (!tr.docChanged && !tr.selection) return value;
+    return _computeTocBadges(tr.state, !_tocSelectionIsUserDriven);
+  },
   provide: (f) => EditorView.decorations.from(f),
 });
 
@@ -1209,12 +1265,17 @@ export function estimateViewportY(pos) {
  */
 export function mount(container, initialValue, { onChange, onCursorActivity, onImageFiles, readOnly = false } = {}) {
   destroy();
-  // _liveTocOpen is module-global so a manual collapse survives this file's
+  // _liveTocOpen is module-global so a manual expand survives this file's
   // own re-renders (widget reuse via eq() — see its declaration above), but
   // that means it would otherwise leak across an unrelated destroy()/mount()
-  // pair too — collapsing the TOC in one room would leave a freshly opened
-  // room's TOC starting collapsed as well. Reset it per mounted document.
-  _liveTocOpen = true;
+  // pair too — expanding the TOC in one room would leave a freshly opened
+  // room's TOC starting expanded as well. Reset it per mounted document.
+  _liveTocOpen = false;
+  // Same leak risk for the same reason: a room closed while its user was
+  // genuinely touching a [TOC] line shouldn't leave the next mounted
+  // document's very first (default, non-user) cursor position treated as
+  // user-driven too.
+  _tocSelectionIsUserDriven = false;
   _onChange = onChange || null;
   _onCursorActivity = onCursorActivity || null;
   _onImageFiles = onImageFiles || null;
