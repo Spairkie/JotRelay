@@ -19,6 +19,14 @@ export function closeMoreDropdown() {
   document.getElementById('btn-more')?.setAttribute('aria-expanded', 'false');
 }
 
+// Menu items the dropdown's own focus/arrow-key handling should ever land
+// on — excludes anything currently display:none, regardless of which
+// mechanism hid it (data-readonly-hide's CSS rule, or #btn-replay-tour's
+// own canEdit()-driven .hidden toggle).
+function _visibleMenuItems(dropdown) {
+  return [...dropdown.querySelectorAll('[role="menuitem"]')].filter((el) => el.offsetParent !== null);
+}
+
 export function _copyNoteToClipboard() {
   return copyToClipboard(UI.getEditorValue())
     .then(ok => ok
@@ -86,13 +94,21 @@ export function _wireHeader() {
       // than kept reactively in sync with every permission-changing event).
       document.getElementById('btn-replay-tour')?.classList.toggle('hidden', !canEdit());
       // A-4: move focus to the first menu item when the dropdown opens.
-      const firstItem = moreDropdown?.querySelector('[role="menuitem"]');
+      const firstItem = _visibleMenuItems(moreDropdown)[0];
       requestAnimationFrame(() => firstItem?.focus());
     }
   });
   // A-4: Arrow-key navigation and Escape within the more-dropdown.
   moreDropdown?.addEventListener('keydown', (e) => {
-    const items = [...(moreDropdown.querySelectorAll('[role="menuitem"]'))];
+    // offsetParent is null for a display:none element regardless of which
+    // mechanism hid it — data-readonly-hide's CSS rule (styles/modals.css)
+    // or #btn-replay-tour's own canEdit()-driven .hidden toggle just above
+    // — so this doesn't need to know which one applies. Without this, Arrow
+    // navigation could try to focus a hidden item (a no-op — focus() does
+    // nothing on a display:none element), leaving the actually-focused item
+    // unchanged and every further press repeating the same no-op instead of
+    // reaching the next real item.
+    const items = _visibleMenuItems(moreDropdown);
     const idx   = items.indexOf(document.activeElement);
     if (e.key === 'ArrowDown') {
       e.preventDefault();

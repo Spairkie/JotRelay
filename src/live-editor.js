@@ -509,6 +509,21 @@ function _stripHeadingMarkup(raw) {
 // nav would silently collapse it again).
 let _liveTocOpen = false;
 
+// Tracks whether the *current* selection was established by a real,
+// explicit selection-setting transaction that wasn't itself a programmatic
+// External sync (a genuine click, keyboard caret move, or the TOC widget's
+// own click-to-navigate) — as opposed to merely being wherever CM6 mapped
+// some earlier selection forward through an unrelated change. See
+// _tocField's update() for why this, not "is the current transaction
+// External," is the right signal to gate the touch-check bypass on: an
+// External sync should never manufacture a fake "touch" out of a stale
+// mapped-forward cursor, but it also must never erase a *real* one a user
+// is actively sitting on when that sync happens to arrive. Reset on mount()
+// alongside _liveTocOpen for the same reason — this is module-global so it
+// survives this file's own re-renders, but a fresh document has no
+// meaningful prior selection to inherit "user-driven"-ness from.
+let _tocSelectionIsUserDriven = false;
+
 class _TocWidget extends WidgetType {
   constructor(entries) { super(); this.entries = entries; }
   eq(other) {
@@ -634,22 +649,33 @@ const _tocField = StateField.define({
   // new selection — not unconditionally on every transaction. Whether the
   // marker line renders as the widget or reveals its raw "[TOC]" text
   // depends on the *selection* too (reveal-while-touched, same as
-  // Image/HorizontalRule/_tableField below), and a transaction carrying
-  // the External annotation (syncFromText — see its own comment) gets the
-  // same touch-check bypass as the field's very first computation. But a
-  // transaction that touches neither — a bare effects-only reconfigure,
-  // e.g. the setReadOnly() call _applyMarkdownMode() makes switching back
-  // into Live/Split from Source — used to still recompute against
-  // tr.state's *current* selection, which could still be sitting wherever
-  // an earlier External-bypassed sync left it mapped. That silently
-  // reverted an already-correctly-shown widget back to raw text with no
-  // doc change, no selection change, and no user interaction of any kind
-  // in between. Reusing the previous value outright for those no-op-for-us
-  // transactions is exact, not approximate: with docChanged false, the
-  // decoration set's positions are still valid against the identical doc.
+  // Image/HorizontalRule/_tableField below), and the touch-check is
+  // bypassed whenever the current selection *isn't* one a real user
+  // interaction established (_tocSelectionIsUserDriven — see its own
+  // comment). Gating the bypass on "was this transaction External,"
+  // rather than that, has two distinct failure modes, both since fixed:
+  // a bare effects-only reconfigure with no doc/selection change of its
+  // own (e.g. setReadOnly() switching back into Live/Split from Source)
+  // isn't External, but re-checking a stale mapped-forward selection
+  // against it could still wrongly revert an already-correct widget —
+  // handled by reusing the previous value outright when a transaction
+  // changes neither. And an External sync (a remote edit arriving over
+  // Broadcast) unconditionally bypassing the check regardless of *why*
+  // the selection is sitting on the marker line would erase a real user's
+  // deliberately-touched raw view out from under them the instant a
+  // remote edit happened to land — this is what _tocSelectionIsUserDriven
+  // actually distinguishes: a real prior click/selection stays "touching"
+  // (raw text preserved) across a later External sync, while a merely
+  // inherited/default position does not (bypassed, widget shown).
   update(value, tr) {
+    // Track *before* the early-return below: even a transaction this field
+    // has nothing else to do for (no doc change, no new selection) must
+    // still update this flag correctly for the following one to read —
+    // though in practice only tr.selection ever changes it, so the order
+    // only matters for readability, not correctness.
+    if (tr.selection) _tocSelectionIsUserDriven = !tr.annotation(External);
     if (!tr.docChanged && !tr.selection) return value;
-    return _computeTocBadges(tr.state, !!tr.annotation(External));
+    return _computeTocBadges(tr.state, !_tocSelectionIsUserDriven);
   },
   provide: (f) => EditorView.decorations.from(f),
 });
@@ -1233,6 +1259,11 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
   // pair too — expanding the TOC in one room would leave a freshly opened
   // room's TOC starting expanded as well. Reset it per mounted document.
   _liveTocOpen = false;
+  // Same leak risk for the same reason: a room closed while its user was
+  // genuinely touching a [TOC] line shouldn't leave the next mounted
+  // document's very first (default, non-user) cursor position treated as
+  // user-driven too.
+  _tocSelectionIsUserDriven = false;
   _onChange = onChange || null;
   _onCursorActivity = onCursorActivity || null;
   _onImageFiles = onImageFiles || null;
