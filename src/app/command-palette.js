@@ -28,7 +28,7 @@ function _clickById(id) {
 // least urgent).
 function _paletteCommands() {
   return [
-    { id: 'panel-tools',    label: 'Open Tools panel',    group: 'Panels', keywords: ['clear', 'import', 'download'], run: () => UI.togglePanel('tools-panel') },
+    { id: 'panel-tools',    label: 'Open Tools panel',    group: 'Panels', keywords: ['clear', 'import', 'download', 'copy', 'export'], run: () => UI.togglePanel('tools-panel') },
     { id: 'panel-files',    label: 'Open Files panel',    group: 'Panels', keywords: ['attachments', 'upload'], run: () => UI.togglePanel('files-panel') },
     { id: 'panel-devices',  label: 'Open Devices panel',  group: 'Panels', keywords: ['presence', 'collaborators'], run: () => UI.togglePanel('presence-panel') },
     { id: 'panel-settings', label: 'Open Settings panel', group: 'Panels', keywords: ['passcode', 'encryption', 'expiration', 'lock'], run: () => UI.togglePanel('settings-panel') },
