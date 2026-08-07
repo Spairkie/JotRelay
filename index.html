@@ -86,6 +86,12 @@
   <link rel="stylesheet" href="/SyncPad/styles/room-tools.css" />
   <link rel="stylesheet" href="/SyncPad/styles/onboarding.css" />
 
+  <!-- preconnect: warms up DNS/TLS for jsdelivr and the Supabase project
+       ahead of the actual requests below/at boot, shaving a full
+       connection-setup round trip off each on slow/high-latency networks. -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://ddehkgdssdhhwpqljbiq.supabase.co" crossorigin />
+
   <!-- Supabase JS — pinned to an exact version (not the floating @2 tag) so the
        SRI hash below can never silently stop matching a newer release. Points
        at the package's own published dist/umd/supabase.js (unminified) rather
@@ -93,14 +99,20 @@
        in the npm package for any 2.x release — jsdelivr synthesizes it on the
        fly via its own minifier, which can't be independently reproduced to
        verify a hash against. See docs/security.md for how these hashes were
-       computed and verified against the npm registry's own tarball shasum. -->
+       computed and verified against the npm registry's own tarball shasum.
+       defer (not the default blocking load): getSupabaseClient() (src/supabase.js)
+       only reads window.supabase lazily, on first actual use, well after every
+       deferred/module script — including this one — has already run; deferring
+       it just stops it from blocking HTML parsing/first paint on slow networks. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.9/dist/umd/supabase.js"
           integrity="sha384-6foGJ1oz/y3anEo0BXRtTgBK1GvpnR0GbJZb0ijG+nBAJ4rYT+VqlD/9e3CSiFIA"
-          crossorigin="anonymous"></script>
-  <!-- QR Code -->
+          crossorigin="anonymous" defer></script>
+  <!-- QR Code — same reasoning: window.QRCode is only read inside an
+       already-guarded (`if (!window.QRCode) return;`) share-modal handler
+       triggered by a later user action, never at parse time. -->
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"
           integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU"
-          crossorigin="anonymous"></script>
+          crossorigin="anonymous" defer></script>
   <!-- Prism.js — syntax highlighting in markdown preview -->
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"
           integrity="sha384-MXybTpajaBV0AkcBaCPT4KIvo0FzoCiWXgcihYsw4FUkEz0Pv3JGV6tk2G8vJtDc"

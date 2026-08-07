@@ -9,7 +9,7 @@ SyncPad is a vanilla-JS realtime notepad built on Supabase with no build step. T
 ```
 Browser (HTML + CSS + ES Modules)
     ├── index.html               — shell, Supabase config, screen containers
-    ├── service-worker.js        — network-first PWA cache
+    ├── service-worker.js        — PWA cache (network-first navigations, stale-while-revalidate assets)
     └── src/*.js                 — ES modules (no bundler)
             ├── app.js           — router, event wiring, global state
             ├── ui.js            — all DOM manipulation
@@ -228,12 +228,13 @@ The optional `supabase/functions/syncpad-cleanup` Edge Function runs with a serv
 
 ## 10. PWA / Service Worker
 
-`service-worker.js` implements a **network-first** caching strategy for all same-origin assets.
+`service-worker.js` implements two caching strategies for same-origin requests, split by request type:
 
+- **Navigations** (`req.mode === 'navigate'`, i.e. loading `index.html`): **network-first**. Every navigation is attempted over the network first so the app shell reflects the latest deploy when online; the cache is only used as a fallback on network failure (offline).
+- **Everything else same-origin** (JS modules, CSS, icons — the `PRECACHE_ASSETS` list): **stale-while-revalidate**. The cached copy (if present) is returned immediately — so repeat loads render instantly regardless of current network conditions — while a background fetch refreshes the cache for next time. Staleness here is bounded by the update-bar flow below, not indefinite.
 - **Cache name**: `CACHE_VERSION` in `service-worker.js`, bumped on every release that changes precached assets (see `CHANGELOG.md` for the current value)
-- **Strategy**: Every request is attempted over the network first. On success, the response is cloned and stored in the cache. On network failure, the cache is used as a fallback.
 - **Bypass**: All requests to Supabase endpoints (different origin) bypass the service worker entirely and go directly to the network.
-- **Cache invalidation**: Increment `CACHE_VERSION` to force all clients to discard the old cache on next activation.
+- **Cache invalidation**: Increment `CACHE_VERSION` to force all clients to discard the old cache on next activation. Update detection itself doesn't depend on this value — the browser independently re-fetches and byte-diffs `service-worker.js` on its own schedule, which is what `src/app/pwa.js`'s `updatefound` listener and the resulting "update available" bar are driven by.
 
 ---
 
