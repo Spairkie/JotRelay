@@ -27,18 +27,28 @@
 -- opening a completely different file. An earlier version of this trigger
 -- computed max(file_no)+1 from the *currently existing* rows, which broke
 -- exactly that guarantee: deleting the highest-numbered file and uploading
--- a new one reissued the deleted number. Fixed by tracking a persistent
--- per-room counter (syncpad_rooms.file_no_seq) that only ever increases,
--- independent of what's since been deleted — an atomic
--- `update ... set file_no_seq = file_no_seq + 1 returning file_no_seq`
+-- a new one reissued the deleted number.
+--
+-- Fixed by tracking a persistent per-room counter in its own table
+-- (syncpad_room_file_counters), NOT a column on syncpad_rooms itself —
+-- that was tried first and reverted: syncpad_rooms has a BEFORE UPDATE
+-- trigger (set_syncpad_rooms_updated_at) that unconditionally stamps
+-- updated_at = now() on *any* update to the row, including one that only
+-- touches an unrelated bookkeeping column. Every file upload would have
+-- silently bumped the room's "last modified" time, which (among other
+-- things) breaks draft restoration — isDraftNewer() in room-lifecycle.js
+-- compares a locally-saved draft's timestamp against updated_at, so a
+-- draft saved before an upload would wrongly appear stale afterward even
+-- though the room's actual text content never changed. A separate table
+-- sidesteps that trigger entirely. An atomic
+-- `insert ... on conflict (room_id) do update set next_file_no = next_file_no + 1 returning next_file_no`
 -- both assigns the next number and provides the same row-level-locking
 -- serialization the old `for update` lock did (a second concurrent
--- insert's trigger blocks on this same UPDATE until the first commits),
--- so the concurrency guarantee is unchanged.
+-- insert's trigger blocks on this same statement until the first
+-- commits), so the concurrency guarantee is unchanged.
 -- ============================================================
 
 alter table public.syncpad_files add column if not exists file_no integer;
-alter table public.syncpad_rooms add column if not exists file_no_seq integer not null default 0;
 
 -- Backfill any pre-existing rows, oldest-first per room, before the
 -- uniqueness constraint below is added. A no-op on a fresh install (no rows
@@ -53,19 +63,6 @@ update public.syncpad_files f
   from numbered
  where f.id = numbered.id;
 
--- Seed each room's counter to the highest file_no it has already issued
--- (0 if none), so newly assigned numbers continue after existing ones
--- instead of restarting at 1 and immediately colliding. Only touches rooms
--- still at the column's default (0) — safe to rerun, and doesn't clobber a
--- counter that's already advanced past its files (the expected state once
--- deletions have happened, which is the entire point of this migration).
-update public.syncpad_rooms r
-   set file_no_seq = coalesce(
-     (select max(f.file_no) from public.syncpad_files f where f.room_id = r.room_id),
-     0
-   )
- where file_no_seq = 0;
-
 do $$
 begin
   if not exists (
@@ -73,6 +70,49 @@ begin
   ) then
     alter table public.syncpad_files
       add constraint syncpad_files_room_file_no_unique unique (room_id, file_no);
+  end if;
+end $$;
+
+-- One row per room; absence means "never issued a file_no yet" (the
+-- trigger below starts such a room at 1 on its first upload).
+create table if not exists public.syncpad_room_file_counters (
+  room_id       text primary key references public.syncpad_rooms(room_id) on delete cascade,
+  next_file_no  integer not null default 0
+);
+
+-- Seed a counter row for every room that already has files, ONLY the
+-- first time this migration ever runs on a given database (gated on the
+-- counters table not existing yet, checked before it's created above, so
+-- this whole block runs at most once — safe even though CREATE TABLE
+-- itself is otherwise idempotent). Deliberately seeds well *above* the
+-- current max(file_no), not exactly at it: a project that already ran an
+-- earlier version of this migration (the max(file_no)+1 one, or the
+-- syncpad_rooms.file_no_seq one both reverted above) may have already
+-- deleted a file that held a higher number than anything currently
+-- present — that number is genuinely unrecoverable once deleted, so
+-- seeding exactly at the current max would silently reissue it, one more
+-- time, for exactly the rooms where it matters. The buffer trades
+-- consecutive-from-1 numbering after an upgrade (new numbers start higher
+-- for rooms that had files before this migration) for a hard guarantee
+-- against ever reissuing anything, without needing to know a historical
+-- high-water mark that may simply no longer exist anywhere.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'syncpad_room_file_counters_seeded_marker'
+  ) then
+    insert into public.syncpad_room_file_counters (room_id, next_file_no)
+    select f.room_id, max(f.file_no) + 100000
+      from public.syncpad_files f
+     group by f.room_id
+    on conflict (room_id) do nothing;
+
+    -- A tiny marker table, not a real feature table, purely so the seed
+    -- above never runs a second time (re-running it would add another
+    -- +100000 on top of whatever's already there). Nothing ever selects
+    -- from or deletes it.
+    create table public.syncpad_room_file_counters_seeded_marker (seeded_at timestamptz not null default now());
   end if;
 end $$;
 
@@ -84,22 +124,24 @@ set search_path = public
 as $$
 begin
   if new.file_no is null then
-    update public.syncpad_rooms
-       set file_no_seq = file_no_seq + 1
-     where room_id = new.room_id
-    returning file_no_seq into new.file_no;
-
-    if new.file_no is null then
-      -- Best-effort fallback: the room row somehow doesn't exist yet
-      -- (files should never be uploadable before their room is created),
-      -- so the UPDATE above matched nothing. Falls back to the old
-      -- max()-based computation rather than failing the upload outright —
-      -- loses the never-reused guarantee only in this shouldn't-happen case.
-      select coalesce(max(file_no), 0) + 1 into new.file_no
-        from public.syncpad_files where room_id = new.room_id;
-    end if;
+    insert into public.syncpad_room_file_counters (room_id, next_file_no)
+    values (new.room_id, 1)
+    on conflict (room_id) do update
+      set next_file_no = public.syncpad_room_file_counters.next_file_no + 1
+    returning next_file_no into new.file_no;
   end if;
   return new;
+exception
+  when foreign_key_violation then
+    -- Best-effort fallback: the room row somehow doesn't exist yet (files
+    -- should never be uploadable before their room is created), so the
+    -- counter table's FK to syncpad_rooms rejected the insert above.
+    -- Falls back to the old max()-based computation rather than failing
+    -- the upload outright — loses the never-reused guarantee only in this
+    -- shouldn't-happen case.
+    select coalesce(max(file_no), 0) + 1 into new.file_no
+      from public.syncpad_files where room_id = new.room_id;
+    return new;
 end;
 $$;
 
