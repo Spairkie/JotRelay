@@ -1971,6 +1971,15 @@ create trigger syncpad_rooms_enforce_quarantine
 -- closes that window by serializing same-identifier requests through the
 -- check+insert critical section; different identifiers still run fully
 -- concurrently.
+--
+-- Both the advisory-lock keys AND the persisted/counted identifier values
+-- are prefixed with their own type ('device:'/'ip:'): device values are
+-- entirely client-controlled, so without the prefix a caller could set
+-- their device value to match an IP (their own or a victim's) and either
+-- burn through that IP's separate quota using their device budget, or —
+-- if it happens to equal their own real IP — reach their device cap after
+-- half as many real requests, since each one would log two identical rows
+-- that both count against the same unprefixed value.
 -- ============================================================
 
 -- ── Log table ──────────────────────────────────────────────────────────────
@@ -2118,17 +2127,27 @@ begin
     perform pg_advisory_xact_lock(hashtextextended('ip:room_create:' || v_ip, 0));
   end if;
 
-  if public.syncpad_rate_limit_exceeded('room_create', v_device, 30, 15)
-     or public.syncpad_rate_limit_exceeded('room_create', v_ip, 60, 15)
+  -- Same type-prefixing as the locks above, applied to the persisted/
+  -- counted identifier itself: without it, a device value and an IP value
+  -- that happen to coincide (v_device is entirely client-controlled, so a
+  -- caller can set it to any IP string on purpose) share the same
+  -- (action, identifier) rows here, letting a caller either burn through
+  -- a victim IP's separate 60-request allowance using only their own
+  -- device-limit budget, or — if their own device value equals their own
+  -- real IP — hit their device's 30-request cap after only 15 real
+  -- requests, since each one logs two identical rows that both count
+  -- against it.
+  if public.syncpad_rate_limit_exceeded('room_create', 'device:' || v_device, 30, 15)
+     or public.syncpad_rate_limit_exceeded('room_create', 'ip:' || v_ip, 60, 15)
   then
     raise exception 'Too many rooms created recently. Please wait a few minutes and try again.' using errcode = '42501';
   end if;
 
   if v_device is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', v_device);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', 'device:' || v_device);
   end if;
   if v_ip is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', v_ip);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', 'ip:' || v_ip);
   end if;
 
   return NEW;
@@ -2172,17 +2191,20 @@ begin
     perform pg_advisory_xact_lock(hashtextextended('ip:room_report:' || v_ip, 0));
   end if;
 
-  if public.syncpad_rate_limit_exceeded('room_report', v_device, 10, 15)
-     or public.syncpad_rate_limit_exceeded('room_report', v_ip, 20, 15)
+  -- Same type-prefixing as the locks above, and for the same reason as
+  -- enforce_syncpad_rooms_rate_limit() — see its comment for the full
+  -- reasoning.
+  if public.syncpad_rate_limit_exceeded('room_report', 'device:' || v_device, 10, 15)
+     or public.syncpad_rate_limit_exceeded('room_report', 'ip:' || v_ip, 20, 15)
   then
     raise exception 'Too many reports submitted recently. Please wait a few minutes and try again.' using errcode = '42501';
   end if;
 
   if v_device is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', v_device);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', 'device:' || v_device);
   end if;
   if v_ip is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', v_ip);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', 'ip:' || v_ip);
   end if;
 
   return NEW;
@@ -2312,7 +2334,22 @@ $do$;
 -- commits), so the concurrency guarantee is unchanged.
 -- ============================================================
 
-alter table public.syncpad_files add column if not exists file_no integer;
+alter table public.syncpad_files add column if not exists file_no bigint;
+
+-- Widen an existing int4 file_no column from an earlier version of this
+-- migration up to bigint (a no-op on a fresh install, where the column
+-- was just created as bigint directly above). See the seed block below
+-- for why int4 wasn't wide enough to safely stay on.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'syncpad_files'
+      and column_name = 'file_no' and data_type = 'integer'
+  ) then
+    alter table public.syncpad_files alter column file_no type bigint;
+  end if;
+end $$;
 
 -- Backfill any pre-existing rows, oldest-first per room, before the
 -- uniqueness constraint below is added. A no-op on a fresh install (no rows
@@ -2341,8 +2378,19 @@ end $$;
 -- trigger below starts such a room at 1 on its first upload).
 create table if not exists public.syncpad_room_file_counters (
   room_id       text primary key references public.syncpad_rooms(room_id) on delete cascade,
-  next_file_no  integer not null default 0
+  next_file_no  bigint not null default 0
 );
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'syncpad_room_file_counters'
+      and column_name = 'next_file_no' and data_type = 'integer'
+  ) then
+    alter table public.syncpad_room_file_counters alter column next_file_no type bigint;
+  end if;
+end $$;
 
 -- Pure server-side bookkeeping — no client (anon or authenticated) ever
 -- has a legitimate reason to read or write this table directly; every
@@ -2386,17 +2434,29 @@ alter table public.syncpad_room_file_counters enable row level security;
 -- non-reuse guarantee, without needing to know a historical high-water
 -- mark that may simply no longer exist anywhere.
 --
--- `file_no` is a 32-bit integer column, and — before the fix below that
--- makes the assignment trigger always ignore client input — the insert
--- policies on syncpad_files let any anon/authenticated caller set file_no
--- directly to an arbitrary value, including one close to the int4 max
--- (2,147,483,647). An installation that had such a row (planted before
--- upgrading to this migration) would overflow plain `+ 50000000` integer
--- arithmetic here and abort the whole seed statement — for every room,
--- not just the offending one, since it's a single grouped INSERT...SELECT.
--- Computed in bigint and clamped to the int4 max so the seed can never
--- overflow the column it's about to be stored in, regardless of what a
--- malicious pre-fix insert may have set file_no to.
+-- `file_no` was originally a 32-bit integer column, and — before the fix
+-- below that makes the assignment trigger always ignore client input —
+-- the insert policies on syncpad_files let any anon/authenticated caller
+-- set file_no directly to an arbitrary value, including one close to the
+-- old int4 max (2,147,483,647). Two distinct problems followed from that:
+-- (1) an installation with such a row would overflow plain `+ 50000000`
+-- integer arithmetic here and abort the whole seed statement, for every
+-- room, not just the offending one, since it's a single grouped
+-- INSERT...SELECT; (2) even a *clamped* seed sitting right at the int4
+-- ceiling would itself overflow on the very next ordinary upload's
+-- `next_file_no + 1`, turning a one-time migration failure into a
+-- permanent per-room failure instead — an actual regression versus the
+-- pre-migration `max(file_no) + 1` behavior for that narrow value range.
+-- Both are closed by widening file_no/next_file_no to bigint above: the
+-- seed is computed in `numeric` (arbitrary precision, so `+ 50000000` can
+-- never overflow no matter how large max(file_no) already is) and only
+-- clamped — to the bigint max, not int4's — right before casting back
+-- down to the column's actual (now bigint) type. Reaching that far higher
+-- ceiling would require a room to have already received a file_no within
+-- 50 million of 9,223,372,036,854,775,807, which needs the same
+-- since-closed pre-fix exploit but at a scale with no realistic path to
+-- ever occurring, so the clamped case is no longer one this migration
+-- needs to treat as reachable.
 do $$
 begin
   if not exists (
@@ -2404,7 +2464,7 @@ begin
     where table_schema = 'public' and table_name = 'syncpad_room_file_counters_seeded_marker'
   ) then
     insert into public.syncpad_room_file_counters (room_id, next_file_no)
-    select f.room_id, least(max(f.file_no)::bigint + 50000000, 2147483647)::integer
+    select f.room_id, least(max(f.file_no)::numeric + 50000000, 9223372036854775807::numeric)::bigint
       from public.syncpad_files f
      group by f.room_id
     on conflict (room_id) do nothing;

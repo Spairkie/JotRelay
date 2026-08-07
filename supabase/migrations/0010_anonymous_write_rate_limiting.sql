@@ -88,6 +88,15 @@
 -- closes that window by serializing same-identifier requests through the
 -- check+insert critical section; different identifiers still run fully
 -- concurrently.
+--
+-- Both the advisory-lock keys AND the persisted/counted identifier values
+-- are prefixed with their own type ('device:'/'ip:'): device values are
+-- entirely client-controlled, so without the prefix a caller could set
+-- their device value to match an IP (their own or a victim's) and either
+-- burn through that IP's separate quota using their device budget, or —
+-- if it happens to equal their own real IP — reach their device cap after
+-- half as many real requests, since each one would log two identical rows
+-- that both count against the same unprefixed value.
 -- ============================================================
 
 -- ── Log table ──────────────────────────────────────────────────────────────
@@ -235,17 +244,27 @@ begin
     perform pg_advisory_xact_lock(hashtextextended('ip:room_create:' || v_ip, 0));
   end if;
 
-  if public.syncpad_rate_limit_exceeded('room_create', v_device, 30, 15)
-     or public.syncpad_rate_limit_exceeded('room_create', v_ip, 60, 15)
+  -- Same type-prefixing as the locks above, applied to the persisted/
+  -- counted identifier itself: without it, a device value and an IP value
+  -- that happen to coincide (v_device is entirely client-controlled, so a
+  -- caller can set it to any IP string on purpose) share the same
+  -- (action, identifier) rows here, letting a caller either burn through
+  -- a victim IP's separate 60-request allowance using only their own
+  -- device-limit budget, or — if their own device value equals their own
+  -- real IP — hit their device's 30-request cap after only 15 real
+  -- requests, since each one logs two identical rows that both count
+  -- against it.
+  if public.syncpad_rate_limit_exceeded('room_create', 'device:' || v_device, 30, 15)
+     or public.syncpad_rate_limit_exceeded('room_create', 'ip:' || v_ip, 60, 15)
   then
     raise exception 'Too many rooms created recently. Please wait a few minutes and try again.' using errcode = '42501';
   end if;
 
   if v_device is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', v_device);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', 'device:' || v_device);
   end if;
   if v_ip is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', v_ip);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_create', 'ip:' || v_ip);
   end if;
 
   return NEW;
@@ -289,17 +308,20 @@ begin
     perform pg_advisory_xact_lock(hashtextextended('ip:room_report:' || v_ip, 0));
   end if;
 
-  if public.syncpad_rate_limit_exceeded('room_report', v_device, 10, 15)
-     or public.syncpad_rate_limit_exceeded('room_report', v_ip, 20, 15)
+  -- Same type-prefixing as the locks above, and for the same reason as
+  -- enforce_syncpad_rooms_rate_limit() — see its comment for the full
+  -- reasoning.
+  if public.syncpad_rate_limit_exceeded('room_report', 'device:' || v_device, 10, 15)
+     or public.syncpad_rate_limit_exceeded('room_report', 'ip:' || v_ip, 20, 15)
   then
     raise exception 'Too many reports submitted recently. Please wait a few minutes and try again.' using errcode = '42501';
   end if;
 
   if v_device is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', v_device);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', 'device:' || v_device);
   end if;
   if v_ip is not null then
-    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', v_ip);
+    insert into public.syncpad_rate_limit_log (action, identifier) values ('room_report', 'ip:' || v_ip);
   end if;
 
   return NEW;
