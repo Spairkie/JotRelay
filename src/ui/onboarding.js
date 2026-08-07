@@ -219,6 +219,18 @@ function _onOnboardingKey(e) {
   // underneath, none of which the trap or overlay actually prevented.
   e.stopPropagation();
   if (e.key === 'Escape') { e.preventDefault(); endOnboardingTour(); return; }
+  // Enter/Space's browser default on a focused <button> *is* activating
+  // it — Enter fires click on keydown, Space fires it on keyup — and focus
+  // is always on Skip/Back/Next while the tour is open, never anywhere
+  // preventDefault() would need to suppress that for. The blanket
+  // preventDefault() below is for genuine browser-shortcut collisions
+  // (Ctrl/Cmd K et al.), not for a button doing exactly what a keyboard
+  // user pressing Enter/Space on it expects; catching these first and
+  // returning without it was the one gap in the previous round's fix —
+  // it preventDefault()'d *every* non-Tab key, silently cancelling the
+  // synthesized click and leaving Tab able to move focus among the tour's
+  // controls but nothing able to actually activate any of them.
+  if (e.key === 'Enter' || e.key === ' ') return;
   if (e.key !== 'Tab') {
     // preventDefault() too, not just stopPropagation() — stopping JS
     // propagation to *other listeners* does nothing about the browser's
