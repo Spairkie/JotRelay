@@ -2404,12 +2404,25 @@ end $$;
 -- references. Enabling RLS with zero policies denies both.
 alter table public.syncpad_room_file_counters enable row level security;
 
--- Seed a counter row for every room that already has files, ONLY the
--- first time this migration ever runs on a given database (gated on the
--- counters table not existing yet, checked before it's created above, so
--- this whole block runs at most once — safe even though CREATE TABLE
--- itself is otherwise idempotent). Deliberately seeds well *above* the
--- current max(file_no), not exactly at it: a project that already ran an
+-- Seed a counter row for every room that doesn't already have one — safe
+-- to run on *every* application of this migration/baseline.sql (fresh
+-- install or upgrade, any number of times): `on conflict (room_id) do
+-- nothing` below already makes this a no-op, per room, the instant that
+-- room has a counter row, so there's nothing left for a "have we ever run
+-- this before" gate to protect against. An earlier version of this block
+-- WAS gated behind exactly such a gate — a marker table
+-- (syncpad_room_file_counters_seeded_marker) checked before the seed ran
+-- at all — which meant a database that had already run that earlier
+-- version, marker and all, silently skipped this block on every later
+-- re-application forever afterward, even once a subsequent revision of
+-- this very query fixed a real gap in it (rooms with zero surviving
+-- files — see below): exactly the installations that most needed the fix
+-- got none of it. The marker table may still exist, inert, on installs
+-- that ran that earlier version; nothing reads or checks it anymore, and
+-- it's not worth an active DROP for a table with no other footprint.
+--
+-- Deliberately seeds well *above* the current max(file_no), not exactly at
+-- it: a project that already ran an
 -- earlier version of this migration (the max(file_no)+1 one, or the
 -- syncpad_rooms.file_no_seq one both reverted above) may have already
 -- deleted a file that held a higher number than anything currently
@@ -2457,44 +2470,24 @@ alter table public.syncpad_room_file_counters enable row level security;
 -- since-closed pre-fix exploit but at a scale with no realistic path to
 -- ever occurring, so the clamped case is no longer one this migration
 -- needs to treat as reachable.
-do $$
-begin
-  if not exists (
-    select 1 from information_schema.tables
-    where table_schema = 'public' and table_name = 'syncpad_room_file_counters_seeded_marker'
-  ) then
-    -- LEFT JOIN from syncpad_rooms, not a plain SELECT from syncpad_files
-    -- grouped by room_id: a room that issued file numbers under an earlier
-    -- version of this trigger and has since deleted every one of its files
-    -- has no surviving syncpad_files rows at all, so a files-only query
-    -- would emit no seed row for it whatsoever. Its next upload would then
-    -- create a fresh counter starting at 1 via syncpad_assign_file_no()'s
-    -- own on-conflict-insert, silently reissuing file_no 1 (and onward)
-    -- even though an old syncpad-file:1 reference may still be circulating
-    -- for the deleted file that originally held it — the exact class of bug
-    -- this whole buffered-seed mechanism exists to prevent, just for rooms
-    -- with zero surviving files instead of a lower max(file_no). coalesce
-    -- to 0 gives such a room the same +50000000 buffer as every other room.
-    insert into public.syncpad_room_file_counters (room_id, next_file_no)
-    select r.room_id, least(coalesce(max(f.file_no), 0)::numeric + 50000000, 9223372036854775807::numeric)::bigint
-      from public.syncpad_rooms r
-      left join public.syncpad_files f on f.room_id = r.room_id
-     group by r.room_id
-    on conflict (room_id) do nothing;
-
-    -- A tiny marker table, not a real feature table, purely so the seed
-    -- above never runs a second time (re-running it would add another
-    -- +50000000 on top of whatever's already there). Nothing ever selects
-    -- from or deletes it. Same reasoning as syncpad_room_file_counters
-    -- above for enabling RLS with zero client policies below: Supabase's
-    -- default privileges would otherwise let any anon-key caller insert
-    -- unlimited rows into it directly (it has no uniqueness constraint
-    -- and nothing else reads it, so nothing else would notice).
-    create table public.syncpad_room_file_counters_seeded_marker (seeded_at timestamptz not null default now());
-  end if;
-end $$;
-
-alter table public.syncpad_room_file_counters_seeded_marker enable row level security;
+-- LEFT JOIN from syncpad_rooms, not a plain SELECT from syncpad_files
+-- grouped by room_id: a room that issued file numbers under an earlier
+-- version of this trigger and has since deleted every one of its files
+-- has no surviving syncpad_files rows at all, so a files-only query
+-- would emit no seed row for it whatsoever. Its next upload would then
+-- create a fresh counter starting at 1 via syncpad_assign_file_no()'s
+-- own on-conflict-insert, silently reissuing file_no 1 (and onward)
+-- even though an old syncpad-file:1 reference may still be circulating
+-- for the deleted file that originally held it — the exact class of bug
+-- this whole buffered-seed mechanism exists to prevent, just for rooms
+-- with zero surviving files instead of a lower max(file_no). coalesce
+-- to 0 gives such a room the same +50000000 buffer as every other room.
+insert into public.syncpad_room_file_counters (room_id, next_file_no)
+select r.room_id, least(coalesce(max(f.file_no), 0)::numeric + 50000000, 9223372036854775807::numeric)::bigint
+  from public.syncpad_rooms r
+  left join public.syncpad_files f on f.room_id = r.room_id
+ group by r.room_id
+on conflict (room_id) do nothing;
 
 create or replace function public.syncpad_assign_file_no()
 returns trigger
