@@ -177,10 +177,23 @@ begin
     select 1 from information_schema.tables
     where table_schema = 'public' and table_name = 'syncpad_room_file_counters_seeded_marker'
   ) then
+    -- LEFT JOIN from syncpad_rooms, not a plain SELECT from syncpad_files
+    -- grouped by room_id: a room that issued file numbers under an earlier
+    -- version of this trigger and has since deleted every one of its files
+    -- has no surviving syncpad_files rows at all, so a files-only query
+    -- would emit no seed row for it whatsoever. Its next upload would then
+    -- create a fresh counter starting at 1 via syncpad_assign_file_no()'s
+    -- own on-conflict-insert, silently reissuing file_no 1 (and onward)
+    -- even though an old syncpad-file:1 reference may still be circulating
+    -- for the deleted file that originally held it — the exact class of bug
+    -- this whole buffered-seed mechanism exists to prevent, just for rooms
+    -- with zero surviving files instead of a lower max(file_no). coalesce
+    -- to 0 gives such a room the same +50000000 buffer as every other room.
     insert into public.syncpad_room_file_counters (room_id, next_file_no)
-    select f.room_id, least(max(f.file_no)::numeric + 50000000, 9223372036854775807::numeric)::bigint
-      from public.syncpad_files f
-     group by f.room_id
+    select r.room_id, least(coalesce(max(f.file_no), 0)::numeric + 50000000, 9223372036854775807::numeric)::bigint
+      from public.syncpad_rooms r
+      left join public.syncpad_files f on f.room_id = r.room_id
+     group by r.room_id
     on conflict (room_id) do nothing;
 
     -- A tiny marker table, not a real feature table, purely so the seed
