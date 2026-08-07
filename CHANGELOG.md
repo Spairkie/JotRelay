@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 52 — Onboarding tour: more steps, replayable, visual polish
+
+#### Added
+- **A 5th step spotlighting the Command Palette** (`Ctrl K`/`Cmd K`), inserted between the mode toggle and Share — the fastest way to reach everything else the tour doesn't have room to cover individually (Templates, Find, Settings, Export, and more). Its target lives inside the header's normally-closed "More" dropdown, so the tour now opens that dropdown for real (`_setMoreMenuOpen()`) while on this step and closes it again on any other step or on close — not a mocked-up copy, the same dropdown a real click would open, correctly positioned rather than measured in its closed (CSS-transformed, scaled-down) state.
+- **"Take the Tour" in the More menu** — the tour is no longer strictly once-ever. `startOnboardingTour()` never itself checked `hasSeenOnboarding()` (only its automatic trigger in `room-lifecycle.js` did), so wiring a plain click handler straight to it was enough; also added to the Command Palette itself under Help, a nice small tie-in with the new step above.
+- **A step-progress dots row** under the title/text, alongside (not replacing) the existing "X of Y" text — purely decorative and `aria-hidden` since the `aria-live` text already announces progress; a screen reader narrating "dot 3 active, dot 4 inactive…" on every step would be noise. A brief one-shot "arrived" animation now also plays on both the tooltip content and the highlight ring on every real step change (not on the continuous per-frame reposition loop, which would turn it into a constant flicker instead of a one-time cue), respecting `prefers-reduced-motion`.
+
 ### Phase 51 — Live-mode [TOC] and code-block regressions
 
 #### Fixed

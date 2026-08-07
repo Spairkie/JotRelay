@@ -1,9 +1,13 @@
 // SyncPad – ui/onboarding.js
 // First-time product tour: a small coachmark sequence spotlighting the
-// editor, mode toggle, share button, and more-menu the first time anyone
-// ever creates a room in this browser. Shown once, ever — gated by a
-// localStorage flag, not room state (same category as the other
-// user-global preferences in src/app/state.js).
+// editor, mode toggle, command palette, share button, and more-menu, shown
+// the first time anyone ever creates a room in this browser. Auto-triggered
+// once, ever — gated by a localStorage flag, not room state (same category
+// as the other user-global preferences in src/app/state.js) — but also
+// replayable any time afterward via the More menu's "Take the Tour" item
+// (see src/app/header.js), which calls startOnboardingTour() directly and
+// so bypasses that gate entirely; hasSeenOnboarding() only governs the
+// automatic first-room trigger in room-lifecycle.js.
 
 const SEEN_KEY = 'syncpad_onboarding_seen';
 
@@ -24,6 +28,14 @@ const STEPS = [
       : 'Switch between raw Markdown, a live rendered view you can edit directly, or both side by side.'),
   },
   {
+    // Lives inside the (normally closed) More dropdown — see
+    // opensMoreMenu below and _setMoreMenuOpen().
+    selector: '#btn-command-palette',
+    opensMoreMenu: true,
+    title: 'Command palette',
+    text: () => `Press ${_isMac() ? 'Cmd' : 'Ctrl'} K anytime to jump straight to any feature — Templates, Find, Settings, Export, and more — without touching the mouse.`,
+  },
+  {
     selector: '#btn-share',
     title: 'Share this room',
     // The Share modal itself only covers the editable/read-only links and
@@ -34,9 +46,13 @@ const STEPS = [
   {
     selector: '#btn-more',
     title: 'Everything else',
-    text: 'Files, Settings, Templates, keyboard shortcuts, and more all live behind this menu.',
+    text: 'Files, Settings, Templates, keyboard shortcuts, and more all live behind this menu — including this tour, any time you want to see it again.',
   },
 ];
+
+function _isMac() {
+  return /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
+}
 
 let _stepIndex = 0;
 let _rafId = null;
@@ -58,6 +74,20 @@ export function hasSeenOnboarding() {
 function _markOnboardingSeen() {
   _seenThisSession = true;
   try { localStorage.setItem(SEEN_KEY, 'true'); } catch {}
+}
+
+// Opens/closes the real header "More" dropdown so a step whose target lives
+// inside it (Command Palette) has something real, correctly positioned to
+// spotlight — the dropdown's own CSS lays it out (position:absolute) even
+// while visually hidden via opacity/transform, so its items already have a
+// non-zero bounding rect closed, at the *wrong* scaled/shifted geometry, so
+// skipping this would point the highlight ring at empty space or the wrong
+// spot. Duplicated here rather than importing app/header.js's own
+// closeMoreDropdown(): src/ui/* is a leaf DOM layer app/* builds on, and
+// reaching back up to app/* from here would invert that dependency.
+function _setMoreMenuOpen(open) {
+  document.getElementById('more-dropdown')?.classList.toggle('open', open);
+  document.getElementById('btn-more')?.setAttribute('aria-expanded', String(open));
 }
 
 export function startOnboardingTour() {
@@ -104,6 +134,24 @@ function _repositionLoop() {
   }
 }
 
+// Restarts the tooltip's content-in and highlight-pop CSS animations on
+// every real step change (called only from _showStep(), never from the
+// per-frame _repositionLoop() — replaying it every frame would turn a
+// one-shot "new step arrived" cue into a distracting constant flicker).
+// Removing then reflowing then re-adding the class is the standard trick
+// for restarting a CSS animation that's already applied from the previous
+// step — just re-adding the same class name is a no-op to the browser.
+function _playStepTransition() {
+  const content   = document.getElementById('sp-onboarding-content');
+  const highlight = document.getElementById('sp-onboarding-highlight');
+  for (const el of [content, highlight]) {
+    if (!el) continue;
+    el.classList.remove('onboarding-pop-in');
+    void el.offsetWidth;
+    el.classList.add('onboarding-pop-in');
+  }
+}
+
 function _applyStepContent(step) {
   if (!step) return;
   const titleEl = document.getElementById('sp-onboarding-title');
@@ -128,6 +176,11 @@ export function endOnboardingTour() {
   overlay.setAttribute('inert', '');
   document.removeEventListener('keydown', _onOnboardingKey);
   if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
+  // Unconditional, not just for whichever step happened to be showing:
+  // cheap no-op if it was already closed, and guarantees the tour never
+  // leaves the real More menu stuck open behind itself on any exit path
+  // (Escape, Skip, Done, or a forced close from room navigation).
+  _setMoreMenuOpen(false);
   if (_previouslyFocused && document.contains(_previouslyFocused)) _previouslyFocused.focus();
   _previouslyFocused = null;
 }
@@ -150,6 +203,14 @@ function _onOnboardingKey(e) {
 function _showStep(index) {
   if (index >= STEPS.length) { endOnboardingTour(); return; }
   const step = STEPS[index];
+  // Must happen before measuring below: the real dropdown is scaled/shifted
+  // via CSS transform while closed (see _setMoreMenuOpen()'s comment), so
+  // its items' bounding rects are only correct once actually opened — and
+  // this unconditionally reflects *this* step's own need either way, so a
+  // step that doesn't use it (including the recursive skip-ahead call
+  // below) always leaves it closed rather than stuck open from a previous
+  // step.
+  _setMoreMenuOpen(!!step.opensMoreMenu);
   const target = document.querySelector(step.selector);
   const rect = target?.getBoundingClientRect();
   if (!target || !rect || rect.width === 0 || rect.height === 0) {
@@ -162,6 +223,11 @@ function _showStep(index) {
   _stepIndex = index;
   _applyStepContent(step);
   document.getElementById('sp-onboarding-count').textContent = `${index + 1} of ${STEPS.length}`;
+  document.querySelectorAll('#sp-onboarding-dots .onboarding-dot').forEach((dot, i) => {
+    dot.classList.toggle('is-active', i === index);
+    dot.classList.toggle('is-done', i < index);
+  });
+  _playStepTransition();
   const backBtn = document.getElementById('sp-onboarding-back');
   const nextBtn = document.getElementById('sp-onboarding-next');
   backBtn.disabled = index === 0;
@@ -234,6 +300,12 @@ function _ensureOnboardingDom() {
         <h3 class="onboarding-tooltip-title" id="sp-onboarding-title"></h3>
         <p class="onboarding-tooltip-text" id="sp-onboarding-text"></p>
       </div>
+      <!-- Purely decorative echo of sp-onboarding-count above — aria-hidden
+           since the aria-live text already announces progress; a screen
+           reader describing "dot 2, dot 3 not selected..." on every step
+           would be noise, not information. Built once here since STEPS.length
+           is fixed; _showStep() only ever toggles which dot is active. -->
+      <div class="onboarding-dots" id="sp-onboarding-dots" aria-hidden="true"></div>
       <div class="onboarding-tooltip-actions">
         <button type="button" class="onboarding-skip" id="sp-onboarding-skip">Skip tour</button>
         <div class="onboarding-tooltip-nav">
@@ -243,6 +315,9 @@ function _ensureOnboardingDom() {
       </div>
     </div>`;
   document.body.appendChild(el);
+
+  const dots = document.getElementById('sp-onboarding-dots');
+  dots.innerHTML = STEPS.map(() => '<span class="onboarding-dot"></span>').join('');
 
   document.getElementById('sp-onboarding-skip').onclick = () => endOnboardingTour();
   document.getElementById('sp-onboarding-back').onclick = () => _showStep(_stepIndex - 1);

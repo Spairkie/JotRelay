@@ -59,6 +59,7 @@ function _paletteCommands() {
 
     { id: 'about',      label: 'About SyncPad',       group: 'Help', run: _clickById('btn-about') },
     { id: 'shortcuts',  label: 'Keyboard shortcuts',  group: 'Help', shortcut: 'Ctrl /', run: _clickById('btn-shortcuts') },
+    { id: 'replay-tour', label: 'Take the tour',      group: 'Help', keywords: ['onboarding', 'walkthrough', 'help'], run: _clickById('btn-replay-tour') },
   ];
 }
 

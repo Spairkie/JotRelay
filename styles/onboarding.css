@@ -20,6 +20,25 @@
   transition: top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease;
   pointer-events: none;
 }
+/* One-shot "arrived" cue on a real step change (restarted by JS — see
+   _playStepTransition() in src/ui/onboarding.js), not a constant loop —
+   the ring already tracks position every frame via the transition above,
+   this just makes a *new* target read as freshly spotlighted rather than
+   the box merely sliding there from wherever it was. */
+#sp-onboarding-highlight.onboarding-pop-in { animation: onboarding-highlight-in 0.22s ease; }
+#sp-onboarding-content.onboarding-pop-in   { animation: onboarding-content-in 0.18s ease; }
+@keyframes onboarding-highlight-in {
+  from { box-shadow: 0 0 0 4000px rgba(0,0,0,0.55), 0 0 0 4px var(--accent-glow), 0 0 0 10px var(--accent-glow); }
+  to   { box-shadow: 0 0 0 4000px rgba(0,0,0,0.55), 0 0 0 4px var(--accent-glow); }
+}
+@keyframes onboarding-content-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #sp-onboarding-highlight.onboarding-pop-in,
+  #sp-onboarding-content.onboarding-pop-in { animation: none; }
+}
 
 .onboarding-tooltip {
   position: fixed; z-index: 1;
@@ -45,6 +64,13 @@
 }
 .onboarding-tooltip-title { font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
 .onboarding-tooltip-text  { font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 14px; }
+.onboarding-dots { display: flex; gap: 6px; margin-bottom: 14px; flex-shrink: 0; }
+.onboarding-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--border);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.onboarding-dot.is-done   { background: var(--text-muted); }
+.onboarding-dot.is-active { background: var(--accent); transform: scale(1.35); }
 .onboarding-tooltip-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .onboarding-skip {
   background: none; border: none; padding: 0; font-size: 13px; color: var(--text-muted);

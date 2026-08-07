@@ -33,6 +33,11 @@ export function _wireHeader() {
   document.getElementById('btn-presence')?.addEventListener('click', () => { closeMoreDropdown(); UI.togglePanel('presence-panel'); });
   document.getElementById('btn-settings')?.addEventListener('click', () => { closeMoreDropdown(); UI.togglePanel('settings-panel'); });
   document.getElementById('btn-about')?.addEventListener('click', () => { closeMoreDropdown(); UI.openModal('about-modal'); });
+  // Manual replay bypasses hasSeenOnboarding() entirely — that flag only
+  // gates the automatic first-room trigger in room-lifecycle.js, and
+  // startOnboardingTour() itself has no such check, so calling it directly
+  // here just works regardless of whether the tour has already been seen.
+  document.getElementById('btn-replay-tour')?.addEventListener('click', () => { closeMoreDropdown(); UI.startOnboardingTour(); });
   // A-3: device-count-badge — keyboard accessibility (role="button" set in HTML)
   const deviceCountBtn = document.getElementById('device-count-btn');
   deviceCountBtn?.addEventListener('click', () => UI.togglePanel('presence-panel'));

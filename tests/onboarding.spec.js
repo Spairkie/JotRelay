@@ -8,27 +8,36 @@
 // fresh room (settings.spec.js, history.spec.js, short-room-code.spec.js).
 
 import { test, expect } from '@playwright/test';
-import { createFreshRoom } from './helpers.js';
+import { createFreshRoom, createRoom, openMoreMenu } from './helpers.js';
 
 test.describe('First-time onboarding tour', () => {
-  test('walks through all 4 steps end to end and marks itself seen', async ({ page }) => {
+  test('walks through all 5 steps end to end and marks itself seen', async ({ page }) => {
     await createFreshRoom(page, { skipOnboarding: false });
 
     const overlay = page.locator('#sp-onboarding-overlay');
     await expect(overlay).toHaveClass(/visible/);
-    await expect(page.locator('#sp-onboarding-count')).toHaveText('1 of 4');
+    await expect(page.locator('#sp-onboarding-count')).toHaveText('1 of 5');
     await expect(page.locator('#sp-onboarding-title')).toHaveText('Your note');
     await expect(page.locator('#sp-onboarding-back')).toBeDisabled();
+    // Dots mirror the same progress the aria-live text announces, purely
+    // decoratively (aria-hidden — see _ensureOnboardingDom()'s comment).
+    await expect(page.locator('#sp-onboarding-dots .onboarding-dot')).toHaveCount(5);
+    await expect(page.locator('#sp-onboarding-dots .onboarding-dot.is-active')).toHaveCount(1);
 
     await page.click('#sp-onboarding-next');
-    await expect(page.locator('#sp-onboarding-count')).toHaveText('2 of 4');
+    await expect(page.locator('#sp-onboarding-count')).toHaveText('2 of 5');
     await expect(page.locator('#sp-onboarding-back')).toBeEnabled();
 
     await page.click('#sp-onboarding-next');
-    await expect(page.locator('#sp-onboarding-count')).toHaveText('3 of 4');
+    await expect(page.locator('#sp-onboarding-count')).toHaveText('3 of 5');
+    await expect(page.locator('#sp-onboarding-title')).toHaveText('Command palette');
 
     await page.click('#sp-onboarding-next');
-    await expect(page.locator('#sp-onboarding-count')).toHaveText('4 of 4');
+    await expect(page.locator('#sp-onboarding-count')).toHaveText('4 of 5');
+    await expect(page.locator('#sp-onboarding-title')).toHaveText('Share this room');
+
+    await page.click('#sp-onboarding-next');
+    await expect(page.locator('#sp-onboarding-count')).toHaveText('5 of 5');
     await expect(page.locator('#sp-onboarding-next')).toHaveText('Done');
 
     await page.click('#sp-onboarding-next');
@@ -36,6 +45,26 @@ test.describe('First-time onboarding tour', () => {
 
     const seen = await page.evaluate(() => localStorage.getItem('syncpad_onboarding_seen'));
     expect(seen).toBe('true');
+  });
+
+  test('the Command Palette step opens the real More dropdown to spotlight it, and closes it on leaving', async ({ page }) => {
+    await createFreshRoom(page, { skipOnboarding: false });
+    const moreDropdown = page.locator('#more-dropdown');
+
+    await page.click('#sp-onboarding-next'); // step 2: mode toggle
+    await expect(moreDropdown).not.toHaveClass(/open/);
+
+    await page.click('#sp-onboarding-next'); // step 3: command palette
+    await expect(page.locator('#sp-onboarding-title')).toHaveText('Command palette');
+    // The real dropdown, not a mock — its own "Command Palette" menu item is
+    // the thing actually spotlighted, so it has to be genuinely open (see
+    // _setMoreMenuOpen()'s comment on why a merely-laid-out-but-hidden
+    // dropdown item's bounding rect wouldn't be the right one to highlight).
+    await expect(moreDropdown).toHaveClass(/open/);
+    await expect(page.locator('#btn-command-palette')).toBeVisible();
+
+    await page.click('#sp-onboarding-next'); // step 4: share
+    await expect(moreDropdown).not.toHaveClass(/open/);
   });
 
   test('Back navigates to the previous step', async ({ page }) => {
@@ -122,5 +151,26 @@ test.describe('First-time onboarding tour', () => {
     await expect(page.locator('#sp-onboarding-title')).toHaveText('Source or Live');
     const text = await page.locator('#sp-onboarding-text').textContent();
     expect(text).not.toContain('side by side');
+  });
+
+  test('"Take the Tour" in the More menu replays the tour even after it has already been seen', async ({ page }) => {
+    // The shared fixture room never triggers isNewRoom, so the automatic
+    // tour never fires here — exactly the situation the manual replay entry
+    // point is for: hasSeenOnboarding() only gates that automatic trigger,
+    // not startOnboardingTour() itself (see src/app/header.js's wiring).
+    await createRoom(page);
+    await page.evaluate(() => localStorage.setItem('syncpad_onboarding_seen', 'true'));
+    await expect(page.locator('#sp-onboarding-overlay.visible')).toHaveCount(0);
+
+    await openMoreMenu(page);
+    await page.click('#btn-replay-tour');
+
+    const overlay = page.locator('#sp-onboarding-overlay');
+    await expect(overlay).toHaveClass(/visible/);
+    await expect(page.locator('#sp-onboarding-count')).toHaveText('1 of 5');
+    // Clicking it closed the More dropdown the same way every other item in
+    // that menu does (closeMoreDropdown() in src/app/header.js) — it
+    // shouldn't be left open behind the tour it just opened.
+    await expect(page.locator('#more-dropdown')).not.toHaveClass(/open/);
   });
 });
