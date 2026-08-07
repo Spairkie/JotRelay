@@ -127,12 +127,25 @@
       el.addEventListener('error', resolve, { once: true });
     });
   </script>
-  <!-- QR Code — same reasoning: window.QRCode is only read inside an
-       already-guarded (`if (!window.QRCode) return;`) share-modal handler
-       triggered by a later user action, never at parse time. -->
+  <!-- QR Code — window.QRCode is only read inside a share-modal handler
+       (_renderQr() in src/ui/feature-modals.js) triggered by a later user
+       action, never at parse time — but that action can still happen
+       before this deferred script has loaded (e.g. Share opened moments
+       after the page itself finished, especially with the module graph
+       now loading near-instantly from a warm service-worker cache). Same
+       window.__*Ready pattern as Supabase above: _renderQr() awaits
+       window.__qrReady and retries once, rather than leaving the QR
+       container permanently empty on that first miss. -->
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"
           integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU"
-          crossorigin="anonymous" defer></script>
+          crossorigin="anonymous" defer id="qrcode-sdk-script"></script>
+  <script>
+    window.__qrReady = new Promise((resolve) => {
+      const el = document.getElementById('qrcode-sdk-script');
+      el.addEventListener('load', resolve, { once: true });
+      el.addEventListener('error', resolve, { once: true });
+    });
+  </script>
   <!-- Prism.js — syntax highlighting in markdown preview -->
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"
           integrity="sha384-MXybTpajaBV0AkcBaCPT4KIvo0FzoCiWXgcihYsw4FUkEz0Pv3JGV6tk2G8vJtDc"
@@ -169,9 +182,9 @@
      position: fixed (styles/app-shell.css), so its DOM position doesn't
      affect where it renders — only whether an ancestor's `hidden` class
      would otherwise remove it from rendering entirely. -->
-<div class="sw-update-bar" id="sw-update-bar">
+<div class="sw-update-bar" id="sw-update-bar" aria-hidden="true">
   <span>A new version of SyncPad is available.</span>
-  <button class="sw-update-btn">Refresh</button>
+  <button class="sw-update-btn" disabled>Refresh</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════

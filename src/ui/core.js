@@ -200,12 +200,21 @@ export function showUpdateBar(onUpdate) {
   const bar = document.getElementById('sw-update-bar');
   if (!bar) return;
   bar.classList.add('visible');
+  // index.html marks the bar aria-hidden and its button disabled by
+  // default — it's only ever moved off-screen via transform (see
+  // styles/app-shell.css), which alone leaves it (and, worse, an inert
+  // Refresh button with no handler yet) reachable via Tab. Clear both now
+  // that it's actually visible and about to get a real click handler.
+  bar.removeAttribute('aria-hidden');
   // Use .onclick (idempotent re-assignment) rather than addEventListener,
   // even with {once:true} — 'updatefound' can legitimately fire more than
   // once per session, and addEventListener would stack a new listener (each
   // closing over a different `worker`) before the first ever fires.
   const btn = bar.querySelector('.sw-update-btn');
-  if (btn) btn.onclick = onUpdate;
+  if (btn) {
+    btn.disabled = false;
+    btn.onclick = onUpdate;
+  }
 }
 
 // ── PWA install bar ───────────────────────────────────────────────────────────

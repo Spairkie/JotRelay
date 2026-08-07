@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'syncpad-v49';
+const CACHE_VERSION = 'syncpad-v50';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -93,6 +93,10 @@ const PRECACHE_ASSETS = [
   `${BASE}/assets/favicon-16.png`,
 ];
 
+// Fast membership lookup for the fetch handler below — only these paths
+// ever go through this worker's cache.
+const PRECACHED_PATHS = new Set(PRECACHE_ASSETS);
+
 // ── Install: precache core assets (tolerant of individual misses) ──────────
 
 self.addEventListener('install', (event) => {
@@ -155,7 +159,21 @@ self.addEventListener('fetch', (event) => {
   // control and even while fully online.
   const pathname = new URL(url).pathname;
   const isSpaRoute = req.mode === 'navigate' && !/\.[a-zA-Z0-9]+$/.test(pathname);
+  const cachePath = isSpaRoute ? `${BASE}/index.html` : pathname;
   const cacheKey = isSpaRoute ? `${BASE}/index.html` : req;
+
+  // Only PRECACHE_ASSETS entries go through this worker's cache at all —
+  // e.g. NOT the landing page's presskit screenshots/demo video. Those are
+  // unversioned (no entry here, no CACHE_VERSION bump when they change) and
+  // large/streamed, which combine badly with "cache once, never revisit":
+  // caching one on first request would (a) permanently serve stale bytes to
+  // existing clients if a deploy ever replaces that file without also
+  // touching a precached asset, since nothing here would ever revalidate or
+  // evict it, and (b) break byte-range requests — a cached whole-file 200
+  // response matches a later Range request too, and gets returned in full,
+  // which video loaders can abort on. Plain pass-through (no respondWith
+  // call) leaves these to ordinary browser/HTTP caching instead.
+  if (!PRECACHED_PATHS.has(cachePath)) return;
 
   // Cache-first, scoped to the SAME open CACHE_VERSION cache — deliberately,
   // not just for speed. Once a slot is populated, it is treated as
@@ -191,16 +209,22 @@ self.addEventListener('fetch', (event) => {
     } catch {
       return new Response('Offline', { status: 503, statusText: 'Offline' });
     }
-    // A cache-write failure must never turn an already-successful network
-    // response into a fake offline error — e.g. the Cache API rejects
-    // put() for a 206 Partial Content response outright (range requests,
-    // which a <video>'s scrubbing/seeking issues routinely), and a full
-    // storage quota would reject too. Isolated in its own try/catch, and
-    // awaited (not fire-and-forget) so event.respondWith() — which only
-    // keeps this worker alive until the promise it was given resolves —
-    // covers the write before the response goes out.
+    // Backgrounded via event.waitUntil() rather than awaited inline: this
+    // worker only needs to stay alive until the *write* finishes, not until
+    // the browser has the response — event.respondWith()'s own promise
+    // already resolves as soon as networkResponse is returned below, and
+    // awaiting the write first would have delayed that (Cache.put() only
+    // resolves once it has fully read the cloned body, so an inline await
+    // would hold the whole response back from the browser until the write —
+    // for a large precached asset, until the entire download — completed).
+    // A cache-write failure (e.g. a full storage quota) must also never
+    // turn an already-successful response into a fake offline error, which
+    // waitUntil()'s own catch here keeps entirely separate from the
+    // response path below.
     if (networkResponse && networkResponse.ok) {
-      try { await cache.put(cacheKey, networkResponse.clone()); } catch { /* e.g. 206, quota — non-fatal */ }
+      event.waitUntil(
+        cache.put(cacheKey, networkResponse.clone()).catch(() => { /* e.g. quota — non-fatal */ })
+      );
     }
     return networkResponse;
   })());

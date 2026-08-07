@@ -166,7 +166,17 @@ function _renderQr(containerId, url) {
   const el = document.getElementById(containerId);
   if (!el) return;
   el.innerHTML = '';
-  if (!url || !window.QRCode) return;
+  if (!url) return;
+  if (!window.QRCode) {
+    // The QR CDN script (index.html) is deferred and may still be loading
+    // when the share modal opens. Retry once it's ready instead of leaving
+    // the container permanently empty — populateShareModal() is only ever
+    // called again on a fresh modal open, not on every render, so without
+    // this a share opened just after page load could show no QR code for
+    // the rest of that session.
+    window.__qrReady?.then(() => _renderQr(containerId, url));
+    return;
+  }
   try {
     // Read QR colours from the active theme's CSS variables so the code adapts
     // to every theme rather than always using the Charcoal Amber palette.
