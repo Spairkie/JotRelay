@@ -1589,26 +1589,34 @@
     <div class="search-bar">
       <input id="search-input" class="search-input" type="search" placeholder="Find…" autocomplete="off" spellcheck="false" aria-label="Search text" />
       <span class="search-count" id="search-count" aria-live="polite"></span>
-      <button class="search-case-btn" id="search-case" title="Case-sensitive search" aria-label="Toggle case-sensitive search" aria-pressed="false">Aa</button>
-    </div>
-    <div class="search-actions">
       <button class="search-nav-btn" id="search-prev" title="Previous match" aria-label="Previous match">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        Prev
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
       </button>
       <button class="search-nav-btn" id="search-next" title="Next match" aria-label="Next match">
-        Next
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
+      <button class="search-case-btn" id="search-case" title="Case-sensitive search" aria-label="Toggle case-sensitive search" aria-pressed="false">Aa</button>
     </div>
-    <div class="replace-bar" id="replace-bar">
-      <input id="replace-input" class="search-input" type="text" placeholder="Replace with…" autocomplete="off" spellcheck="false" aria-label="Replace text" />
+    <!-- Collapsed by default — the common case is just finding, and showing
+         the full replace UI unconditionally (as this panel used to) is most
+         of what made it too tall to leave any note content visible on a
+         mobile screen with the keyboard open. Same progressive-disclosure
+         pattern VS Code's Ctrl+H uses: toggle a chevron to reveal replace,
+         collapse it again when done. -->
+    <button type="button" class="search-replace-toggle" id="search-replace-toggle" aria-expanded="false" aria-controls="replace-section">
+      <svg class="search-replace-toggle-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+      Replace
+    </button>
+    <div class="replace-section" id="replace-section" hidden>
+      <div class="replace-bar" id="replace-bar">
+        <input id="replace-input" class="search-input" type="text" placeholder="Replace with…" autocomplete="off" spellcheck="false" aria-label="Replace text" />
+      </div>
+      <div class="replace-actions" id="replace-actions">
+        <button class="replace-btn" id="replace-one" disabled title="Replace current match">Replace</button>
+        <button class="replace-btn replace-btn--all" id="replace-all" disabled title="Replace all matches">Replace All</button>
+      </div>
+      <p class="search-hint">Replace requires edit access. Aa = case-sensitive.</p>
     </div>
-    <div class="replace-actions" id="replace-actions">
-      <button class="replace-btn" id="replace-one" disabled title="Replace current match">Replace</button>
-      <button class="replace-btn replace-btn--all" id="replace-all" disabled title="Replace all matches">Replace All</button>
-    </div>
-    <p class="search-hint">Replace requires edit access. Aa = case-sensitive.</p>
   </div>
 </div>
 

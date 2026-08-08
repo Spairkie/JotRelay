@@ -10,6 +10,14 @@ async function openSearchPanel(page) {
   await page.waitForSelector('#search-panel.open', { timeout: 5000 });
 }
 
+// Replace starts collapsed behind a toggle (src/app/panels.js) — most tests
+// that touch #replace-input/#replace-one/#replace-all need it expanded
+// first, or those elements aren't visible/actionable at all.
+async function expandReplace(page) {
+  await page.locator('#search-replace-toggle').click();
+  await page.waitForSelector('#replace-section:not([hidden])', { timeout: 5000 });
+}
+
 test.describe('Find & Replace panel', () => {
   test('opens with Ctrl+F and search input is focused', async ({ page }) => {
     await createRoom(page);
@@ -100,6 +108,7 @@ test.describe('Find & Replace panel', () => {
     await typeInEditor(page, 'foo bar foo');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('foo');
+    await expandReplace(page);
     await page.locator('#replace-input').fill('baz');
     await page.locator('#replace-one').click();
     // After replace, replace input should retain focus
@@ -113,6 +122,7 @@ test.describe('Find & Replace panel', () => {
     await typeInEditor(page, 'foo foo foo');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('foo');
+    await expandReplace(page);
     await page.locator('#replace-input').fill('bar');
     await page.locator('#replace-all').click();
     // Search input should be focused
@@ -121,14 +131,17 @@ test.describe('Find & Replace panel', () => {
     expect(content).toBe('bar bar bar');
   });
 
-  test('Tab from search input moves focus to replace input', async ({ page }) => {
+  test('Tab from search input expands Replace (if collapsed) and moves focus to replace input', async ({ page }) => {
     await createRoom(page);
     await openSearchPanel(page);
     await page.locator('#search-input').focus();
     // panels.js wires a dedicated keydown handler on #search-input that
     // preventDefaults Tab and focuses #replace-input directly — a deliberate
     // single-hop shortcut, not the browser's native tab order (which would
-    // also pass through the Aa toggle and Prev/Next buttons first).
+    // also pass through Prev/Next/Aa first). Replace starts collapsed, so
+    // this also has to expand #replace-section itself — a hidden element
+    // can't receive focus at all.
+    await expect(page.locator('#replace-section')).toBeHidden();
     await page.keyboard.press('Tab');
     await expect(page.locator('#replace-input')).toBeFocused();
   });
@@ -136,6 +149,7 @@ test.describe('Find & Replace panel', () => {
   test('Shift+Tab from replace input moves focus back to search input', async ({ page }) => {
     await createRoom(page);
     await openSearchPanel(page);
+    await expandReplace(page);
     await page.locator('#replace-input').focus();
     // Symmetric reverse of the single-hop Shift+Tab handler in panels.js.
     await page.keyboard.press('Shift+Tab');
@@ -182,6 +196,7 @@ test.describe('Find & Replace panel', () => {
     await page.locator('#search-input').fill('aa');
     await expect(page.locator('#search-count')).toContainText('1 / 2');
 
+    await expandReplace(page);
     await page.locator('#replace-input').fill('X');
     await page.locator('#replace-all').click();
     await waitForToast(page, 'Replaced 2 matches.');
@@ -195,6 +210,7 @@ test.describe('Find & Replace panel', () => {
     await typeInEditor(page, 'Foo foo FOO');
     await openSearchPanel(page);
     await page.locator('#search-input').fill('foo');
+    await expandReplace(page);
     await page.locator('#replace-input').fill('bar');
 
     // Enable case-sensitive — only the lowercase 'foo' should be replaced
