@@ -174,13 +174,26 @@ export async function getForceDownloadUrl(filePath, filename, { fresh = false } 
  *
  * The two-step delete intentionally throws on either failure so the caller
  * sees an explicit error instead of silently leaving an inconsistency.
+ *
+ * @param {string} fileId
+ * @param {string} filePath
+ * @param {{ roomId?: string, fileNo?: number }} [ref] – when provided,
+ *   evicts the deleted file's entry from the getFileByNo() short-reference
+ *   cache too (see _fileByRoomAndNo above) — otherwise a syncpad-file:N
+ *   reference to this now-deleted file would keep resolving to its stale
+ *   cached row (and, from that, a signed URL for a storage object that no
+ *   longer exists) instead of correctly reporting "File not found" the
+ *   next time it's encountered in the note, for as long as this tab's
+ *   session lasts. Optional — a caller that never went through
+ *   getFileByNo()/listFiles() for this room has nothing to evict.
  */
-export async function deleteFile(fileId, filePath) {
+export async function deleteFile(fileId, filePath, { roomId, fileNo } = {}) {
   const sb = getSupabaseClient();
 
   // Evict cached signed URLs so stale links are not returned after deletion.
   _urlCache.delete(filePath);
   _downloadUrlCache.delete(filePath);
+  if (roomId != null && fileNo != null) _fileByRoomAndNo.delete(`${roomId}:${fileNo}`);
 
   // Step 1: Delete from storage. Abort if this fails.
   const { error: se } = await sb.storage.from(BUCKET).remove([filePath]);

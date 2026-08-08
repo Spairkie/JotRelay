@@ -122,7 +122,7 @@ export async function refreshFiles() {
       );
       if (!ok) return;
       try {
-        await deleteFile(file.id, file.file_path);
+        await deleteFile(file.id, file.file_path, { roomId: state.roomId, fileNo: file.file_no });
         UI.showToast('File deleted.', 'success');
         broadcastFilesChange();
         await refreshFiles();
@@ -284,7 +284,7 @@ export function _wireFilesBulkSelect() {
       const f = allFiles.find(x => x.id === id);
       if (!f) continue;
       try {
-        await deleteFile(f.id, f.file_path);
+        await deleteFile(f.id, f.file_path, { roomId: state.roomId, fileNo: f.file_no });
       } catch { failed++; }
     }
     broadcastFilesChange();
