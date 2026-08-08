@@ -24,6 +24,7 @@ import {
 import { escapeHtml } from './utils.js';
 import { highlightExtension } from './markdown-highlight-extension.js';
 import { parseTableAlignments } from './markdown-table-utils.js';
+import { EMOJI_MAP } from './markdown-emoji-map.js';
 import { renderMarkdown } from './markdown.js';
 import { toggleFootnotePopover } from './footnote-popover.js';
 
@@ -159,6 +160,25 @@ class _CheckboxWidget extends WidgetType {
       view.dispatch({ changes: { from: this.from, to: this.to, insert: box.checked ? '[x]' : '[ ]' } });
     });
     return box;
+  }
+}
+
+// Recognized :shortcode: → the actual Unicode emoji character, matching
+// markdown.js's classic renderer (see EMOJI_MAP in markdown-emoji-map.js).
+// Parity fix for the gap noted in docs/markdown-feature-audit.md's "Areas
+// for further work" — this surface previously only neutralized the
+// shortcode's syntax-highlight color (see _mdHighlight's tags.character
+// rule above) and left the raw `:smile:` text on screen everywhere, not
+// just while actively editing it.
+class _EmojiWidget extends WidgetType {
+  constructor(emoji, raw) { super(); this.emoji = emoji; this.raw = raw; }
+  eq(other) { return other.emoji === this.emoji; }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-md-emoji';
+    span.textContent = this.emoji;
+    span.title = this.raw;
+    return span;
   }
 }
 
@@ -1164,6 +1184,20 @@ const _seamless = ViewPlugin.fromClass(class {
             return false; // skip descending into the marks this widget already replaces
           }
 
+          // Recognized emoji shortcode (:smile:) → the real Unicode
+          // character, while the selection isn't touching it (raw text
+          // shows while editing, same reveal-on-touch pattern as
+          // everything else here). An unrecognized shortcode is left as
+          // literal text — matches the classic renderer exactly.
+          if (name === 'Emoji') {
+            if (_selectionTouches(state, nodeRef.from, nodeRef.to)) return;
+            const raw = state.doc.sliceString(nodeRef.from, nodeRef.to);
+            const code = raw.slice(1, -1).toLowerCase();
+            if (!Object.prototype.hasOwnProperty.call(EMOJI_MAP, code)) return;
+            ranges.push(Decoration.replace({ widget: new _EmojiWidget(EMOJI_MAP[code], raw) }).range(nodeRef.from, nodeRef.to));
+            return;
+          }
+
           // Quote marks and link syntax fold like wave-1 markers do.
           if (name === 'QuoteMark') {
             const parent = nodeRef.node.parent;
@@ -1396,6 +1430,26 @@ export function destroy() {
   _onChange = null;
   _onCursorActivity = null;
   _onImageFiles = null;
+}
+
+/**
+ * Re-run CM6's own "keep the selection visible" scroll against the
+ * scroller's *current* size. Called by keyboard-viewport.js after the
+ * on-screen keyboard opens/closes/resizes — CSS already shrinks this
+ * surface's box to stay above the keyboard (the --kb-inset chain in
+ * modals.css/keyboard-viewport.js), but that's a passive ancestor resize,
+ * and CM6 (like a plain textarea) only re-scrolls to keep the caret
+ * visible on an actual selection/content change, not just because its
+ * container got shorter out from under it. Without this, the line the
+ * user was on when the keyboard opened can end up hidden below the new,
+ * smaller box until the next keystroke's normal caret-follow catches up —
+ * a visible "typing blind for a moment" gap. y:'nearest' is a no-op if the
+ * caret is already visible, so this is safe to call unconditionally.
+ * No-ops if the live surface isn't mounted or doesn't currently have focus.
+ */
+export function scrollCaretIntoView() {
+  if (!_view || !_view.hasFocus) return;
+  _view.dispatch({ effects: EditorView.scrollIntoView(_view.state.selection.main.head, { y: 'nearest' }) });
 }
 
 // ── Split-mode scroll sync ───────────────────────────────────────────────────

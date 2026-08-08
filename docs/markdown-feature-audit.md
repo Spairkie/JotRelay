@@ -149,14 +149,20 @@ SyncPad has two rendering surfaces:
     see it), left in place rather than risking a fragile fix for a cosmetic
     edge case.
 
+- **Emoji shortcode conversion in the live surface, closed.** The classic
+  renderer converts a recognized `:shortcode:` to its Unicode emoji; the
+  live CM6 surface previously only neutralized its color (Phase 33 note
+  above) and still showed the raw colons-and-letters text. Now has a widget
+  decoration matching the pattern already used for images/checkboxes/tables
+  — `EMOJI_MAP` moved out of `markdown.js` into a new shared
+  `markdown-emoji-map.js` (so both renderers agree on exactly which
+  shortcodes resolve, rather than a second copy drifting), and
+  `live-editor.js`'s syntax-tree walker gained an `Emoji`-node case:
+  replaces the raw text with a `<span class="cm-md-emoji">` showing the
+  real character while the selection isn't touching it (same reveal-on-touch
+  pattern as every other hideable element here), leaves an unrecognized
+  shortcode as literal text exactly like the classic renderer.
+
 ## Areas for further work
 
-- **Emoji shortcode conversion in the live surface.** The classic renderer
-  converts a recognized `:shortcode:` to its Unicode emoji; the live CM6
-  surface currently only neutralizes its color (see the Phase 33 note
-  above) and still shows the raw colons-and-letters text. Bringing it to
-  parity would mean a widget decoration matching the pattern already used
-  for images/checkboxes/tables — hide the raw text near the caret, show the
-  rendered emoji everywhere else — which is a reasonable follow-up but a
-  materially bigger, riskier change than the classic-renderer addition
-  itself, so it's scoped out for now rather than rushed.
+(none currently)

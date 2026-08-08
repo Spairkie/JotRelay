@@ -126,3 +126,102 @@ test.describe('Mobile keyboard viewport tracking', () => {
     expect(paddingBottom).toBe('360px'); // 60px base bar height + 300px keyboard inset
   });
 });
+
+// The --kb-inset CSS reflow above shrinks the editor's own box to stay
+// above the keyboard, but neither a plain <textarea> nor CodeMirror 6
+// re-scrolls to keep the *caret* visible just because their container got
+// shorter out from under them (that only happens on an actual selection/
+// content change) — this is the second half of the fix: re-trigger each
+// surface's own native caret-visibility scroll shortly after the resize
+// settles. Exercised against standalone elements/a directly-mounted CM6
+// instance rather than a real room, the same technique remote-selection.spec.js
+// uses for LiveEditor — no Supabase/network dependency either way.
+test.describe('Keyboard resize re-scrolls the caret into view', () => {
+  test('a focused #note-editor textarea gets its selection re-applied (re-triggering the browser\'s own caret-follow scroll)', async ({ page }) => {
+    await goToLanding(page);
+    await stubVisualViewportAndImport(page);
+
+    const calls = await page.evaluate(async () => {
+      const ta = document.createElement('textarea');
+      ta.id = 'note-editor';
+      ta.value = 'line one\nline two\nline three';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.setSelectionRange(4, 8, 'forward');
+
+      const seen = [];
+      const orig = ta.setSelectionRange.bind(ta);
+      ta.setSelectionRange = (...args) => { seen.push(args); orig(...args); };
+
+      window.__fakeVV.height = window.innerHeight - 300;
+      window.__fakeVVListeners.resize.forEach((fn) => fn());
+      // The reflow is debounced ~180ms after the resize settles.
+      await new Promise((r) => setTimeout(r, 400));
+
+      ta.remove();
+      return seen;
+    });
+
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0]).toEqual([4, 8, 'forward']);
+  });
+
+  test('an unrelated focused input is left alone (no selection nudge)', async ({ page }) => {
+    await goToLanding(page);
+    await stubVisualViewportAndImport(page);
+
+    const calls = await page.evaluate(async () => {
+      const input = document.createElement('input');
+      input.id = 'some-other-input';
+      document.body.appendChild(input);
+      input.focus();
+
+      const seen = [];
+      const orig = input.setSelectionRange.bind(input);
+      input.setSelectionRange = (...args) => { seen.push(args); orig(...args); };
+
+      window.__fakeVV.height = window.innerHeight - 300;
+      window.__fakeVVListeners.resize.forEach((fn) => fn());
+      await new Promise((r) => setTimeout(r, 400));
+
+      input.remove();
+      return seen;
+    });
+
+    expect(calls.length).toBe(0);
+  });
+
+  test('the CM6 live surface re-scrolls its own selection into view when focused, and is a no-op when not', async ({ page }) => {
+    await goToLanding(page);
+    await stubVisualViewportAndImport(page);
+
+    // Reaching the final return at all (page.evaluate rejects on any
+    // uncaught error inside it, which Playwright surfaces as a test
+    // failure) is the assertion for both the not-yet-mounted no-op and the
+    // focused-and-mounted path through keyboard-viewport.js's real debounced
+    // resize → scrollCaretIntoView() integration.
+    const unmountedResult = await page.evaluate(async () => {
+      const LiveEditor = await import('/SyncPad/src/live-editor.js');
+      LiveEditor.scrollCaretIntoView(); // nothing mounted yet
+      return 'ok';
+    });
+    expect(unmountedResult).toBe('ok');
+
+    const mountedResult = await page.evaluate(async () => {
+      const LiveEditor = await import('/SyncPad/src/live-editor.js');
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      LiveEditor.mount(container, 'a\nb\nc\nd\ne\nf\ng\nh', {});
+      container.querySelector('.cm-content').focus();
+
+      window.__fakeVV.height = window.innerHeight - 300;
+      window.__fakeVVListeners.resize.forEach((fn) => fn());
+      await new Promise((r) => setTimeout(r, 400));
+
+      LiveEditor.destroy();
+      container.remove();
+      return 'ok';
+    });
+    expect(mountedResult).toBe('ok');
+  });
+});

@@ -164,6 +164,23 @@ test.describe('Editor', () => {
     await expect(img).toHaveAttribute('alt', 'a pic');
   });
 
+  test('a recognized emoji shortcode renders as the real character in the live surface, an unrecognized one stays literal', async ({ page }) => {
+    await createRoom(page);
+    await ensureWriteMode(page);
+    await page.locator('#note-editor').fill('Nice :rocket: work! :not_a_real_shortcode: still text.\n\ntail');
+    await setEditorMode(page, 'preview');
+    const content = page.locator('#note-live .cm-content');
+    await expect(content).toBeVisible();
+    await content.click();
+    await page.keyboard.press('Control+End');
+
+    const emoji = page.locator('#note-live .cm-md-emoji');
+    await expect(emoji).toBeVisible();
+    await expect(emoji).toHaveText('🚀');
+    await expect(emoji).toHaveAttribute('title', ':rocket:');
+    await expect(content).toContainText(':not_a_real_shortcode:');
+  });
+
   test('split mode scroll-syncs the textarea and the live surface', async ({ page }) => {
     await createRoom(page);
     await ensureWriteMode(page);

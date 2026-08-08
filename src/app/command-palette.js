@@ -38,17 +38,17 @@ function _paletteCommands() {
     { id: 'panel-templates', label: 'Insert a template',   group: 'Panels', run: _clickById('tool-templates') },
 
     { id: 'mode-write',   label: 'Source mode (hide preview)',        group: 'View', run: () => _applyMarkdownMode('write') },
-    { id: 'mode-preview', label: 'Toggle Live preview mode',          group: 'View', shortcut: 'Ctrl Shift P', keywords: ['preview'], run: () => _applyMarkdownMode(state.markdownMode === 'preview' ? 'write' : 'preview') },
+    { id: 'mode-preview', label: 'Toggle Live preview mode',          group: 'View', shortcut: 'Alt Shift P', keywords: ['preview'], run: () => _applyMarkdownMode(state.markdownMode === 'preview' ? 'write' : 'preview') },
     { id: 'mode-split',   label: 'Toggle Split view',                 group: 'View', shortcut: 'Ctrl Shift S', run: () => _applyMarkdownMode(state.markdownMode === 'split' ? 'write' : 'split') },
     { id: 'monospace',    label: state.monospace ? 'Turn off monospace font' : 'Turn on monospace font', group: 'View', shortcut: 'Ctrl Shift M', keywords: ['font'], run: () => _toggleMonospace() },
 
-    { id: 'share',          label: 'Share this room',                 group: 'Room', shortcut: 'Ctrl Shift K', run: _clickById('btn-share') },
+    { id: 'share',          label: 'Share this room',                 group: 'Room', shortcut: 'Alt Shift S', run: _clickById('btn-share') },
     { id: 'lock',           label: state.room?.editing_locked ? 'Unlock editing' : 'Lock editing', group: 'Room', run: _clickById('setting-lock-btn') },
     { id: 'clear-note',     label: 'Clear note for everyone…',        group: 'Room', keywords: ['delete', 'empty'], run: _clickById('tool-clear') },
     { id: 'report-room',    label: 'Report this room',                group: 'Room', run: _clickById('btn-report-room') },
 
-    { id: 'insert-timestamp', label: 'Insert timestamp',              group: 'Edit', shortcut: 'Ctrl Shift T', run: _clickById('btn-insert-ts') },
-    { id: 'copy-note',        label: 'Copy note contents',            group: 'Edit', shortcut: 'Ctrl Shift C', run: () => _copyNoteToClipboard() },
+    { id: 'insert-timestamp', label: 'Insert timestamp',              group: 'Edit', shortcut: 'Alt Shift T', run: _clickById('btn-insert-ts') },
+    { id: 'copy-note',        label: 'Copy note contents',            group: 'Edit', shortcut: 'Alt Shift C', run: () => _copyNoteToClipboard() },
     { id: 'import-text',       label: 'Import a text/Markdown file',  group: 'Edit', run: _clickById('tool-import') },
     { id: 'download-md',       label: 'Download note as .md',         group: 'Edit', keywords: ['export'], run: _clickById('tool-download') },
     { id: 'export',            label: 'Export…',                      group: 'Edit', keywords: ['pdf', 'html', 'txt', 'print'], run: _clickById('btn-export') },
