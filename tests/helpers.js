@@ -264,11 +264,18 @@ export async function waitForToast(page, textOrPattern, options = {}) {
   await expect(toast).toBeVisible({ timeout: options.timeout ?? 5000 });
 }
 
-/** Close any open panel by clicking the backdrop. */
+/** Close any open panel by clicking the backdrop, or — for a panel opened
+ *  without dimming it (currently just Find & Replace, see openPanel()'s
+ *  dimBackdrop option in src/ui/panels.js) — its own close button. */
 export async function closePanels(page) {
   const backdrop = page.locator('#panel-backdrop');
   if (await backdrop.evaluate(el => el.classList.contains('visible'))) {
     await backdrop.click();
+    return;
+  }
+  const openPanel = page.locator('.side-panel.open').first();
+  if (await openPanel.count()) {
+    await openPanel.locator('.panel-close').click();
   }
 }
 
