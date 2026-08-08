@@ -217,7 +217,9 @@
   outline: none; margin-bottom: 8px;
 }
 .comment-composer-input:focus { border-color: var(--accent); }
-.comment-composer-btn { width: 100%; text-align: center; }
+.comment-composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.comment-composer-charcount { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.comment-composer-btn { flex: 1; text-align: center; }
 .comment-composer-hint {
   font-size: 12px; color: var(--text-muted); padding: 8px 2px 14px; line-height: 1.5;
 }

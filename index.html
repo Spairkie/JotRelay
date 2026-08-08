@@ -1201,7 +1201,10 @@
     <div class="comment-composer hidden" id="comment-composer" data-readonly-hide>
       <div class="comment-composer-anchor" id="comment-composer-anchor"></div>
       <textarea class="comment-composer-input" id="comment-composer-input" maxlength="1000" placeholder="Add a comment on the selected text…" aria-label="New comment"></textarea>
-      <button class="setting-btn comment-composer-btn" id="comment-composer-btn" type="button">Comment</button>
+      <div class="comment-composer-footer">
+        <div class="comment-composer-charcount" id="comment-composer-charcount">0 / 1000</div>
+        <button class="setting-btn comment-composer-btn" id="comment-composer-btn" type="button">Comment</button>
+      </div>
     </div>
     <div class="comment-composer-hint hidden" id="comment-composer-hint" data-readonly-hide>
       Select text in the note, then reopen Comments to comment on it — or comment on your current cursor position below.

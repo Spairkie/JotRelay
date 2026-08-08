@@ -180,11 +180,12 @@ export function setCommentLoading(loading) {
  * is a short snippet of the anchored text for the composer's own label.
  */
 export function setCommentComposer({ pendingAnchor, anchorPreviewText, onSubmit } = {}) {
-  const composer = document.getElementById('comment-composer');
-  const hint     = document.getElementById('comment-composer-hint');
-  const anchorEl = document.getElementById('comment-composer-anchor');
-  const input    = document.getElementById('comment-composer-input');
-  const btn      = document.getElementById('comment-composer-btn');
+  const composer  = document.getElementById('comment-composer');
+  const hint      = document.getElementById('comment-composer-hint');
+  const anchorEl  = document.getElementById('comment-composer-anchor');
+  const input     = document.getElementById('comment-composer-input');
+  const btn       = document.getElementById('comment-composer-btn');
+  const charcount = document.getElementById('comment-composer-charcount');
   if (!composer || !hint || !anchorEl || !input || !btn) return;
 
   if (!pendingAnchor) {
@@ -198,6 +199,11 @@ export function setCommentComposer({ pendingAnchor, anchorPreviewText, onSubmit 
     ? 'On: cursor position (no text selected)'
     : `On: “${(anchorPreviewText || '').replace(/\s+/g, ' ').trim().slice(0, 80)}”`;
   input.value = '';
+  const maxLen = input.maxLength > 0 ? input.maxLength : 1000;
+  if (charcount) {
+    charcount.textContent = `0 / ${maxLen}`;
+    input.oninput = () => { charcount.textContent = `${input.value.length} / ${maxLen}`; };
+  }
 
   // Reading + clearing the value in one step makes this safe to call from
   // both blur and the button click without a double-submit: whichever

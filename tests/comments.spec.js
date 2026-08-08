@@ -58,6 +58,20 @@ test.describe('Comments panel', () => {
     await expect(page.locator('#comment-composer-anchor')).toContainText('cursor position');
   });
 
+  test('the composer shows a live character count, reset to 0 on each open', async ({ page }) => {
+    await createRoom(page);
+    await openCommentsPanel(page);
+    const charcount = page.locator('#comment-composer-charcount');
+    await expect(charcount).toHaveText('0 / 1000');
+
+    await page.locator('#comment-composer-input').fill('hello');
+    await expect(charcount).toHaveText('5 / 1000');
+
+    await page.locator('#comments-panel .panel-close').click();
+    await openCommentsPanel(page);
+    await expect(charcount).toHaveText('0 / 1000');
+  });
+
   test('selecting text in Write mode shows the composer with an anchor preview', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page, 'Some text to comment on.');
