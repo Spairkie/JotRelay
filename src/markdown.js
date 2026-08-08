@@ -34,7 +34,7 @@
 //   - hard line breaks (two trailing spaces)
 //   - emoji shortcodes  :smile: :tada: :rocket:  → Unicode emoji, from a
 //     curated ~150-entry table of commonly-typed names (not the full
-//     several-thousand-entry set — see _EMOJI_MAP); an unrecognized
+//     several-thousand-entry set — see markdown-emoji-map.js); an unrecognized
 //     shortcode renders as literal text, same as any other unresolved
 //     construct this renderer encounters
 //
@@ -65,6 +65,7 @@
 import { markdown, markdownLanguage } from '../vendor/codemirror.js';
 import { highlightExtension } from './markdown-highlight-extension.js';
 import { parseTableAlignments } from './markdown-table-utils.js';
+import { EMOJI_MAP } from './markdown-emoji-map.js';
 import { escapeHtml } from './utils.js';
 
 const _parser = markdown({ base: markdownLanguage, extensions: [highlightExtension] }).language.parser;
@@ -77,74 +78,6 @@ const _ALERT_LABEL = {
 };
 const _FOOTNOTE_DEF_RE = /^\[\^([A-Za-z0-9_-]+)\]:[ \t]?(.*)$/;
 
-// GitHub-style :shortcode: → Unicode emoji. Covers the shortcodes people
-// actually type from muscle memory (GitHub/Slack-style names); not the full
-// several-thousand-entry Unicode CLDR set, which would be a large data
-// table for a long tail of shortcodes nobody uses in a notepad. An
-// unrecognized shortcode (or one this table simply doesn't carry) is left
-// as literal `:text:` — never dropped, never guessed at — matching every
-// other "recognized syntax, unknown value" case in this renderer (e.g. an
-// unresolved reference link).
-const _EMOJI_MAP = {
-  smile: '😄', smiley: '😃', grin: '😁', grinning: '😀', laughing: '😆',
-  satisfied: '😆', sweat_smile: '😅', joy: '😂', rofl: '🤣', relaxed: '☺️',
-  blush: '😊', innocent: '😇', slight_smile: '🙂', upside_down: '🙃',
-  wink: '😉', relieved: '😌', heart_eyes: '😍', star_struck: '🤩',
-  kissing_heart: '😘', kissing: '😗', yum: '😋', stuck_out_tongue: '😛',
-  stuck_out_tongue_winking_eye: '😜', zany_face: '🤪', thinking: '🤔',
-  face_with_raised_eyebrow: '🤨', neutral_face: '😐', expressionless: '😑',
-  no_mouth: '😶', smirk: '😏', unamused: '😒', roll_eyes: '🙄', grimacing: '😬',
-  lying_face: '🤥', shushing_face: '🤫', hand_over_mouth: '🤭',
-  flushed: '😳', pleading_face: '🥺', frowning: '☹️', slight_frown: '🙁',
-  open_mouth: '😮', hushed: '😯', astonished: '😲', worried: '😟',
-  confused: '😕', slightly_frowning_face: '🙁', disappointed: '😞',
-  cold_sweat: '😰', sweat: '😓', tired_face: '😫', weary: '😩', triumph: '😤',
-  cry: '😢', sob: '😭', angry: '😠', rage: '😡', exploding_head: '🤯',
-  scream: '😱', fearful: '😨', cold_face: '🥶', hot_face: '🥵',
-  nauseated_face: '🤢', vomiting: '🤮', sneezing_face: '🤧', dizzy_face: '😵',
-  sleepy: '😪', sleeping: '😴', zzz: '💤', mask: '😷', sunglasses: '😎',
-  nerd_face: '🤓', monocle_face: '🧐', partying_face: '🥳', clown_face: '🤡',
-  ghost: '👻', skull: '💀', alien: '👽', robot: '🤖', poop: '💩',
-  smiling_imp: '😈', imp: '👿', japanese_ogre: '👹',
-  wave: '👋', raised_hand: '✋', ok_hand: '👌', v: '✌️', crossed_fingers: '🤞',
-  point_up: '☝️', point_down: '👇', point_left: '👈', point_right: '👉',
-  thumbsup: '👍', thumbsdown: '👎', fist: '✊',
-  facepunch: '👊', punch: '👊', clap: '👏', raised_hands: '🙌', pray: '🙏',
-  handshake: '🤝', muscle: '💪', writing_hand: '✍️', nail_care: '💅',
-  eyes: '👀', eye: '👁️', brain: '🧠', tongue: '👅', ear: '👂', nose: '👃',
-  heart: '❤️', orange_heart: '🧡', yellow_heart: '💛', green_heart: '💚',
-  blue_heart: '💙', purple_heart: '💜', black_heart: '🖤', white_heart: '🤍',
-  broken_heart: '💔', heartbeat: '💓', sparkling_heart: '💖', two_hearts: '💕',
-  fire: '🔥', star: '⭐', star2: '🌟', sparkles: '✨', zap: '⚡', boom: '💥',
-  collision: '💥', dizzy: '💫', tada: '🎉', confetti_ball: '🎊',
-  balloon: '🎈', gift: '🎁', trophy: '🏆', medal: '🏅', crown: '👑',
-  rocket: '🚀', airplane: '✈️', car: '🚗', bike: '🚲', anchor: '⚓',
-  sun: '☀️', moon: '🌙', earth_americas: '🌎', cloud: '☁️', rainbow: '🌈',
-  snowflake: '❄️', droplet: '💧', ocean: '🌊', umbrella: '☂️',
-  coffee: '☕', tea: '🍵', beer: '🍺', beers: '🍻', wine_glass: '🍷',
-  cocktail: '🍸', pizza: '🍕', hamburger: '🍔', fries: '🍟', ramen: '🍜',
-  cake: '🍰', birthday: '🎂', cookie: '🍪', apple: '🍎', banana: '🍌',
-  100: '💯', warning: '⚠️', white_check_mark: '✅', heavy_check_mark: '✔️',
-  x: '❌', o: '⭕', question: '❓', grey_question: '❔', exclamation: '❗',
-  bangbang: '‼️', bulb: '💡', lock: '🔒', unlock: '🔓', key: '🔑',
-  mag: '🔍', mag_right: '🔎', pushpin: '📌', round_pushpin: '📍',
-  bookmark: '🔖', link: '🔗', paperclip: '📎', memo: '📝', pencil2: '✏️',
-  book: '📖', books: '📚', clipboard: '📋', calendar: '📅', chart_with_upwards_trend: '📈',
-  chart_with_downwards_trend: '📉', bar_chart: '📊', email: '📧',
-  envelope: '✉️', inbox_tray: '📥', outbox_tray: '📤', package: '📦',
-  bell: '🔔', mute: '🔇', speaker: '🔊', loudspeaker: '📢', mega: '📣',
-  hourglass: '⌛', hourglass_flowing_sand: '⏳', alarm_clock: '⏰',
-  stopwatch: '⏱️', computer: '💻', keyboard: '⌨️', desktop_computer: '🖥️',
-  phone: '📱', iphone: '📱', battery: '🔋', bug: '🐛', gear: '⚙️',
-  wrench: '🔧', hammer: '🔨', hammer_and_wrench: '🛠️', nut_and_bolt: '🔩',
-  test_tube: '🧪', dna: '🧬', microscope: '🔬', telescope: '🔭',
-  recycle: '♻️', new: '🆕', up: '🔼', down: '🔽', arrow_up: '⬆️',
-  arrow_down: '⬇️', arrow_left: '⬅️', arrow_right: '➡️', repeat: '🔁',
-  arrows_counterclockwise: '🔄', shrug: '🤷', facepalm: '🤦',
-  raised_hand_with_fingers_splayed: '🖐️', dog: '🐶', cat: '🐱',
-  panda_face: '🐼', unicorn: '🦄', bird: '🐦', turtle: '🐢', octopus: '🐙',
-  see_no_evil: '🙈', hear_no_evil: '🙉', speak_no_evil: '🙊',
-};
 const _TOC_MARKER_RE = /^\[toc\]$/i;
 
 /**
@@ -776,7 +709,7 @@ function _renderInlineNode(node, text, ctx) {
     case 'Emoji': {
       const raw = text.slice(node.from, node.to);
       const code = raw.slice(1, -1).toLowerCase();
-      return Object.prototype.hasOwnProperty.call(_EMOJI_MAP, code) ? _EMOJI_MAP[code] : escapeHtml(raw);
+      return Object.prototype.hasOwnProperty.call(EMOJI_MAP, code) ? EMOJI_MAP[code] : escapeHtml(raw);
     }
     case 'URL':
       return `<a href="${escapeHtml(text.slice(node.from, node.to))}" target="_blank" rel="noopener noreferrer">${escapeHtml(text.slice(node.from, node.to))}</a>`;

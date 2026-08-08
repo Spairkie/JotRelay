@@ -24,6 +24,7 @@ import {
 import { escapeHtml } from './utils.js';
 import { highlightExtension } from './markdown-highlight-extension.js';
 import { parseTableAlignments } from './markdown-table-utils.js';
+import { EMOJI_MAP } from './markdown-emoji-map.js';
 import { renderMarkdown } from './markdown.js';
 import { toggleFootnotePopover } from './footnote-popover.js';
 
@@ -159,6 +160,25 @@ class _CheckboxWidget extends WidgetType {
       view.dispatch({ changes: { from: this.from, to: this.to, insert: box.checked ? '[x]' : '[ ]' } });
     });
     return box;
+  }
+}
+
+// Recognized :shortcode: → the actual Unicode emoji character, matching
+// markdown.js's classic renderer (see EMOJI_MAP in markdown-emoji-map.js).
+// Parity fix for the gap noted in docs/markdown-feature-audit.md's "Areas
+// for further work" — this surface previously only neutralized the
+// shortcode's syntax-highlight color (see _mdHighlight's tags.character
+// rule above) and left the raw `:smile:` text on screen everywhere, not
+// just while actively editing it.
+class _EmojiWidget extends WidgetType {
+  constructor(emoji, raw) { super(); this.emoji = emoji; this.raw = raw; }
+  eq(other) { return other.emoji === this.emoji; }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-md-emoji';
+    span.textContent = this.emoji;
+    span.title = this.raw;
+    return span;
   }
 }
 
@@ -1162,6 +1182,20 @@ const _seamless = ViewPlugin.fromClass(class {
             const url = state.doc.sliceString(urlNode.from, urlNode.to);
             ranges.push(Decoration.replace({ widget: new _ImageWidget(alt, url) }).range(nodeRef.from, nodeRef.to));
             return false; // skip descending into the marks this widget already replaces
+          }
+
+          // Recognized emoji shortcode (:smile:) → the real Unicode
+          // character, while the selection isn't touching it (raw text
+          // shows while editing, same reveal-on-touch pattern as
+          // everything else here). An unrecognized shortcode is left as
+          // literal text — matches the classic renderer exactly.
+          if (name === 'Emoji') {
+            if (_selectionTouches(state, nodeRef.from, nodeRef.to)) return;
+            const raw = state.doc.sliceString(nodeRef.from, nodeRef.to);
+            const code = raw.slice(1, -1).toLowerCase();
+            if (!Object.prototype.hasOwnProperty.call(EMOJI_MAP, code)) return;
+            ranges.push(Decoration.replace({ widget: new _EmojiWidget(EMOJI_MAP[code], raw) }).range(nodeRef.from, nodeRef.to));
+            return;
           }
 
           // Quote marks and link syntax fold like wave-1 markers do.
