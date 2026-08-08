@@ -88,6 +88,22 @@ function _wireLegalBackLink() {
   });
 }
 
+/**
+ * Record `path` (defaults to the current location) as the "Back to SyncPad"
+ * target for the legal screens. boot() calls this on every real page load
+ * (see below), but that only covers full navigations — creating/joining a
+ * room from /app, clicking a recent room, and the standalone-PWA resume
+ * redirect all change the URL via history.pushState()/replaceState() and
+ * call joinRoom() directly without going through boot() again, so without
+ * this being called from those sites too, the stored path would still say
+ * "/app" (or "/") after the user is actually sitting in a room, and "Back to
+ * SyncPad" from a legal page reached from that room's footer would send them
+ * to the wrong place.
+ */
+export function recordLegalBackPath(path) {
+  try { sessionStorage.setItem(LEGAL_BACK_PATH_KEY, path ?? (location.pathname + location.search)); } catch {}
+}
+
 export async function boot() {
   // Apply saved theme immediately to avoid flash
   loadSavedTheme();
@@ -117,7 +133,7 @@ export async function boot() {
   // root. Only updated on a non-legal route, so chaining between Contact/
   // Privacy/Terms's own cross-links doesn't overwrite this with each other.
   if (route.type !== 'contact' && route.type !== 'privacy' && route.type !== 'terms') {
-    try { sessionStorage.setItem(LEGAL_BACK_PATH_KEY, location.pathname + location.search); } catch {}
+    recordLegalBackPath();
   }
 
   if (route.type === 'share') {
@@ -155,6 +171,7 @@ export async function boot() {
 
     if (lastRoom) {
       history.replaceState(null, '', `${BASE}/${lastRoom}`);
+      recordLegalBackPath(`${BASE}/${lastRoom}`);
       await window.__supabaseReady;
       await joinRoom(lastRoom);
       return;

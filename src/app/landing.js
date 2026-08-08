@@ -10,7 +10,7 @@ import { getOrCreateReadOnlyShareLink, getOrCreateRoomCode, resolveRoomCode } fr
 import * as UI from '../ui.js';
 import { state, BASE, _stripBasePath } from './state.js';
 import { RESERVED_ROOM_PATHS, SHORT_CODE_RE, _loadRecentRooms, _forgetRecentRoom } from './routing.js';
-import { joinRoom } from './room-lifecycle.js';
+import { joinRoom, recordLegalBackPath } from './room-lifecycle.js';
 import { initLandingDemo } from './landing-demo.js';
 
 // ── Share modal ────────────────────────────────────────────────────────────────
@@ -105,6 +105,7 @@ export function wireLandingEvents() {
   const handleCreateRoomClick = () => {
     const roomId = generateRoomId();
     history.pushState(null, '', `${BASE}/${roomId}`);
+    recordLegalBackPath();
     UI.showScreen('loading');
     window.__supabaseReady.then(() => joinRoom(roomId, { isNewRoom: true }));
   };
@@ -120,6 +121,7 @@ export function wireLandingEvents() {
         const resolvedId = await resolveRoomCode(raw);
         if (resolvedId) {
           history.pushState(null, '', `${BASE}/${resolvedId}`);
+          recordLegalBackPath();
           UI.showScreen('loading');
           joinRoom(resolvedId);
           return;
@@ -145,6 +147,7 @@ export function wireLandingEvents() {
       return;
     }
     history.pushState(null, '', `${BASE}/${id}${qs}`);
+    recordLegalBackPath();
     UI.showScreen('loading');
     joinRoom(id);
   };
@@ -175,6 +178,7 @@ function _renderRecentRooms() {
     btn.addEventListener('click', () => {
       const roomId = btn.dataset.roomId;
       history.pushState(null, '', `${BASE}/${roomId}`);
+      recordLegalBackPath();
       UI.showScreen('loading');
       window.__supabaseReady.then(() => joinRoom(roomId));
     });
