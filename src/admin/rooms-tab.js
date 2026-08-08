@@ -323,7 +323,7 @@ function _wireRoomsTab(contentEl, selectCols) {
       if (error) { errs++; console.error('[admin] bulk-delete error', id, error); }
       else {
         const idx = state.rooms.findIndex(r => r.room_id === id);
-        if (idx !== -1) state.rooms.splice(idx, 1);
+        if (idx !== -1) { state.rooms.splice(idx, 1); state.roomsTotal = Math.max(0, state.roomsTotal - 1); }
       }
     }
     await _logAdminAction('bulk_delete_rooms', { metadata: { count: ids.length } });
@@ -484,7 +484,7 @@ function _wireRows(tbody, updateBulkBar, selectCols, renderRows) {
         btn.disabled = false; return;
       }
       const idx = state.rooms.findIndex(r => r.room_id === roomId);
-      if (idx !== -1) state.rooms.splice(idx, 1);
+      if (idx !== -1) { state.rooms.splice(idx, 1); state.roomsTotal = Math.max(0, state.roomsTotal - 1); }
       await _logAdminAction('delete_room', { target_room_id: roomId });
       renderRows();
       await _loadStats();
