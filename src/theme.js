@@ -16,9 +16,9 @@ export const THEMES = [
   { id: 'terminal',        label: 'Terminal',       swatch: '#00ff41', bg: '#0a0a0a', elevated: '#0f0f0f', dark: true },
   { id: 'mocha-dark',      label: 'Mocha Dark',     swatch: '#d4956a', bg: '#1e1410', elevated: '#2d1e14', dark: true },
   { id: 'crimson-night',   label: 'Crimson Night',  swatch: '#f43f5e', bg: '#150808', elevated: '#271212', dark: true },
-  { id: 'paper-light',     label: 'Paper Light',    swatch: '#c17d2e', bg: '#f5f0e8', elevated: '#eeecea', dark: false },
+  { id: 'paper-light',     label: 'Paper Light',    swatch: '#a36a27', bg: '#f5f0e8', elevated: '#eeecea', dark: false },
   { id: 'lavender-light',  label: 'Lavender Light', swatch: '#7c5cbf', bg: '#f5f3ff', elevated: '#ede9fe', dark: false },
-  { id: 'arctic',          label: 'Arctic',         swatch: '#0d9488', bg: '#f0f7f9', elevated: '#e2f0f4', dark: false },
+  { id: 'arctic',          label: 'Arctic',         swatch: '#0c857b', bg: '#f0f7f9', elevated: '#e2f0f4', dark: false },
   { id: 'rose',            label: 'Rose',           swatch: '#db2777', bg: '#fdf2f6', elevated: '#fbe4ec', dark: false },
 ];
 
