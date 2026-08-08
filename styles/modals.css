@@ -487,10 +487,21 @@ button:focus:not(:focus-visible) { outline: none; }
   transition: transform 0.2s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease;
 }
 #search-panel.open { transform: translateY(0) scale(1); opacity: 1; pointer-events: auto; }
+/* Anchored to the bottom on mobile instead of the top — floats directly
+   above the on-screen keyboard (same var(--kb-inset, 0px) tracking as
+   .mobile-action-bar/.pwa-bar) rather than sitting under the header where
+   it competes with whatever's above the keyboard for the same shrunken
+   viewport. It also replaces .mobile-action-bar's footprint entirely
+   instead of stacking above it — see the "FIND & REPLACE — MOBILE" rules
+   further down, which hide the action bar and reclaim its reserved
+   #app-screen padding while this panel is open. */
 @media (max-width: 639px) {
   #search-panel {
-    top: 58px; right: 8px; left: 8px; width: auto; max-width: none;
-    max-height: calc(100vh - 120px);
+    top: auto; right: 8px; left: 8px; bottom: calc(8px + var(--kb-inset, 0px));
+    width: auto; max-width: none;
+    max-height: calc(100vh - 100px - var(--kb-inset, 0px));
+    transform: translateY(10px) scale(0.98);
+    transition: transform 0.2s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, bottom 0.15s ease;
   }
 }
 .search-bar {
@@ -742,4 +753,47 @@ kbd {
   body:has(#pwa-install-bar.visible) #toast-container {
     bottom: calc(72px + 56px + var(--kb-inset, 0px));
   }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FIND & REPLACE — MOBILE: replaces the bottom action bar's
+   footprint instead of stacking above it
+══════════════════════════════════════════════════════════════ */
+@media (max-width: 639px) {
+  /* Nothing in .mobile-action-bar (Files/Tools/Devices/Settings) is useful
+     mid-search, and leaving it visible underneath the now bottom-anchored
+     search panel would either stack two bottom bars (wasting the vertical
+     space this whole redesign is trying to reclaim) or need careful
+     z-index layering for no real benefit — hiding it outright is simpler
+     and gives the panel its footprint outright, the way a keyboard
+     accessory bar replaces whatever else was docked at the bottom. */
+  body:has(#search-panel.open) .mobile-action-bar { display: none; }
+  /* #app-screen no longer needs to reserve the action bar's 60px while
+     it's hidden — reclaim that space for the editor's scrollable area
+     instead of leaving it as dead padding under the search panel. */
+  body:has(#search-panel.open) #app-screen {
+    padding-bottom: calc(8px + var(--kb-inset, 0px));
+  }
+  /* Toasts ("Replaced N matches.") are otherwise positioned to clear the
+     36px action bar (72px, see the main mobile block above) — nowhere
+     near enough to clear this panel, which is taller in either its
+     collapsed (~193px) or Replace-expanded (~312px) state. 340px clears
+     the taller of the two with room to spare; toasts are transient enough
+     that a little extra headroom in the common (collapsed) case doesn't
+     matter. */
+  body:has(#search-panel.open) #toast-container {
+    bottom: calc(340px + var(--kb-inset, 0px));
+  }
+  /* The add-comment FAB anchors to the editor pane's own bottom-right
+     corner (editor.css), independent of --kb-inset — the bottom-anchored
+     search panel would otherwise sit directly on top of it. */
+  body:has(#search-panel.open) #btn-add-comment-fab { display: none; }
+  /* .remote-notice ("new content available") is position:absolute within
+     .editor-area, bottom:12px from *its* bottom edge — which, now that
+     #app-screen's padding-bottom is reclaimed above, sits right where the
+     search panel floats. Unlike the toast/FAB above, this one has real
+     Apply/Keep/Copy actions a user might need mid-search, so it's bumped
+     clear rather than hidden. 350px covers the same worst-case (expanded,
+     ~312px) height as the toast, plus its own 8px bottom margin. */
+  body:has(#search-panel.open) .remote-notice { bottom: 350px; }
 }
