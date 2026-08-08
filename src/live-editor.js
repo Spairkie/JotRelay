@@ -28,11 +28,12 @@ import { EMOJI_MAP } from './markdown-emoji-map.js';
 import { renderMarkdown } from './markdown.js';
 import { toggleFootnotePopover } from './footnote-popover.js';
 
-let _view             = null;
-let _onChange         = null;
-let _onCursorActivity = null;
-let _onImageFiles     = null;
-let _scrollSync       = null; // { editorEl, scrollEl, onEditorScroll, onSelfScroll }
+let _view                = null;
+let _onChange            = null;
+let _onCursorActivity    = null;
+let _onImageFiles        = null;
+let _onCommentAnchorTap  = null;
+let _scrollSync          = null; // { editorEl, scrollEl, onEditorScroll, onSelfScroll }
 const _readOnly = new Compartment();
 
 // Marks transactions applied from outside (textarea → CM6) so the update
@@ -981,6 +982,16 @@ export function setCommentAnchors(comments) {
   });
 }
 
+// True on touch/coarse-pointer devices — same test the CSS minimap rule
+// uses (inverted) to decide it should hide itself there. Gates the
+// comment-anchor tap-to-view handler below to touch only: on a mouse/
+// trackpad, a plain click inside a commented range still needs to place
+// the text cursor normally, and desktop already has the margin dot/bubble
+// for viewing comments.
+function _isCoarsePointer() {
+  return !!window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+}
+
 // Extract a Link node's destination for ctrl/cmd+click opening — either a
 // real http(s) URL to open directly, or an uploaded file's storage path
 // (syncpad-file: scheme, same as _renderLink/_renderImage in markdown.js)
@@ -1297,7 +1308,7 @@ export function estimateViewportY(pos) {
  * already mounted). `onChange(text)` fires only for edits made in this
  * surface, never for syncFromText() applications.
  */
-export function mount(container, initialValue, { onChange, onCursorActivity, onImageFiles, readOnly = false } = {}) {
+export function mount(container, initialValue, { onChange, onCursorActivity, onImageFiles, onCommentAnchorTap, readOnly = false } = {}) {
   destroy();
   // _liveTocOpen is module-global so a manual expand survives this file's
   // own re-renders (widget reuse via eq() — see its declaration above), but
@@ -1313,6 +1324,7 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
   _onChange = onChange || null;
   _onCursorActivity = onCursorActivity || null;
   _onImageFiles = onImageFiles || null;
+  _onCommentAnchorTap = onCommentAnchorTap || null;
   _view = new EditorView({
     state: EditorState.create({
       doc: initialValue || '',
@@ -1339,7 +1351,22 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
         // representation to insert) and would otherwise silently no-op.
         EditorView.domEventHandlers({
           mousedown: (e, view) => {
-            if (!(e.ctrlKey || e.metaKey)) return false;
+            if (!(e.ctrlKey || e.metaKey)) {
+              // Tap-to-view a comment's anchored text on touch devices — the
+              // margin dot/bubble system is hidden there (no room for it),
+              // so the dotted-underline span itself is the only affordance.
+              // Desktop leaves plain clicks alone (still just places the
+              // cursor) since the hover-sized margin dots already cover it.
+              if (_onCommentAnchorTap && _isCoarsePointer() && e.target.closest?.('.cm-comment-anchor')) {
+                const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+                if (pos != null) {
+                  e.preventDefault();
+                  _onCommentAnchorTap(pos);
+                  return true;
+                }
+              }
+              return false;
+            }
             const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
             if (pos == null) return false;
             const target = _linkUrlAt(view.state, pos);
@@ -1430,6 +1457,7 @@ export function destroy() {
   _onChange = null;
   _onCursorActivity = null;
   _onImageFiles = null;
+  _onCommentAnchorTap = null;
 }
 
 /**

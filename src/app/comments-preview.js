@@ -109,6 +109,19 @@ function _toggleCommentBubble(id) {
   _refreshFloatingComments();
 }
 
+/** Tap on a `.cm-comment-anchor` span (touch devices only — see
+ *  live-editor.js's _isCoarsePointer gate) resolved to a document position;
+ *  find the comment whose range covers it and open its floating bubble.
+ *  This is the mobile substitute for the hover-sized margin dots, which
+ *  CSS hides on touch. */
+function _onCommentAnchorTap(pos) {
+  const c = state.lastComments.find((x) =>
+    Number.isFinite(x.anchor_from) && Number.isFinite(x.anchor_to) &&
+    pos >= x.anchor_from && pos < x.anchor_to
+  );
+  if (c) _toggleCommentBubble(c.id);
+}
+
 /** Cycle the expanded comment forward/back through the note's comments in
  *  anchor order — used by both the floating bubble's and the side panel's
  *  Prev/Next controls, so "navigate the comments" works the same from
@@ -256,6 +269,7 @@ export function _applyMarkdownMode(mode) {
             onChange: _onLiveEditorChange,
             onCursorActivity: _onLiveCursorActivity,
             onImageFiles: (files) => { if (canEdit()) _uploadAndInsertImages(files); },
+            onCommentAnchorTap: _onCommentAnchorTap,
             readOnly: !canEdit(),
           });
           // CM6 persists across later mode switches (mount() is only called
