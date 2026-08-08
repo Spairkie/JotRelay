@@ -115,9 +115,13 @@
   text-align: center; padding: 18px 0;
 }
 
-/* Two-column layout: list + preview */
+/* Two-column layout: list + preview. The preview track is a minmax(170,220)
+   range rather than a hard 220px so it gives space back to the list column
+   on narrower non-mobile widths (e.g. 640-680px, just above the mobile
+   breakpoint below) instead of squeezing template cards to the point of
+   overflow. */
 .tmpl-two-col {
-  display: grid; grid-template-columns: 1fr 220px; gap: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 220px); gap: 0;
   flex: 1; min-height: 0;
   border: 1px solid var(--border-soft); border-radius: var(--radius-md); overflow: hidden;
 }
@@ -140,8 +144,13 @@
   white-space: pre-wrap; word-break: break-word; margin: 0; flex: 1;
 }
 
-/* Template list */
-.templates-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* Template list — auto-fit/minmax instead of a hardcoded 2-column grid so
+   card width adapts to whatever room the (also now-flexible) preview column
+   leaves it, rather than staying pinned at exactly 2 columns even when
+   that squeezes cards below a comfortable reading width. Below the 639px
+   mobile breakpoint this is overridden back to a forced single column for
+   touch target size (see the mobile media query). */
+.templates-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
 .template-btn {
   display: flex; flex-direction: column; align-items: flex-start;
   padding: 10px 12px;

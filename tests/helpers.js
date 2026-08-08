@@ -345,14 +345,9 @@ export async function closeModal(page, id) {
  * @returns {Promise<string>} The URL value from the share input field
  */
 export async function getShareUrl(page, type = 'editable') {
-  // Open share modal — prefer the desktop button, fall back to mobile
-  const shareBtn = page.locator('#btn-share');
-  const mobShareBtn = page.locator('#mob-btn-share');
-  if (await mobShareBtn.isVisible().catch(() => false)) {
-    await mobShareBtn.click();
-  } else {
-    await shareBtn.click();
-  }
+  // #btn-share (header) is the only Share entry point now — the mobile
+  // action bar's own copy was removed as a duplicate.
+  await page.locator('#btn-share').click();
   await page.waitForSelector('#share-modal.visible', { timeout: 5000 });
 
   const inputId = type === 'readonly' ? '#share-readonly-text' : '#share-editable-text';

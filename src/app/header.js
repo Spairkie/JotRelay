@@ -194,9 +194,7 @@ export function _wireSegmentedMarkdownControl() {
 
 export function _wireMobileActionBar() {
   // ── Mobile action bar ──────────────────────────────────────────────────────
-  document.getElementById('mob-btn-share')?.addEventListener('click', () => {
-    _openShareModal();
-  });
+  // No Share button here — the header's own #btn-share already covers it.
   document.getElementById('mob-btn-files')?.addEventListener('click',    () => UI.togglePanel('files-panel'));
   document.getElementById('mob-btn-tools')?.addEventListener('click',    () => UI.togglePanel('tools-panel'));
   document.getElementById('mob-btn-presence')?.addEventListener('click', () => UI.togglePanel('presence-panel'));

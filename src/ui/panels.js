@@ -1,6 +1,6 @@
 // SyncPad – ui/panels.js
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
-import { formatFileSize, fileEmoji, formatTimestamp, escapeHtml } from '../utils.js';
+import { formatFileSize, fileEmoji, formatTimestamp, relativeTimeShort, escapeHtml } from '../utils.js';
 import { getIcon } from '../icons.js';
 
 /** Return a human-readable "in X" string for an ISO expiry date. */
@@ -213,6 +213,22 @@ export function renderDevicesList(devices, myDeviceId, onNameChange, { followedD
       }
     }
 
+    // "Joined 5m ago" — a quiet, always-present anchor for how long a peer
+    // has actually been here, independent of (and shown alongside) whatever
+    // they're doing right now.
+    const joinedHtml = !isMe && device.joined_at
+      ? `<span class="device-joined" title="Joined ${new Date(device.joined_at).toLocaleTimeString()}">${escapeHtml(relativeTimeShort(device.joined_at))}</span>`
+      : '';
+
+    // Reciprocal of the follow feature below: if anyone else has this
+    // device as their followed target, say so on ITS OWN row (each device
+    // only ever sees this on itself, not on others — following is a local
+    // choice, so device A can't tell whether device B is following device
+    // C, only whether device B is following device A).
+    const followedByHtml = isMe && device.followedByCount > 0
+      ? `<span class="device-followed-by" title="${device.followedByCount} device${device.followedByCount === 1 ? '' : 's'} following your cursor">👀 Followed by ${device.followedByCount}</span>`
+      : '';
+
     const followBtnHtml = !isMe
       ? `<button type="button" class="device-follow-btn${isFollowed ? ' is-active' : ''}" aria-pressed="${isFollowed}" title="${isFollowed ? 'Stop following this device' : 'Follow this device — jump your view to where they are'}" aria-label="${isFollowed ? 'Stop following' : 'Follow'} ${escapeHtml(device.device_name || 'this device')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>`
       : '';
@@ -224,7 +240,7 @@ export function renderDevicesList(devices, myDeviceId, onNameChange, { followedD
           ? `<input class="device-name device-name-edit" value="${escapeHtml(device.device_name || '')}" maxlength="32" title="Tap to rename your device" aria-label="Your device name" />`
           : `<div class="device-name device-name-text">${escapeHtml(device.device_name || 'Unknown device')}</div>`
         }
-        <div class="device-meta">${roBadge}${activityHtml}</div>
+        <div class="device-meta">${roBadge}${activityHtml}${joinedHtml}${followedByHtml}</div>
       </div>
       <div class="${isMe ? 'device-you' : ''}">${isMe ? 'You' : followBtnHtml}</div>`;
 

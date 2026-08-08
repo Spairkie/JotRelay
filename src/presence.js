@@ -13,6 +13,15 @@ let _tabId            = null;
 // doesn't need to be re-applied on every room navigation. app.js owns the
 // persisted (localStorage) value and calls setPresenceHidden() to apply it.
 let _hidden           = false;
+// Set once in initPresence() and never touched again — every _track() call
+// below re-injects this as a default so joined_at survives every subsequent
+// presence update (typing, cursor move, hide, rename, follow). Without it,
+// _track()'s payload would only carry joined_at on the very first track()
+// call (the one in initPresence() itself, which bypasses _track()); every
+// later track() replaces the whole presence payload and _lastTracked/the
+// defaults object never had joined_at in them, silently dropping it to
+// undefined (→ 0 in getConnectedDevices()) the moment a peer so much as types.
+let _joinedAt         = null;
 
 function _getTabId() {
   if (_tabId) return _tabId;
@@ -42,6 +51,7 @@ export function initPresence(roomId, onPresenceChange, { readOnly = false } = {}
   _roomId           = roomId;
   _onPresenceChange = onPresenceChange;
   _readOnly         = readOnly;
+  _joinedAt         = Date.now();
   const sb       = getSupabaseClient();
   const deviceId = getDeviceId();
   const tabId    = _getTabId();
@@ -65,8 +75,9 @@ export function initPresence(roomId, onPresenceChange, { readOnly = false } = {}
           cursor_pos:    null,
           cursor_anchor: null,
           hidden:        _hidden,
-          joined_at:     Date.now(),
+          joined_at:     _joinedAt,
           tab_id:        tabId,
+          following:     null,
         });
         notify();
       }
@@ -90,6 +101,8 @@ async function _track(updates) {
     cursor_pos:    null,
     cursor_anchor: null,
     hidden:        _hidden,
+    joined_at:     _joinedAt,
+    following:     null,
     ..._lastTracked,
     ...updates,
   };
@@ -134,6 +147,17 @@ export function setPresenceHidden(hidden) {
 }
 
 /**
+ * Broadcast which device (if any) this device is currently following, so
+ * that device can show a reciprocal "N people are following you" indicator
+ * (see getConnectedDevices()'s followedByCount and ui/panels.js's
+ * renderDevicesList()). Not affected by "Hide my cursor & typing" — following
+ * someone is a deliberate, visible action you took, not passive activity.
+ */
+export function setFollowing(deviceId) {
+  _track({ following: deviceId || null });
+}
+
+/**
  * Broadcast this device's cursor location (throttled).
  * Read-only devices broadcast their scroll position but NOT as "typing".
  * @param {number|null} lineNumber – 1-based line number, or null to clear
@@ -168,6 +192,12 @@ export function getConnectedDevices() {
   const state   = getPresenceState();
   const myId    = getDeviceId();
   const byDevice = new Map();
+  // Every tab's followed target, not just the newest tab's — followedByCount
+  // below reads from this instead of the merged (useCurrent-only) `following`
+  // field, so an older tab that's actively following someone isn't silently
+  // dropped from the count just because a newer, non-following tab of the
+  // same device also has a presence entry.
+  const followingByDevice = new Map(); // device_id -> Set<followed device_id>
 
   for (const key of Object.keys(state)) {
     const entries = state[key];
@@ -178,6 +208,10 @@ export function getConnectedDevices() {
       const joined = Number(e.joined_at || 0);
       const prevJoined = Number(prev?.joined_at || 0);
       const useCurrent = !prev || joined >= prevJoined;
+      if (e.following) {
+        if (!followingByDevice.has(id)) followingByDevice.set(id, new Set());
+        followingByDevice.get(id).add(e.following);
+      }
       byDevice.set(id, {
         device_id:   id,
         device_name: useCurrent ? (e.device_name || prev?.device_name || 'Unknown') : (prev?.device_name || 'Unknown'),
@@ -192,12 +226,20 @@ export function getConnectedDevices() {
         cursor_pos:    useCurrent ? (e.cursor_pos    ?? null) : (prev.cursor_pos    ?? null),
         cursor_anchor: useCurrent ? (e.cursor_anchor ?? null) : (prev.cursor_anchor ?? null),
         joined_at:   useCurrent ? joined : prevJoined,
+        following:   useCurrent ? (e.following ?? null) : (prev.following ?? null),
         isMe:        id === myId,
       });
     }
   }
 
   const devices = Array.from(byDevice.values());
+  // Reciprocal of `following`: how many OTHER devices currently have this
+  // one as their followed target — see ui/panels.js's renderDevicesList().
+  // Reads followingByDevice (all tabs), not the merged `following` field
+  // above (newest tab only) — see the comment where it's built.
+  for (const d of devices) {
+    d.followedByCount = devices.filter((o) => o.device_id !== d.device_id && followingByDevice.get(o.device_id)?.has(d.device_id)).length;
+  }
   devices.sort((a, b) => a.isMe ? -1 : b.isMe ? 1 : a.device_name.localeCompare(b.device_name));
   return devices;
 }
@@ -214,5 +256,6 @@ export function destroyPresence() {
   _roomId           = null;
   _onPresenceChange = null;
   _readOnly         = false;
+  _joinedAt         = null;
   _lastTracked      = {};
 }

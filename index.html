@@ -583,8 +583,21 @@
     <div class="landing-or">or join existing</div>
 
     <div class="landing-join">
+      <!-- readonly (removed on first focus by wireLandingEvents() in
+           src/app/landing.js) alongside every autofill-suppression
+           attribute below: Chrome and most password managers largely
+           ignore autocomplete="off" on their own field-detection
+           heuristics — especially on a page like this one where
+           #passcode-input/#encryption-input (real type="password" fields
+           elsewhere in this same document, on other hidden screens) can
+           make the whole page register as "has a login form" to a
+           password manager scanning the DOM. A field that's readonly
+           until actually focused is the one trick that reliably stops
+           both the autofill suggestion dropdown and most managers'
+           save-this-password prompts, since there's nothing for them to
+           attach to until the user has already started typing. -->
       <input id="landing-join-input" class="landing-join-input"
-             type="text" name="syncpad-room-lookup"
+             type="text" name="syncpad-room-lookup" readonly
              placeholder="Paste room link, ID, or short code…"
              aria-label="Room link, ID, or short code to join"
              autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
@@ -688,7 +701,7 @@
       <button id="contact-submit" type="submit" class="auth-btn">Send message</button>
     </form>
     <div class="legal-links">
-      <a href="/SyncPad/">Back to SyncPad</a>
+      <a class="legal-back-link" href="/SyncPad/">Back to SyncPad</a>
       <a href="/SyncPad/privacy">Privacy</a>
       <a href="/SyncPad/terms">Terms</a>
     </div>
@@ -702,7 +715,7 @@
     <ul class="legal-list">
       <li>Normal rooms do not require accounts.</li><li>Editable room links are anonymous room paths.</li><li>Anyone with the editable room path can edit that room.</li><li>Read-only share links hide the room name but are still secret bearer links.</li><li>Room text and file metadata are stored in Supabase.</li><li>Uploaded files are stored in Supabase Storage.</li><li>Browser localStorage may store drafts, preferences, theme, device name, and similar local data.</li><li>Encrypted room text requires the passphrase.</li><li>If the passphrase is forgotten, encrypted room text cannot be recovered.</li><li>Uploaded files are not encrypted unless file encryption is actually implemented.</li><li>The site owner/admin may access unencrypted rooms/files for maintenance, troubleshooting, and abuse handling.</li><li>Contact form submissions go through Web3Forms only if configured.</li><li>Web3Forms `access_key` is a public frontend key, not a private server secret.</li><li>View-once is a convenience feature, not a secure destruction guarantee. A viewer may copy, screenshot, save, or otherwise preserve content before it clears.</li><li>No analytics or ad cookies are used unless actually added to the app.</li>
     </ul>
-    <div class="legal-links"><a href="/SyncPad/">Back to SyncPad</a><a href="/SyncPad/contact">Contact</a><a href="/SyncPad/terms">Terms</a></div>
+    <div class="legal-links"><a class="legal-back-link" href="/SyncPad/">Back to SyncPad</a><a href="/SyncPad/contact">Contact</a><a href="/SyncPad/terms">Terms</a></div>
   </div>
 </div>
 
@@ -713,7 +726,7 @@
     <ul class="legal-list">
       <li>SyncPad is a personal/portfolio project.</li><li>There is no guarantee, warranty, uptime promise, or SLA.</li><li>Do not store sensitive information, passwords, classified information, HIPAA/PII, or anything important.</li><li>Anyone with an editable room URL can edit that room.</li><li>Anyone with a read-only share URL can read that room.</li><li>View-once is a convenience feature, not a secure destruction guarantee. A viewer may copy, screenshot, save, or otherwise preserve content before it clears.</li><li>Content may be changed or deleted by other users with access, expiration, view-once behavior, manual clear, admin cleanup, bugs, or maintenance.</li><li>Encrypted room text depends on remembering the passphrase.</li><li>Files are not encrypted unless file encryption is actually implemented.</li><li>The site owner/admin may remove rooms/files/reports for maintenance, security, abuse prevention, or testing.</li><li>The app may change or be discontinued at any time.</li>
     </ul>
-    <div class="legal-links"><a href="/SyncPad/">Back to SyncPad</a><a href="/SyncPad/contact">Contact</a><a href="/SyncPad/privacy">Privacy</a></div>
+    <div class="legal-links"><a class="legal-back-link" href="/SyncPad/">Back to SyncPad</a><a href="/SyncPad/contact">Contact</a><a href="/SyncPad/privacy">Privacy</a></div>
   </div>
 </div>
 
@@ -991,10 +1004,8 @@
 
   <!-- ── Mobile action bar (hidden on desktop) ─────────────────── -->
   <div class="mobile-action-bar" id="mobile-action-bar">
-    <button class="mob-action-btn" id="mob-btn-share" aria-label="Share">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-      <span class="mob-label">Share</span>
-    </button>
+    <!-- No Share button here — the header's own #btn-share already covers
+         it, and duplicating it in both places was redundant. -->
     <button class="mob-action-btn" id="mob-btn-files" aria-label="Files">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
       <span class="mob-label">Files</span>
@@ -1058,6 +1069,10 @@
     <div class="tools-section">
       <div class="tools-section-title">File</div>
       <div class="tools-grid">
+        <button class="tool-btn" id="tool-copy">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+          <span class="tool-label">Copy Note</span>
+        </button>
         <button class="tool-btn" id="tool-download">
           <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
           <span class="tool-label">Download .md</span>
@@ -1065,6 +1080,10 @@
         <button class="tool-btn" id="tool-import" data-readonly-hide>
           <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>
           <span class="tool-label">Import .md / .txt</span>
+        </button>
+        <button class="tool-btn" id="tool-export-more">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></span>
+          <span class="tool-label">More Export Options</span>
         </button>
       </div>
     </div>

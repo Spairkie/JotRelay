@@ -53,14 +53,15 @@
   color: var(--text-primary);
 }
 .lp-intro-wordmark span { color: var(--accent); }
-/* Fixed ch-width (a hair over the 39-char tagline) reserved up front so the
+/* Fixed ch-width (a hair over the longest of the cycling taglines' 44 chars
+   — see INTRO_TAGLINES in src/app/landing.js) reserved up front so the
    typed text grows left-to-right from a stable edge instead of re-centering
    itself with every keystroke, while the block as a whole still sits
    centered under the wordmark like everything else in .lp-intro-inner. */
 .lp-intro-tagline {
   display: flex; align-items: center; justify-content: flex-start;
   margin-top: clamp(14px, 3vw, 22px);
-  width: 40ch; max-width: 100%; overflow: hidden; white-space: nowrap;
+  width: 45ch; max-width: 100%; overflow: hidden; white-space: nowrap;
   font-family: var(--font-mono);
   font-size: clamp(0.82rem, 2vw, 1rem);
   color: var(--text-secondary);

@@ -10,7 +10,7 @@ import { getOrCreateReadOnlyShareLink, getOrCreateRoomCode, resolveRoomCode } fr
 import * as UI from '../ui.js';
 import { state, BASE, _stripBasePath } from './state.js';
 import { RESERVED_ROOM_PATHS, SHORT_CODE_RE, _loadRecentRooms, _forgetRecentRoom } from './routing.js';
-import { joinRoom } from './room-lifecycle.js';
+import { joinRoom, recordLegalBackPath } from './room-lifecycle.js';
 import { initLandingDemo } from './landing-demo.js';
 
 // ── Share modal ────────────────────────────────────────────────────────────────
@@ -91,6 +91,11 @@ export function wireLandingEvents() {
   const joinBtn   = document.getElementById('landing-join-btn');
   const createBtn = document.getElementById('landing-create-btn');
 
+  // See index.html's comment on #landing-join-input: readonly until the
+  // user actually focuses it, so browsers/password managers have nothing
+  // to attach an autofill suggestion or save-password prompt to.
+  joinInput?.addEventListener('focus', () => joinInput.removeAttribute('readonly'), { once: true });
+
   // window.__supabaseReady: the /app route itself renders without waiting
   // on the Supabase CDN script (see boot() in room-lifecycle.js — a static
   // create/join screen shouldn't be held hostage by a slow/stalled CDN
@@ -100,6 +105,7 @@ export function wireLandingEvents() {
   const handleCreateRoomClick = () => {
     const roomId = generateRoomId();
     history.pushState(null, '', `${BASE}/${roomId}`);
+    recordLegalBackPath();
     UI.showScreen('loading');
     window.__supabaseReady.then(() => joinRoom(roomId, { isNewRoom: true }));
   };
@@ -115,6 +121,7 @@ export function wireLandingEvents() {
         const resolvedId = await resolveRoomCode(raw);
         if (resolvedId) {
           history.pushState(null, '', `${BASE}/${resolvedId}`);
+          recordLegalBackPath();
           UI.showScreen('loading');
           joinRoom(resolvedId);
           return;
@@ -140,6 +147,7 @@ export function wireLandingEvents() {
       return;
     }
     history.pushState(null, '', `${BASE}/${id}${qs}`);
+    recordLegalBackPath();
     UI.showScreen('loading');
     joinRoom(id);
   };
@@ -170,6 +178,7 @@ function _renderRecentRooms() {
     btn.addEventListener('click', () => {
       const roomId = btn.dataset.roomId;
       history.pushState(null, '', `${BASE}/${roomId}`);
+      recordLegalBackPath();
       UI.showScreen('loading');
       window.__supabaseReady.then(() => joinRoom(roomId));
     });
@@ -192,24 +201,60 @@ let _marketingPageWired = false;
 
 // ── Brand-intro typewriter ─────────────────────────────────────────────────
 // Small local implementation (no library) for the opener's tagline — types
-// once on load, then leaves a blinking caret (CSS animation) in place.
-// "SyncPad" itself is plain static markup and never touches this; only the
-// tagline text node is mutated.
-const INTRO_TAGLINE = '/* notes and files, synced instantly */';
-const INTRO_TYPE_MS = 32;
+// each line out, pauses, erases it, and moves to the next, looping forever;
+// a blinking caret (CSS animation) stays in place throughout. "SyncPad"
+// itself is plain static markup and never touches this; only the tagline
+// text node is mutated.
+const INTRO_TAGLINES = [
+  '/* notes and files, synced instantly */',
+  '/* no accounts, no setup, just a link */',
+  '/* real-time collaboration, zero friction */',
+  '/* share read-only, encrypt what matters */',
+];
+const INTRO_TYPE_MS  = 32;
+const INTRO_ERASE_MS = 18;
+const INTRO_PAUSE_MS = 2200;
 
 function typeIntroTagline() {
   const el = document.getElementById('lp-intro-tagline-text');
   if (!el) return;
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
-  if (reducedMotion) { el.textContent = INTRO_TAGLINE; return; }
-  let i = 0;
-  const step = () => {
-    el.textContent = INTRO_TAGLINE.slice(0, i);
-    i += 1;
-    if (i <= INTRO_TAGLINE.length) setTimeout(step, INTRO_TYPE_MS);
+  if (reducedMotion) { el.textContent = INTRO_TAGLINES[0]; return; }
+
+  let taglineIndex = 0;
+  let charIndex = 0;
+  let phase = 'typing'; // 'typing' | 'pausing' | 'erasing'
+
+  const tick = () => {
+    // offsetParent is null once #landing-screen (or any ancestor) picks up
+    // the .hidden class on navigation — this is a single-page app, so the
+    // element isn't torn down when the user leaves this screen, and without
+    // this check the loop below would run forever in the background.
+    if (el.offsetParent === null) return;
+
+    const text = INTRO_TAGLINES[taglineIndex];
+    if (phase === 'typing') {
+      charIndex += 1;
+      el.textContent = text.slice(0, charIndex);
+      if (charIndex >= text.length) { phase = 'pausing'; setTimeout(tick, INTRO_PAUSE_MS); }
+      else setTimeout(tick, INTRO_TYPE_MS);
+    } else if (phase === 'pausing') {
+      phase = 'erasing';
+      setTimeout(tick, INTRO_ERASE_MS);
+    } else { // erasing
+      charIndex -= 1;
+      el.textContent = text.slice(0, charIndex);
+      if (charIndex <= 0) {
+        taglineIndex = (taglineIndex + 1) % INTRO_TAGLINES.length;
+        phase = 'typing';
+        setTimeout(tick, INTRO_TYPE_MS);
+      } else {
+        setTimeout(tick, INTRO_ERASE_MS);
+      }
+    }
   };
-  step();
+  el.textContent = '';
+  setTimeout(tick, INTRO_TYPE_MS);
 }
 
 export function wireMarketingPageEvents() {

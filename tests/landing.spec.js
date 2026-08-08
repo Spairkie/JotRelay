@@ -79,6 +79,15 @@ test.describe('Marketing landing page (/)', () => {
     await expect(page.locator('.lp-intro-caret')).toBeVisible();
   });
 
+  test('brand-intro tagline cycles to the next line after pausing and erasing', async ({ page }) => {
+    await goToLanding(page);
+    const text = page.locator('#lp-intro-tagline-text');
+    await expect(text).toHaveText('/* notes and files, synced instantly */', { timeout: 3000 });
+    // Full cycle for the first line: ~1.25s typing + 2.2s pause + ~0.7s
+    // erasing before the second line starts typing — give it real headroom.
+    await expect(text).toHaveText('/* no accounts, no setup, just a link */', { timeout: 8000 });
+  });
+
   test('reduced motion shows the complete tagline immediately with no continuous animation', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await goToLanding(page);

@@ -12,7 +12,7 @@ import { doClearNote } from './room-lifecycle.js';
 import { _openTemplatesModalFresh, _openHistoryPanel } from './panels.js';
 import { _openCommentsPanel, _navigateComment, _refreshPreviewIfActive } from './comments-preview.js';
 import { _downloadBlob } from './export.js';
-import { closeMoreDropdown } from './header.js';
+import { closeMoreDropdown, _copyNoteToClipboard } from './header.js';
 
 // Use REPORT_REASONS imported from rooms.js to keep client and server in sync.
 const REPORT_REASON_OPTIONS = REPORT_REASONS;
@@ -112,6 +112,10 @@ export function _wireTools() {
 
   // ── Tools ──────────────────────────────────────────────────────────────────
   const toolActions = {
+    'tool-copy': () => { _copyNoteToClipboard(); },
+
+    'tool-export-more': () => { UI.openModal('export-modal'); },
+
     'tool-clear': async () => {
       if (!canClearNote()) { UI.showToast(editBlockedReason() || 'Clear is disabled.', 'warning'); return; }
       if (!await UI.showConfirm('Clear the note for everyone? This cannot be undone.', { confirmLabel: 'Clear', danger: true })) return;

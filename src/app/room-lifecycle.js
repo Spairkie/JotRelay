@@ -18,7 +18,7 @@ import {
   broadcastSettingsChange, cancelPendingTypingBroadcast, cancelPendingLiveContentBroadcast,
   broadcastClear, broadcastViewOnceCleared,
 } from '../live-broadcast.js';
-import { initPresence, destroyPresence, setPresenceHidden, updatePresenceDeviceName } from '../presence.js';
+import { initPresence, destroyPresence, setPresenceHidden, updatePresenceDeviceName, setFollowing } from '../presence.js';
 import {
   initSync, destroySync,
   flushSave, cancelPendingSave, snapshotBeforeDestructiveChange,
@@ -70,6 +70,40 @@ function _showQuarantinedScreen(room) {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
+const LEGAL_BACK_PATH_KEY = 'syncpad_legal_back_path';
+
+// Contact/privacy/terms link to each other with plain <a href> tags — a
+// real navigation/full page reload each time, not an in-app route swap —
+// so their own "Back to SyncPad" link can't rely on in-memory state to know
+// where the user actually came from. Reads what boot() stored in
+// sessionStorage the last time a non-legal route loaded, and points every
+// currently-visible legal screen's .legal-back-link at it (falling back to
+// the marketing root if nothing was ever stored — e.g. a legal page
+// reached directly, with no prior SyncPad visit this session).
+function _wireLegalBackLink() {
+  let backPath = `${BASE}/`;
+  try { backPath = sessionStorage.getItem(LEGAL_BACK_PATH_KEY) || backPath; } catch {}
+  document.querySelectorAll('.legal-screen:not(.hidden) .legal-back-link').forEach((a) => {
+    a.href = backPath;
+  });
+}
+
+/**
+ * Record `path` (defaults to the current location) as the "Back to SyncPad"
+ * target for the legal screens. boot() calls this on every real page load
+ * (see below), but that only covers full navigations — creating/joining a
+ * room from /app, clicking a recent room, and the standalone-PWA resume
+ * redirect all change the URL via history.pushState()/replaceState() and
+ * call joinRoom() directly without going through boot() again, so without
+ * this being called from those sites too, the stored path would still say
+ * "/app" (or "/") after the user is actually sitting in a room, and "Back to
+ * SyncPad" from a legal page reached from that room's footer would send them
+ * to the wrong place.
+ */
+export function recordLegalBackPath(path) {
+  try { sessionStorage.setItem(LEGAL_BACK_PATH_KEY, path ?? (location.pathname + location.search)); } catch {}
+}
+
 export async function boot() {
   // Apply saved theme immediately to avoid flash
   loadSavedTheme();
@@ -91,6 +125,16 @@ export async function boot() {
   state.isReadOnly = getUrlMode() === 'read';
 
   const route = _parseRoute();
+
+  // Remember the last non-legal path visited so the legal screens' own
+  // "Back to SyncPad" links (see _wireLegalBackLink() below) can return the
+  // user to wherever they actually came from — the marketing landing page,
+  // /app, a room, admin, etc. — instead of always going to the marketing
+  // root. Only updated on a non-legal route, so chaining between Contact/
+  // Privacy/Terms's own cross-links doesn't overwrite this with each other.
+  if (route.type !== 'contact' && route.type !== 'privacy' && route.type !== 'terms') {
+    recordLegalBackPath();
+  }
 
   if (route.type === 'share') {
     state.isReadOnly = true;
@@ -127,6 +171,7 @@ export async function boot() {
 
     if (lastRoom) {
       history.replaceState(null, '', `${BASE}/${lastRoom}`);
+      recordLegalBackPath(`${BASE}/${lastRoom}`);
       await window.__supabaseReady;
       await joinRoom(lastRoom);
       return;
@@ -154,6 +199,7 @@ export async function boot() {
   if (route.type === 'contact' || route.type === 'privacy' || route.type === 'terms') {
     if (route.type === 'contact') wireContactEvents();
     UI.showScreen(route.type);
+    _wireLegalBackLink();
     return;
   }
 
@@ -540,13 +586,17 @@ async function startApp(isNewRoom = false) {
     // followed anymore — drop it rather than leaving a dead toggle active.
     if (state.followedDeviceId && !devices.some((d) => d.device_id === state.followedDeviceId && !d.isMe)) {
       state.followedDeviceId = null;
+      setFollowing(null);
     }
     UI.renderDevicesList(devices, deviceId, (name) => {
       setDeviceName(name);
       updatePresenceDeviceName(getDeviceName());
     }, {
       followedDeviceId: state.followedDeviceId,
-      onToggleFollow: (id) => { state.followedDeviceId = state.followedDeviceId === id ? null : id; },
+      onToggleFollow: (id) => {
+        state.followedDeviceId = state.followedDeviceId === id ? null : id;
+        setFollowing(state.followedDeviceId);
+      },
     });
     // Render remote collaborators' carets/selections in the live surface
     // (no-op when it isn't mounted).
