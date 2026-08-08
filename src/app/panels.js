@@ -235,6 +235,18 @@ export function _wireFindReplacePanel() {
   const replaceOne   = document.getElementById('replace-one');
   const replaceAll   = document.getElementById('replace-all');
 
+  // Replace starts collapsed (see index.html's comment on this button) — a
+  // click reveals #replace-section and moves focus straight into it, since
+  // that's the one reason anyone would expand it in the first place.
+  const replaceToggle  = document.getElementById('search-replace-toggle');
+  const replaceSection = document.getElementById('replace-section');
+  replaceToggle?.addEventListener('click', () => {
+    const wasHidden = replaceSection.hidden;
+    replaceSection.hidden = !wasHidden;
+    replaceToggle.setAttribute('aria-expanded', String(wasHidden));
+    if (wasHidden) replaceInput?.focus();
+  });
+
   // Enable/disable replace buttons based on edit permission and match count.
   const _syncReplaceButtons = () => {
     const enabled = canEdit() && state.searchMatches.length > 0;
@@ -337,7 +349,14 @@ export function _wireFindReplacePanel() {
     // Replace's buttons are disabled (no active search yet), #replace-input
     // IS that last item — so without stopping propagation, the trap would
     // immediately re-fire on this same keydown and undo the focus() below.
-    if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); replaceInput?.focus(); }
+    if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault(); e.stopPropagation();
+      // A hidden #replace-section can't receive focus at all — expand it
+      // first (same as clicking the toggle) so this still lands somewhere
+      // real instead of silently failing.
+      if (replaceSection?.hidden) { replaceSection.hidden = false; replaceToggle?.setAttribute('aria-expanded', 'true'); }
+      replaceInput?.focus();
+    }
     if (e.key === 'Escape') { UI.closeAllPanels(); _focusActiveEditorSurface(); }
   });
   replaceInput?.addEventListener('keydown', (e) => {

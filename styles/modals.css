@@ -494,15 +494,30 @@ button:focus:not(:focus-visible) { outline: none; }
   }
 }
 .search-bar {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 6px;
   background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;
+  border-radius: 8px; padding: 6px 8px 6px 12px; margin-bottom: 6px;
 }
 .search-input {
-  flex: 1; background: transparent; border: none; outline: none;
+  flex: 1; min-width: 0; background: transparent; border: none; outline: none;
   color: var(--text-primary); font-size: 14px; font-family: inherit;
 }
 .search-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+/* Prev/Next live inline in the search bar itself (VS Code's/browser find
+   bars' layout) rather than their own full-width button row below it — that
+   extra row was most of what made this panel too tall to leave any note
+   content visible on a mobile screen with the keyboard open. Icon-only,
+   same 26px compact footprint as .search-case-btn below; the mobile
+   override further down gives both a real touch target. */
+.search-nav-btn {
+  flex-shrink: 0; width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; background: transparent; border: 1px solid transparent;
+  border-radius: 6px; color: var(--text-secondary); cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.search-nav-btn:hover { border-color: var(--border); background: var(--bg-base); color: var(--accent); }
 
 /* Aa case-sensitive toggle inside the search bar */
 .search-case-btn {
@@ -517,17 +532,23 @@ button:focus:not(:focus-visible) { outline: none; }
   background: rgba(var(--accent-rgb), 0.10);
 }
 
-.search-actions { display: flex; gap: 8px; margin-bottom: 14px; }
-.search-nav-btn {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
-  padding: 7px 12px; background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 6px; color: var(--text-secondary); font-size: 13px; cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+/* Collapsed by default (see index.html's comment on #search-replace-toggle)
+   — a plain link-style row, not a full button, since it's secondary to the
+   search bar above it. */
+.search-replace-toggle {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 4px; margin-bottom: 4px;
+  background: none; border: none; color: var(--text-secondary);
+  font-size: 12.5px; font-weight: 500; cursor: pointer;
+  transition: color 0.15s;
 }
-.search-nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+.search-replace-toggle:hover { color: var(--text-primary); }
+.search-replace-toggle-chevron { transition: transform 0.15s ease; flex-shrink: 0; }
+.search-replace-toggle[aria-expanded="true"] .search-replace-toggle-chevron { transform: rotate(90deg); }
+
 .search-hint { font-size: 12px; color: var(--text-muted); margin: 0; }
 
-/* Replace row (below search nav, same panel) */
+/* Replace row (below the toggle, same panel) */
 .replace-bar {
   display: flex; align-items: center; gap: 8px;
   background: var(--bg-elevated); border: 1px solid var(--border);
@@ -556,16 +577,16 @@ button:focus:not(:focus-visible) { outline: none; }
    cascade: a later same-specificity rule always overrides an earlier one
    regardless of which is inside a @media block. */
 @media (max-width: 639px) {
-  .search-bar, .replace-bar { padding: 10px 12px; }
+  .search-bar, .replace-bar { padding: 8px 6px 8px 12px; }
   /* 16px, not the base rule's 14px — iOS Safari zooms the whole page in on
      focus for any input under its own 16px auto-zoom threshold. */
   .search-input { font-size: 16px; }
-  .search-case-btn {
-    min-width: 40px; min-height: 36px; padding: 6px 8px; font-size: 13px;
-    display: inline-flex; align-items: center; justify-content: center;
+  .search-nav-btn, .search-case-btn {
+    min-width: 38px; min-height: 38px; padding: 6px 8px; font-size: 13px;
   }
-  .search-actions, .replace-actions { gap: 10px; }
-  .search-nav-btn, .replace-btn { padding: 13px 12px; font-size: 14px; }
+  .search-replace-toggle { padding: 10px 4px; font-size: 13.5px; }
+  .replace-actions { gap: 10px; }
+  .replace-btn { padding: 13px 12px; font-size: 14px; }
 }
 
 /* ══════════════════════════════════════════════════════════════
