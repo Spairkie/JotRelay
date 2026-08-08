@@ -1432,6 +1432,26 @@ export function destroy() {
   _onImageFiles = null;
 }
 
+/**
+ * Re-run CM6's own "keep the selection visible" scroll against the
+ * scroller's *current* size. Called by keyboard-viewport.js after the
+ * on-screen keyboard opens/closes/resizes — CSS already shrinks this
+ * surface's box to stay above the keyboard (the --kb-inset chain in
+ * modals.css/keyboard-viewport.js), but that's a passive ancestor resize,
+ * and CM6 (like a plain textarea) only re-scrolls to keep the caret
+ * visible on an actual selection/content change, not just because its
+ * container got shorter out from under it. Without this, the line the
+ * user was on when the keyboard opened can end up hidden below the new,
+ * smaller box until the next keystroke's normal caret-follow catches up —
+ * a visible "typing blind for a moment" gap. y:'nearest' is a no-op if the
+ * caret is already visible, so this is safe to call unconditionally.
+ * No-ops if the live surface isn't mounted or doesn't currently have focus.
+ */
+export function scrollCaretIntoView() {
+  if (!_view || !_view.hasFocus) return;
+  _view.dispatch({ effects: EditorView.scrollIntoView(_view.state.selection.main.head, { y: 'nearest' }) });
+}
+
 // ── Split-mode scroll sync ───────────────────────────────────────────────────
 //
 // Proportional (percent-of-scrollable-range) sync between the Write textarea
