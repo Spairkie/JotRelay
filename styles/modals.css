@@ -511,6 +511,26 @@ button:focus:not(:focus-visible) { outline: none; }
 .replace-btn--all:hover:not(:disabled) { background: var(--accent); color: var(--text-inverse); }
 .replace-btn:disabled { opacity: 0.38; cursor: not-allowed; }
 
+/* Every control above was sized for a mouse (13-14px text, ~31px-tall
+   buttons, a 29×17px "Aa" toggle) — well under the ~44px touch-target
+   guidance real mobile UI follows elsewhere in this file (e.g.
+   .share-qr-download's 38px in the main mobile block above). Placed here,
+   after the base rules rather than in that earlier block, so it wins the
+   cascade: a later same-specificity rule always overrides an earlier one
+   regardless of which is inside a @media block. */
+@media (max-width: 639px) {
+  .search-bar, .replace-bar { padding: 10px 12px; }
+  /* 16px, not the base rule's 14px — iOS Safari zooms the whole page in on
+     focus for any input under its own 16px auto-zoom threshold. */
+  .search-input { font-size: 16px; }
+  .search-case-btn {
+    min-width: 40px; min-height: 36px; padding: 6px 8px; font-size: 13px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .search-actions, .replace-actions { gap: 10px; }
+  .search-nav-btn, .replace-btn { padding: 13px 12px; font-size: 14px; }
+}
+
 /* ══════════════════════════════════════════════════════════════
    EXPORT MODAL
 ══════════════════════════════════════════════════════════════ */

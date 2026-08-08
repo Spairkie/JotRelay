@@ -87,3 +87,12 @@
 .onboarding-nav-btn:disabled { opacity: 0.4; cursor: default; }
 .onboarding-nav-btn--primary { background: var(--accent); border-color: var(--accent); color: var(--text-inverse); }
 .onboarding-nav-btn--primary:hover { opacity: 0.9; background: var(--accent); }
+
+/* Back/Next/Done were sized for a mouse (~31px tall) — well under the ~44px
+   touch-target guidance the rest of the mobile UI follows. Skip tour gets a
+   real hit area too via padding rather than relying on its tight text
+   bounds, without changing its inline position in the actions row. */
+@media (max-width: 639px) {
+  .onboarding-nav-btn { padding: 12px 16px; font-size: 14px; }
+  .onboarding-skip { padding: 12px 0; font-size: 13px; }
+}

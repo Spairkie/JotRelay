@@ -93,14 +93,17 @@
   --bg-input:       #f0eeeb;
   --border:         #d8d4cc;
   --border-soft:    #e8e4df;
-  /* #a36a27, not the swatch-brighter #c17d2e — white button text (--text-inverse
-     on --accent, e.g. .modal-btn-confirm, the landing page's primary CTAs)
-     only reads 3.37:1 against #c17d2e, short of WCAG AA's 4.5:1 for normal-size
-     text. This is the same hue darkened just enough to clear 4.5:1 (4.52:1). */
-  --accent:         #a36a27;
-  --accent-rgb:     163,106,39;
-  --accent-dim:     rgba(163,106,39,0.12);
-  --accent-glow:    rgba(163,106,39,0.25);
+  /* #905e23, not the swatch-brighter #c17d2e — white button text (--text-inverse
+     on --accent, e.g. .modal-btn-confirm, the landing page's primary CTAs, the
+     onboarding tour's "Next"/"Done" button) only reads 3.37:1 against #c17d2e,
+     short of WCAG AA's 4.5:1 for normal-size text. An earlier pass darkened
+     this hue just enough to clear the 4.5:1 floor (#a36a27, 4.52:1) — too
+     little margin for small (13px) button text on a real mobile screen, so
+     darkened further to a comfortable 5.5:1. */
+  --accent:         #905e23;
+  --accent-rgb:     144,94,35;
+  --accent-dim:     rgba(144,94,35,0.12);
+  --accent-glow:    rgba(144,94,35,0.25);
   --text-primary:   #1a1612;
   --text-secondary: #6a5e50;
   --text-muted:     #776957;
@@ -113,7 +116,7 @@
   --shadow-sm:      0 1px 3px rgba(0,0,0,0.1);
   --shadow-md:      0 4px 16px rgba(0,0,0,0.12);
   --shadow-lg:      0 12px 40px rgba(0,0,0,0.15);
-  --landing-glow:   rgba(163,106,39,0.05);
+  --landing-glow:   rgba(144,94,35,0.05);
   /* Syntax colours — darker shades for legibility on light backgrounds */
   --syntax-string:  #15803d;
   --syntax-number:  #c2410c;
@@ -219,13 +222,16 @@
   --bg-input:       #e8f3f6;
   --border:         #c3dde3;
   --border-soft:    #d7e9ed;
-  /* #0c857b, not the swatch-brighter #0d9488 — white button text (--text-inverse
-     on --accent) only reads 3.74:1 against #0d9488, short of WCAG AA's 4.5:1
-     for normal-size text. Same hue darkened just enough to clear 4.5:1 (4.51:1). */
-  --accent:         #0c857b;
-  --accent-rgb:     12,133,123;
-  --accent-dim:     rgba(12,133,123,0.12);
-  --accent-glow:    rgba(12,133,123,0.25);
+  /* #0b756c, not the swatch-brighter #0d9488 — white button text (--text-inverse
+     on --accent, including the onboarding tour's "Next"/"Done" button) only
+     reads 3.74:1 against #0d9488, short of WCAG AA's 4.5:1 for normal-size
+     text. An earlier pass darkened this hue just enough to clear the 4.5:1
+     floor (#0c857b, 4.51:1) — too little margin for small (13px) button text
+     on a real mobile screen, so darkened further to a comfortable 5.5:1. */
+  --accent:         #0b756c;
+  --accent-rgb:     11,117,108;
+  --accent-dim:     rgba(11,117,108,0.12);
+  --accent-glow:    rgba(11,117,108,0.25);
   --text-primary:   #0f2a2c;
   --text-secondary: #4d7075;
   --text-muted:     #457478;
@@ -238,7 +244,7 @@
   --shadow-sm:      0 1px 3px rgba(0,0,0,0.08);
   --shadow-md:      0 4px 16px rgba(0,0,0,0.1);
   --shadow-lg:      0 12px 40px rgba(0,0,0,0.12);
-  --landing-glow:   rgba(12,133,123,0.06);
+  --landing-glow:   rgba(11,117,108,0.06);
   /* Syntax colours — darker shades for legibility on light backgrounds */
   --syntax-string:  #15803d;
   --syntax-number:  #c2410c;
