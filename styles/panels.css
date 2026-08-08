@@ -55,6 +55,7 @@
 .tools-section-danger .tools-section-title { color: var(--red); opacity: 0.7; }
 .tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tool-btn {
+  position: relative;
   padding: 12px 10px; border-radius: var(--radius-md);
   background: var(--bg-elevated); border: 1px solid var(--border);
   color: var(--text-primary); font-size: 13px;
@@ -69,6 +70,14 @@
 .tool-btn.danger:hover { border-color: var(--red); }
 .tool-btn.danger:hover .tool-icon { color: var(--red); }
 .tool-btn.danger:hover .tool-label { color: var(--red); }
+/* How many comments exist in the note — visible without opening the panel,
+   same discoverability idea as the connected-device count in the header. */
+.tool-count-badge {
+  position: absolute; top: 6px; right: 6px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; background: var(--accent); color: var(--text-inverse);
+  font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
+}
 
 /* Files Panel */
 .files-upload-zone {

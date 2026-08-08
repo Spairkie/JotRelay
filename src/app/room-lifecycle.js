@@ -1025,6 +1025,7 @@ export function teardownRealtimeSession() {
   // in whatever room is joined next.
   _debouncedPruneDeletedCommentAnchors.cancel?.();
   UI.renderFloatingComments([]);
+  UI.setCommentCountBadge(0);
   _closeSlashMenu();
   // Remove the keydown handler so wireEvents() can install fresh callbacks
   // on the next room join. DOM element listeners (editor, buttons, etc.) are

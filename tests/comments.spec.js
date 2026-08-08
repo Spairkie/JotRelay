@@ -233,6 +233,34 @@ test.describe('Comment navigation', () => {
   });
 });
 
+test.describe('Comment count badge', () => {
+  test('the Comments tool button shows a count badge, hidden when there are no comments', async ({ page }) => {
+    await createRoom(page);
+    const badge = page.locator('#comment-count-badge');
+    await expect(badge).toBeHidden();
+
+    await typeInEditor(page, 'Some text to comment on, right here.');
+    await addCommentViaPanel(page, 5, 9, 'first'); // "text"
+    await expect(badge).toBeVisible();
+    await expect(badge).toHaveText('1');
+
+    await addCommentViaPanel(page, 15, 19, 'second'); // "on,"
+    await expect(badge).toHaveText('2');
+  });
+
+  test('deleting a comment decrements the badge back to hidden', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, 'Some text to comment on.');
+    await addCommentViaPanel(page, 5, 9, 'only comment');
+    await expect(page.locator('#comment-count-badge')).toHaveText('1');
+
+    await page.locator('.comment-dot').first().click();
+    await page.locator('.comment-floating-bubble .comment-delete-btn').click();
+    await page.locator('#sp-confirm-ok').click();
+    await expect(page.locator('#comment-count-badge')).toBeHidden({ timeout: 3000 });
+  });
+});
+
 test.describe('Auto-delete on anchored text removal', () => {
   // Google Docs/Notion-style behavior: a comment has no meaning once the
   // text it's attached to is gone. See comments-preview.js's

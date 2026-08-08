@@ -197,6 +197,7 @@ export async function _refreshComments() {
       canDelete: canEdit(),
     });
     state.lastComments = withPreviews;
+    UI.setCommentCountBadge(withPreviews.length);
     // The active bubble's comment may have just been deleted (by this
     // device or another) — nothing left to keep expanded.
     if (state.activeCommentId && !withPreviews.some((c) => c.id === state.activeCommentId)) {
