@@ -265,7 +265,15 @@ export function _wireFindReplacePanel() {
       const idx = text.indexOf(state.searchTerm, pos);
       if (idx === -1) break;
       state.searchMatches.push({ start: idx, end: idx + state.searchTerm.length });
-      pos = idx + 1;
+      // Advance past the whole match, not just one character — a
+      // self-overlapping term (e.g. "aa" in "aaaa") would otherwise be
+      // counted 3 times here (0-2, 1-3, 2-4) while Replace All's global
+      // regex replace() only ever performs 2 non-overlapping replacements,
+      // leaving the "X / Y" counter and the "Replaced N matches" toast
+      // disagreeing about how many matches there really are. Matches how
+      // conventional find-in-file tools (browser Ctrl+F, VS Code, Sublime)
+      // count too.
+      pos = idx + state.searchTerm.length;
     }
     if (state.searchMatches.length > 0) {
       state.searchIndex = 0;
@@ -376,22 +384,37 @@ export function _wireFindReplacePanel() {
   replaceAll?.addEventListener('click', () => {
     if (!canEdit()) { UI.showToast(editBlockedReason() || 'Editing is disabled.', 'warning'); return; }
     if (!state.searchMatches.length || !state.searchTerm || !editor) return;
-    const count = state.searchMatches.length;
     const replacement = replaceInput?.value ?? '';
     // Escape the raw search term for safe use in RegExp.
     // Use the un-lowercased raw input for the pattern when case-sensitive.
     const rawTerm = searchInput?.value || '';
     const escaped = rawTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const flags   = state.caseSensitive ? 'g' : 'gi';
+    // A function replacer, not a replacement *string* — sidesteps two
+    // related correctness issues a string replacer would have here:
+    // (1) state.searchMatches.length counts OVERLAPPING occurrences (right
+    // for Find/Next-Prev — deliberately finding every position, including
+    // overlaps, is normal editor behavior), but a global regex replace()
+    // only ever performs NON-overlapping replacements (e.g. /aa/g against
+    // "aaaa" replaces twice, at 0-2 then 2-4, not three times) — reusing
+    // that count for the toast below would overstate how many replacements
+    // actually happened whenever the search term overlaps itself. Counting
+    // real replacements here instead keeps the toast honest.
+    // (2) A string replacer treats $&, $1, $$, etc. in the REPLACEMENT text
+    // as special substitution patterns, so replacing text with a literal
+    // "$1" would get silently mangled. A function's return value is always
+    // inserted as literal text, with no such handling.
+    let actualCount = 0;
+    const newValue = editor.value.replace(new RegExp(escaped, flags), () => { actualCount++; return replacement; });
     // A whole-document, potentially-multi-match transform — not a single
     // contiguous range — so this goes through setEditorValue()'s
     // similar-length cursor-preserve heuristic rather than replaceEditorRange().
-    UI.setEditorValue(editor.value.replace(new RegExp(escaped, flags), replacement));
+    UI.setEditorValue(newValue);
     editor.dispatchEvent(new Event('input', { bubbles: true }));
     UI.updateWordCount(editor.value);
     _refreshPreviewIfActive();
     _runSearch();
-    UI.showToast(`Replaced ${count} match${count !== 1 ? 'es' : ''}.`, 'success');
+    UI.showToast(`Replaced ${actualCount} match${actualCount !== 1 ? 'es' : ''}.`, 'success');
     // Return focus to search so the user can start a new query.
     searchInput?.focus();
   });
