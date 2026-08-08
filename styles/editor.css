@@ -763,9 +763,14 @@ body.lock-mode .md-toolbar { opacity: 0.4; pointer-events: none; }
    minimap, this isn't a dead end on touch — .cm-comment-anchor spans
    (the dotted-underline text itself) are tap targets there instead (see
    live-editor.js's _isCoarsePointer-gated mousedown handler), so the
-   bubble below still needs to render on touch; only the dot disappears. */
+   bubble below still needs to render on touch; only the dot disappears.
+   Scoped to .live-preview (the CM6 Live/Split surface is actually
+   mounted): Write mode's plain textarea has no .cm-comment-anchor spans
+   to tap, so the dot stays as the only affordance there — an ordinary
+   tap already activates a <button>'s click handler, no special touch
+   handling needed. */
 @media (hover: none), (pointer: coarse) {
-  .comment-dot { display: none; }
+  .editor-wrap.live-preview .comment-dot { display: none; }
 }
 
 .comment-floating-bubble {

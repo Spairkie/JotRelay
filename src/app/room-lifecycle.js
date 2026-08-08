@@ -48,7 +48,7 @@ import {
   _suppressNextResume,
 } from './routing.js';
 import { refreshFiles } from './files-panel.js';
-import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedPruneDeletedCommentAnchors } from './comments-preview.js';
+import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedPruneDeletedCommentAnchors, _pruneDeletedCommentAnchors } from './comments-preview.js';
 import { _closeSlashMenu, _focusActiveEditorSurface } from './editor-behavior.js';
 import { _selectExpirationPreset } from './panels.js';
 import { wireEvents } from './wiring.js';
@@ -566,6 +566,7 @@ async function startApp(isNewRoom = false) {
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
+      _pruneDeletedCommentAnchors();
       UI.showToast('Note was cleared by another device.', 'warning');
     },
     onRemoteViewOnce: async () => {
@@ -576,6 +577,7 @@ async function startApp(isNewRoom = false) {
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
+      _pruneDeletedCommentAnchors();
       UI.showToast('This note was view-once and has been cleared from the server.', 'warning', 6000);
     },
   });
@@ -830,6 +832,7 @@ async function _handleRoomStateTransition(prev, newRoom) {
     UI.updateWordCount('');
     UI.hideExpirationBar();
     _refreshPreviewIfActive();
+    _pruneDeletedCommentAnchors();
     UI.showToast('This note expired and was cleared.', 'warning', 5000);
   }
 
@@ -847,6 +850,7 @@ async function _handleRoomStateTransition(prev, newRoom) {
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
+      _pruneDeletedCommentAnchors();
       UI.showToast('This note was view-once and has been cleared from the server.', 'warning', 6000);
     }
   }
@@ -865,6 +869,7 @@ async function _handleRoomStateTransition(prev, newRoom) {
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
+      _pruneDeletedCommentAnchors();
       UI.showToast('This room reached its device limit and has been cleared from the server.', 'warning', 6000);
     }
   }
@@ -908,6 +913,7 @@ function _updateViewOnceConsumedUI() {
         setContentNoSave('');
         UI.updateWordCount('');
         _refreshPreviewIfActive();
+        _pruneDeletedCommentAnchors();
         _updatePermissionContext();
         _renderRoomHeader();
         UI.renderSettingsPanel(state.room);
@@ -941,6 +947,7 @@ export function setupExpirationTimer() {
           UI.updateWordCount('');
           UI.hideExpirationBar();
           _refreshPreviewIfActive();
+          _pruneDeletedCommentAnchors();
           UI.showToast('This note expired and was cleared.', 'warning', 5000);
           broadcastSettingsChange();
         }
@@ -1119,6 +1126,7 @@ export async function doClearNote() {
     setContentNoSave('');
     UI.updateWordCount('');
     _refreshPreviewIfActive();
+    _pruneDeletedCommentAnchors();
     broadcastClear('manual');
     UI.showToast('Note cleared.', 'success');
     state.room = await loadRoom(state.roomId);

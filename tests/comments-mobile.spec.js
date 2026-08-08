@@ -82,4 +82,40 @@ test.describe('Comment anchor tap-to-view', () => {
     expect(result.foundSpan).toBe(true);
     expect(result.tappedPos).toBeNull();
   });
+
+  test('a real touch pointerdown is honored even when the device reports a fine primary pointer (hybrid touchscreen laptop)', async ({ page }) => {
+    await page.goto('/SyncPad/');
+    const result = await page.evaluate(async () => {
+      // No matchMedia override — simulates a hybrid device where (pointer:
+      // fine) / (hover: hover) both hold (mouse is the primary pointer),
+      // but THIS interaction is a genuine finger tap on the touchscreen.
+      const LiveEditor = await import('/SyncPad/src/live-editor.js');
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+
+      let tappedPos = null;
+      LiveEditor.mount(container, 'Hello world, this is commented text.', {
+        onChange: () => {},
+        onCommentAnchorTap: (pos) => { tappedPos = pos; },
+      });
+      LiveEditor.setCommentAnchors([{ id: 'c1', from: 6, to: 11 }]); // "world"
+      await new Promise((r) => setTimeout(r, 50));
+
+      const span = container.querySelector('.cm-comment-anchor');
+      if (span) {
+        const rect = span.getBoundingClientRect();
+        const coords = { bubbles: true, cancelable: true, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+        span.dispatchEvent(new PointerEvent('pointerdown', { ...coords, pointerType: 'touch' }));
+        span.dispatchEvent(new MouseEvent('mousedown', coords));
+      }
+
+      LiveEditor.destroy();
+      container.remove();
+      return { foundSpan: !!span, tappedPos };
+    });
+    expect(result.foundSpan).toBe(true);
+    expect(result.tappedPos).not.toBeNull();
+    expect(result.tappedPos).toBeGreaterThanOrEqual(6);
+    expect(result.tappedPos).toBeLessThan(11);
+  });
 });

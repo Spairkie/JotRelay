@@ -71,9 +71,14 @@ export async function _submitComment(text, anchor) {
     let anchorText;
     if (anchor.to > anchor.from) {
       const raw = UI.getEditorValue().slice(anchor.from, anchor.to);
-      if (raw.length <= ANCHOR_TEXT_MAX) {
-        anchorText = state.encKey ? await encryptContent(raw, state.encKey) : raw;
-      }
+      // Check the length of what actually gets stored, not the plaintext —
+      // AES-GCM's IV+tag overhead and base64 expansion mean an encrypted
+      // room's ciphertext can run well past the plaintext's own length, and
+      // the DB's anchor_text_len_check constraint applies to that stored
+      // value. Checking post-encryption avoids ever sending an insert that
+      // the constraint would reject.
+      const candidate = state.encKey ? await encryptContent(raw, state.encKey) : raw;
+      if (candidate.length <= ANCHOR_TEXT_MAX) anchorText = candidate;
     }
     await addComment(state.roomId, { anchorFrom: anchor.from, anchorTo: anchor.to, text: payloadText, anchorText });
     await _refreshComments();
@@ -179,14 +184,18 @@ export async function _refreshComments() {
       // Decrypted creation-time snapshot of the anchored text, for
       // _pruneDeletedCommentAnchors' "has this text since been deleted?"
       // comparison — distinct from anchorPreview above, which is a fresh
-      // slice of the CURRENT text at the same (static) offsets.
+      // slice of the CURRENT text at the same (static) offsets. Gated on
+      // the room's actual encryption state rather than looksEncrypted()'s
+      // content-shape heuristic: anchor_text is always ciphertext in an
+      // encrypted room and always plaintext otherwise, so using the
+      // heuristic here risks misreading ordinary plaintext that happens to
+      // resemble ciphertext (e.g. a hex/base64-shaped snippet) as
+      // encrypted, nulling out a snapshot that never needed decrypting and
+      // permanently disabling auto-delete for that one comment.
       let anchorSnapshot = c.anchor_text || null;
-      if (anchorSnapshot != null && looksEncrypted(anchorSnapshot)) {
-        if (!state.encKey) { anchorSnapshot = null; }
-        else {
-          try { anchorSnapshot = await decryptContent(anchorSnapshot, state.encKey); }
-          catch { anchorSnapshot = null; }
-        }
+      if (anchorSnapshot != null && state.encKey) {
+        try { anchorSnapshot = await decryptContent(anchorSnapshot, state.encKey); }
+        catch { anchorSnapshot = null; }
       }
       return { ...c, _preview: preview, _anchorPreview: anchorPreview, _anchorSnapshot: anchorSnapshot };
     }));
@@ -400,22 +409,27 @@ export const _debouncedRefreshPreview = debounce(_refreshPreviewIfActive, 300);
 export const _debouncedRefreshFloatingComments = debounce(_refreshFloatingComments, 300);
 
 // "If the commented text is deleted, the comment is deleted too" — Google
-// Docs/Notion-style behavior. anchor_from/anchor_to are static DB offsets
-// (never re-mapped against edits made elsewhere in the document — the same
-// simplification _refreshComments' own _anchorPreview already relies on),
-// so this only catches an edit that actually overlaps a comment's own
-// anchor range, which is exactly the case being asked for: comparing the
-// text currently sitting at that exact range against the snapshot taken
-// when the comment was created. A comment with no snapshot (point comment,
-// selection too long to track, or created before this feature existed)
-// is left alone rather than guessed at.
-async function _pruneDeletedCommentAnchors() {
+// Docs/Notion-style behavior. anchor_from/anchor_to are static DB offsets,
+// never re-mapped against edits made elsewhere in the document, so they
+// drift the moment anything before them is inserted or removed — comparing
+// the snapshot against a slice taken at those (now stale) offsets would
+// misfire on any unrelated edit, not just one that actually touches the
+// commented text. Checking whether the snapshot still occurs ANYWHERE in
+// the current document sidesteps that: an edit anywhere else leaves the
+// commented text intact and findable, so nothing is deleted; only actually
+// removing/changing that exact text makes it stop matching everywhere. The
+// tradeoff is a comment can survive if identical text happens to exist
+// elsewhere too — a false negative, and a much safer failure mode than
+// deleting a comment whose text was never touched. A comment with no
+// snapshot (point comment, selection too long to track, or created before
+// this feature existed) is left alone rather than guessed at.
+export async function _pruneDeletedCommentAnchors() {
   if (!state.lastComments.length) return;
   const currentText = UI.getEditorValue();
   const stale = state.lastComments.filter((c) => {
     if (c._anchorSnapshot == null) return false;
     if (!Number.isFinite(c.anchor_from) || !Number.isFinite(c.anchor_to) || c.anchor_to <= c.anchor_from) return false;
-    return currentText.slice(c.anchor_from, c.anchor_to) !== c._anchorSnapshot;
+    return !currentText.includes(c._anchorSnapshot);
   });
   if (!stale.length) return;
   await Promise.all(stale.map((c) => deleteComment(c.id).catch(() => {})));

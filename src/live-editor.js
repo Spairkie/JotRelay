@@ -983,14 +983,19 @@ export function setCommentAnchors(comments) {
 }
 
 // True on touch/coarse-pointer devices — same test the CSS minimap rule
-// uses (inverted) to decide it should hide itself there. Gates the
-// comment-anchor tap-to-view handler below to touch only: on a mouse/
-// trackpad, a plain click inside a commented range still needs to place
-// the text cursor normally, and desktop already has the margin dot/bubble
-// for viewing comments.
+// uses (inverted) to decide it should hide itself there. Used only as a
+// fallback below, when no real pointerdown has told us what kind of
+// pointer is actually being used.
 function _isCoarsePointer() {
   return !!window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
 }
+
+// Set from the pointerdown handler below, just ahead of mousedown for the
+// same physical interaction. A device-level media query can't tell touch
+// from mouse on a hybrid touchscreen laptop (primary pointer stays "fine"
+// even while a specific tap came from the touchscreen) — the event's own
+// pointerType is the actual source of truth for that one interaction.
+let _lastPointerType = null;
 
 // Extract a Link node's destination for ctrl/cmd+click opening — either a
 // real http(s) URL to open directly, or an uploaded file's storage path
@@ -1350,6 +1355,7 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
         // meaningful to do with an image-only clipboard item (no text
         // representation to insert) and would otherwise silently no-op.
         EditorView.domEventHandlers({
+          pointerdown: (e) => { _lastPointerType = e.pointerType || null; return false; },
           mousedown: (e, view) => {
             if (!(e.ctrlKey || e.metaKey)) {
               // Tap-to-view a comment's anchored text on touch devices — the
@@ -1357,7 +1363,12 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
               // so the dotted-underline span itself is the only affordance.
               // Desktop leaves plain clicks alone (still just places the
               // cursor) since the hover-sized margin dots already cover it.
-              if (_onCommentAnchorTap && _isCoarsePointer() && e.target.closest?.('.cm-comment-anchor')) {
+              // Prefer the actual pointerdown's pointerType (correct even
+              // on a hybrid touchscreen laptop); fall back to the device-
+              // level media query only if no pointerdown was observed.
+              const isTouchLike = _lastPointerType === 'touch' || _lastPointerType === 'pen'
+                || (_lastPointerType == null && _isCoarsePointer());
+              if (_onCommentAnchorTap && isTouchLike && e.target.closest?.('.cm-comment-anchor')) {
                 const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
                 if (pos != null) {
                   e.preventDefault();

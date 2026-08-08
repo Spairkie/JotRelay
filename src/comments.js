@@ -15,13 +15,29 @@ import { logSupabaseError, getDeviceId, getDeviceName } from './utils.js';
 
 const TABLE = 'syncpad_room_comments';
 
+// Postgres "undefined_column" — thrown by PostgREST when a project has run
+// 0003_room_comments.sql but not yet the later, separate
+// 0013_comment_anchor_text.sql. Falling back to the pre-0013 column set
+// keeps the base comments feature (view/add/delete/thread) working on such
+// a project instead of breaking it outright the moment the client updates;
+// only the auto-delete-on-text-removal enhancement stays inert until the
+// migration is run, matching every other optional-migration feature's
+// "silently no-op until its migration runs" convention (see DEPLOYMENT.md).
+const MISSING_COLUMN = '42703';
+
 /** List comments for a room, oldest first (matches reading order in the note). */
 export async function listComments(roomId) {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from(TABLE)
+  let { data, error } = await sb.from(TABLE)
     .select('id, anchor_from, anchor_to, text, anchor_text, device_id, device_name, created_at')
     .eq('room_id', roomId)
     .order('created_at', { ascending: true });
+  if (error?.code === MISSING_COLUMN) {
+    ({ data, error } = await sb.from(TABLE)
+      .select('id, anchor_from, anchor_to, text, device_id, device_name, created_at')
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: true }));
+  }
   if (error) { logSupabaseError('listComments', error, { room_id: roomId }); throw error; }
   return data || [];
 }
@@ -32,15 +48,18 @@ export async function listComments(roomId) {
  */
 export async function addComment(roomId, { anchorFrom, anchorTo, text, anchorText }) {
   const sb = getSupabaseClient();
-  const { error } = await sb.from(TABLE).insert({
+  const base = {
     room_id:     roomId,
     anchor_from: Math.max(0, anchorFrom | 0),
     anchor_to:   Math.max(anchorFrom | 0, anchorTo | 0),
     text:        text || '',
-    anchor_text: anchorText ?? null,
     device_id:   getDeviceId(),
     device_name: getDeviceName(),
-  });
+  };
+  let { error } = await sb.from(TABLE).insert({ ...base, anchor_text: anchorText ?? null });
+  if (error?.code === MISSING_COLUMN) {
+    ({ error } = await sb.from(TABLE).insert(base));
+  }
   if (error) { logSupabaseError('addComment', error, { room_id: roomId }); throw error; }
 }
 

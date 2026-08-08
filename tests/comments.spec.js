@@ -298,6 +298,29 @@ test.describe('Auto-delete on anchored text removal', () => {
     await page.waitForTimeout(1000); // past the 600ms prune debounce
     await expect(page.locator('.comment-dot')).toHaveCount(1);
   });
+
+  test('inserting text BEFORE the anchor (shifting its offsets) does not delete the comment', async ({ page }) => {
+    // Regression test: anchor_from/anchor_to are static DB offsets. An
+    // earlier implementation re-sliced the CURRENT text at those same
+    // stale offsets and compared that slice to the snapshot — any edit
+    // before the anchor shifts what actually sits at those offsets, so
+    // that comparison misfired and deleted comments whose text was never
+    // touched. The fix checks whether the snapshot text still occurs
+    // anywhere in the document instead.
+    await createRoom(page);
+    await typeInEditor(page, 'Some text to comment on, right here.');
+    await addCommentViaPanel(page, 5, 9, 'keep me too'); // "text"
+    await expect(page.locator('.comment-dot')).toHaveCount(1);
+
+    await page.locator('#note-editor').evaluate((el) => {
+      el.focus();
+      el.value = 'X' + el.value; // insert one character at the very start
+      el.setSelectionRange(1, 1);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.waitForTimeout(1000); // past the 600ms prune debounce
+    await expect(page.locator('.comment-dot')).toHaveCount(1);
+  });
 });
 
 test.describe('Comment threads (renderCommentsList grouping)', () => {
