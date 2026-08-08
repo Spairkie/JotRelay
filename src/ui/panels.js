@@ -33,13 +33,18 @@ function _panelFocusables(panel) {
     .filter(el => el.offsetParent !== null);
 }
 
-export function openPanel(id) {
+// dimBackdrop: false for Find & Replace — it floats as a compact card over
+// the editor rather than a full-height drawer (see #search-panel in
+// modals.css), and the whole point is watching matches highlighted in the
+// actual document while navigating them, which a dimmed, click-to-close
+// backdrop would defeat.
+export function openPanel(id, { dimBackdrop = true } = {}) {
   const trigger = document.activeElement;
   closeAllPanels();
   const panel = document.getElementById(id);
   if (!panel) return;
   panel.classList.add('open');
-  document.getElementById('panel-backdrop')?.classList.add('visible');
+  if (dimBackdrop) document.getElementById('panel-backdrop')?.classList.add('visible');
 
   const onKey = (e) => {
     if (e.key !== 'Tab') return;

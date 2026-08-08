@@ -34,7 +34,7 @@ function _wireShortcuts() {
     },
     onToggleMonospace: () => _toggleMonospace(),
     onOpenSearch: () => {
-      UI.openPanel('search-panel');
+      UI.openPanel('search-panel', { dimBackdrop: false });
       document.getElementById('search-input')?.focus();
     },
     onForceClose: () => {

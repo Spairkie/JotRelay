@@ -170,7 +170,7 @@ export function _wireTools() {
   // that panel again immediately (tool-find had exactly this bug — opened
   // search-panel and then closeAllPanels() closed it again in the same tick).
   document.getElementById('tool-find')?.addEventListener('click', () => {
-    UI.openPanel('search-panel');
+    UI.openPanel('search-panel', { dimBackdrop: false });
     document.getElementById('search-input')?.focus();
   });
   document.getElementById('tool-history')?.addEventListener('click', () => { _openHistoryPanel(); });

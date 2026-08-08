@@ -32,7 +32,7 @@ function _paletteCommands() {
     { id: 'panel-files',    label: 'Open Files panel',    group: 'Panels', keywords: ['attachments', 'upload'], run: () => UI.togglePanel('files-panel') },
     { id: 'panel-devices',  label: 'Open Devices panel',  group: 'Panels', keywords: ['presence', 'collaborators'], run: () => UI.togglePanel('presence-panel') },
     { id: 'panel-settings', label: 'Open Settings panel', group: 'Panels', keywords: ['passcode', 'encryption', 'expiration', 'lock'], run: () => UI.togglePanel('settings-panel') },
-    { id: 'panel-find',     label: 'Find & Replace',      group: 'Panels', shortcut: 'Ctrl F', keywords: ['search'], run: () => { UI.openPanel('search-panel'); document.getElementById('search-input')?.focus(); } },
+    { id: 'panel-find',     label: 'Find & Replace',      group: 'Panels', shortcut: 'Ctrl F', keywords: ['search'], run: () => { UI.openPanel('search-panel', { dimBackdrop: false }); document.getElementById('search-input')?.focus(); } },
     { id: 'panel-history',  label: 'Open Version History', group: 'Panels', keywords: ['revisions', 'restore'], run: () => _openHistoryPanel() },
     { id: 'panel-comments', label: 'Open Comments',        group: 'Panels', run: () => _openCommentsPanel() },
     { id: 'panel-templates', label: 'Insert a template',   group: 'Panels', run: _clickById('tool-templates') },

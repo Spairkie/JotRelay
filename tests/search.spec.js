@@ -24,6 +24,19 @@ test.describe('Find & Replace panel', () => {
     await expect(page.locator('#search-panel')).not.toHaveClass(/open/);
   });
 
+  test('floats over the editor without dimming it, and the editor stays clickable', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, 'hello world');
+    await openSearchPanel(page);
+    // Unlike every other side panel, Find & Replace opens with
+    // { dimBackdrop: false } (src/ui/panels.js) so the shared backdrop
+    // never dims/blocks the editor — the point is watching matches
+    // highlighted in the real document while navigating them.
+    await expect(page.locator('#panel-backdrop')).not.toHaveClass(/visible/);
+    await page.locator('#note-editor').click();
+    await expect(page.locator('#note-editor')).toBeFocused();
+  });
+
   test('shows match count for found term', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page, 'apple banana apple cherry apple');

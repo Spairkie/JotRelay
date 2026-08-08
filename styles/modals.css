@@ -456,6 +456,43 @@ button:focus:not(:focus-visible) { outline: none; }
 /* ══════════════════════════════════════════════════════════════
    SEARCH PANEL
 ══════════════════════════════════════════════════════════════ */
+/* Find & Replace floats as a compact card near the top of the editor
+   instead of the generic full-height drawer every other .side-panel uses.
+   The whole point of Find/Replace is watching matches highlighted in the
+   actual document as you step through them (panels.js's _jumpToMatch()
+   already moves the real selection in the Write textarea or the Live CM6
+   surface, not just this panel's own state) — a full-height drawer
+   defeats that by hiding the document behind it, and on mobile the
+   generic 100vw-wide mobile override hides it completely. openPanel()
+   is also called with { dimBackdrop: false } for this panel specifically
+   (see its call sites), so the shared dimming backdrop stays off and the
+   editor underneath stays visible *and* interactive.
+   An ID selector deliberately overrides .side-panel's positioning — ID
+   specificity always wins over any number of classes, so this doesn't
+   need !important or to care about source order relative to the base
+   rules above. */
+#search-panel {
+  top: 64px; right: 16px; bottom: auto; left: auto;
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100vh - 100px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transform: translateY(-10px) scale(0.98);
+  opacity: 0;
+  /* Unlike the base .side-panel rule (which relies on being translated
+     fully off-screen while closed to stay out of the way), this panel
+     stays in place — opacity alone would leave an invisible click-blocking
+     rectangle floating over the editor while "closed". */
+  pointer-events: none;
+  transition: transform 0.2s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease;
+}
+#search-panel.open { transform: translateY(0) scale(1); opacity: 1; pointer-events: auto; }
+@media (max-width: 639px) {
+  #search-panel {
+    top: 58px; right: 8px; left: 8px; width: auto; max-width: none;
+    max-height: calc(100vh - 120px);
+  }
+}
 .search-bar {
   display: flex; align-items: center; gap: 8px;
   background: var(--bg-elevated); border: 1px solid var(--border);
