@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 53 — Admin dashboard sort/filter indexes
+
+#### Added
+- **`supabase/migrations/0012_admin_sort_indexes.sql`** — indexes on `syncpad_rooms.updated_at`/`created_at` and `syncpad_files.uploaded_at`, the columns the admin dashboard's Rooms and Files tabs actually sort and range-filter by (`roomsSort` defaults to `updated_at desc`; `created_at` is the table's other clickable sort column and also backs the "created since X"/"active in the last 24h" stats; the Files tab defaults to `uploaded_at desc`). None of the three had a supporting index, unlike every other actively-sorted/filtered admin column — each of those queries required a full sequential scan plus an in-memory sort instead of an index-order scan, scaling with total room/file count rather than the page size actually requested. `baseline.sql` and `DEPLOYMENT.md`'s migration table updated to include `0012` alongside `0010`/`0011`.
+
 ### Phase 52 — Onboarding tour: more steps, replayable, visual polish
 
 #### Added

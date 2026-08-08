@@ -2536,6 +2536,21 @@ create trigger trg_syncpad_files_file_no
 create index if not exists idx_syncpad_files_room_file_no
   on public.syncpad_files (room_id, file_no);
 
+-- ============================================================
+-- SOURCE: supabase/migrations/0012_admin_sort_indexes.sql
+-- ============================================================
+-- Admin dashboard sort/filter indexes — see that migration's own header
+-- for the full rationale (which admin-dashboard queries each covers).
+
+create index if not exists idx_syncpad_rooms_updated_at
+  on public.syncpad_rooms(updated_at);
+
+create index if not exists idx_syncpad_rooms_created_at
+  on public.syncpad_rooms(created_at);
+
+create index if not exists idx_syncpad_files_uploaded_at
+  on public.syncpad_files(uploaded_at);
+
 -- ════════════════════════════════════════════════════════════════
 -- END OF MIGRATION
 -- ════════════════════════════════════════════════════════════════
