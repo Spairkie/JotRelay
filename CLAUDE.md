@@ -45,6 +45,8 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 | `src/presence.js` | Device tracking, typing indicators, cursor position broadcasting |
 | `src/live-broadcast.js` | Low-level Supabase Broadcast event wiring |
 | `src/live-editor.js` | CodeMirror 6 "Live"/Split editable preview surface — Typora-style seamless markdown editing (hidden syntax markers, inline tables/images/checkboxes, remote cursors), mounted whenever the mode toggle is off Write |
+| `src/keyboard-viewport.js` | Tracks the on-screen keyboard via `window.visualViewport`, exposing it as a `--kb-inset` CSS custom property (bottom-anchored fixed UI opts in via `bottom: calc(<base> + var(--kb-inset, 0px))`) and re-triggering each editor surface's own native caret-visibility scroll after a keyboard resize settles. Imported for its side effects only. |
+| `src/footnote-popover.js` | Hover/click popover showing a footnote's definition text without navigating away — shared by the classic renderer (`src/ui/editor.js`) and the CM6 Live surface (`src/live-editor.js`) |
 | `src/rooms.js` | Room CRUD, read-only share links, and short room codes (Supabase queries/RPCs) |
 | `src/comments.js` | Anchored inline comments (optional `0003_room_comments.sql` migration) |
 | `src/revisions.js` | Version-history snapshots (optional `0004_version_history.sql` migration) |
@@ -54,6 +56,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 | `src/markdown.js` | Safe custom Markdown renderer (Lezer parse tree) — no raw HTML pass-through |
 | `src/markdown-highlight-extension.js` | Shared `==highlight==` grammar extension used by both `markdown.js` and `live-editor.js` so the two renderers agree on syntax |
 | `src/markdown-table-utils.js` | GFM table-alignment parsing shared by `markdown.js` and `live-editor.js` |
+| `src/markdown-emoji-map.js` | GitHub-style `:shortcode:` → Unicode emoji table shared by `markdown.js` and `live-editor.js`'s emoji widget decoration |
 | `src/encryption.js` | AES-256-GCM encryption + PBKDF2 key derivation (Web Crypto API) |
 | `src/permissions.js` | Frontend permission context — `isReadOnly`, `isOwner`, `isLocked` |
 | `src/settings.js` | Room settings handlers — passcode, expiry, lock |
@@ -65,7 +68,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 | `src/icons.js` | SVG icon strings |
 | `src/supabase.js` | Supabase client initialisation |
 
-See [`docs/architecture.md`](docs/architecture.md) for the full module-by-module breakdown (including the `src/app/*.js`, `src/ui/*.js`, and `src/admin/*.js` per-file splits) and data-flow diagrams.
+See [`docs/architecture.md`](docs/architecture.md) for narrative module-by-module responsibility writeups and data-flow diagrams covering the top-level modules in the table above. The `src/app/*.js`, `src/ui/*.js`, and `src/admin/*.js` per-file splits are documented in each barrel file's own header comment (`src/app.js`, `src/ui.js`, `src/admin.js`), not in `docs/architecture.md`.
 
 The app root (`/SyncPad/`) is the product's marketing landing page — `#landing-screen` in `index.html`, styled by `styles/landing.css`, wired up by `src/app/landing.js`. The actual create/join room screen lives at `/SyncPad/app/` (`#app-landing-screen`, route type `'app-landing'` in `src/app/routing.js`) — every "Create a Room"/"Join a room" control on the marketing page is a plain link there, not an inline form. A press kit lives in `presskit/` (logos, screenshots, fact sheet). See [`docs/marketing-site.md`](docs/marketing-site.md) for the full route/section map, the asset-generation scripts in `scripts/`, and how to swap in real screenshots/video later.
 

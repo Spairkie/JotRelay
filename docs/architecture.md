@@ -93,6 +93,15 @@ Implements the `/admin` dashboard: Supabase Auth sign-in, RLS-gated admin querie
 ### `utils.js`
 Collects small, stateless helper functions (string formatting, date utilities, debounce, etc.) used across multiple modules. It does NOT import from any other SyncPad module — it is a pure utility leaf with no side effects.
 
+### `keyboard-viewport.js`
+Tracks the on-screen keyboard via `window.visualViewport`, exposing the covered height as a live `--kb-inset` CSS custom property that any bottom-anchored fixed element can consume, and re-triggers each editor surface's own native caret-visibility scroll shortly after a keyboard resize settles (a passive container resize alone doesn't make a `<textarea>` or CodeMirror re-scroll to keep the caret visible). It does NOT itself position any UI — consuming elements opt in via their own CSS/JS. Imported by `app.js` for its side effects only; exports nothing.
+
+### `footnote-popover.js`
+Shows a footnote's definition text in a small popover on hover/click, without navigating the page — used by both the classic renderer (`ui/editor.js`) and the CM6 Live surface (`live-editor.js`) so footnote references behave the same in either mode. It does NOT render footnote reference markers or definitions themselves — those come from `markdown.js`/`live-editor.js`'s own rendering.
+
+### `markdown-emoji-map.js`
+Exports a single lookup table mapping GitHub-style `:shortcode:` names (e.g. `:smile:`) to their Unicode emoji character, shared by `markdown.js` (post-render text substitution) and `live-editor.js` (an inline widget decoration in the CM6 Live surface). It does NOT do any parsing or matching itself — it is pure data, consumed by each renderer's own shortcode-detection logic.
+
 ---
 
 ## 3. Data Flow — Editing a Note
