@@ -103,6 +103,21 @@ function _wireReportsTab() {
     return `<span class="admin-badge ${map[status] || 'admin-badge--muted'}">${escapeHtml(status || '—')}</span>`;
   }
 
+  // A status change (review/dismiss/delete-room) updates state.reports in
+  // place, but under a non-"all" filter chip the fetch that populated
+  // state.reports only ever returned rows matching that filter — a report
+  // whose new status no longer matches would otherwise sit stuck on screen
+  // (still visibly "New" filter, badge now reading Reviewed/Dismissed, no
+  // action buttons since those only render for status === 'new') until the
+  // admin manually re-filters or pages. Drop it from the in-memory list
+  // instead, matching what re-fetching that filter would actually return.
+  function _pruneReportsNotMatchingFilter() {
+    if (state.reportsFilter === 'all') return;
+    const before = state.reports.length;
+    state.reports = state.reports.filter(r => r.status === state.reportsFilter);
+    state.reportsTotal -= (before - state.reports.length);
+  }
+
   function renderRows() {
     tbody.innerHTML = '';
 
@@ -167,6 +182,7 @@ function _wireReportsTab() {
           const rep = state.reports.find(r => String(r.id) === reportId);
           if (rep) rep.status = 'reviewed';
           await _logAdminAction('review_report', { target_report_id: reportId });
+          _pruneReportsNotMatchingFilter();
           renderRows();
           await _loadStats();
         }
@@ -177,6 +193,7 @@ function _wireReportsTab() {
           const rep = state.reports.find(r => String(r.id) === reportId);
           if (rep) rep.status = 'dismissed';
           await _logAdminAction('dismiss_report', { target_report_id: reportId });
+          _pruneReportsNotMatchingFilter();
           renderRows();
           await _loadStats();
         }
@@ -195,6 +212,7 @@ function _wireReportsTab() {
           if (error) { await showAlert(`Error: ${_friendlyErrorMessage(error)}`); btn.disabled = false; return; }
           state.reports.forEach(r => { if (r.room_id === roomId) r.status = 'reviewed'; });
           await _logAdminAction('delete_room', { target_room_id: roomId });
+          _pruneReportsNotMatchingFilter();
           renderRows();
           await _loadStats();
           _showToast('Room deleted.', 'success');
