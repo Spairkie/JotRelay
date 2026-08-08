@@ -45,6 +45,20 @@ test.describe('Find & Replace panel', () => {
     await expect(page.locator('#note-editor')).toBeFocused();
   });
 
+  test('on mobile, hides the bottom action bar in favor of its own footprint', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await createRoom(page);
+    await expect(page.locator('.mobile-action-bar')).toBeVisible();
+    await openSearchPanel(page);
+    // src/ui/panels.js floats #search-panel at the bottom on mobile (docks
+    // above the on-screen keyboard, same as .mobile-action-bar itself) and
+    // replaces the action bar's footprint entirely rather than stacking
+    // above it — see modals.css's "FIND & REPLACE — MOBILE" rules.
+    await expect(page.locator('.mobile-action-bar')).toBeHidden();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.mobile-action-bar')).toBeVisible();
+  });
+
   test('shows match count for found term', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page, 'apple banana apple cherry apple');
