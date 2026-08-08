@@ -233,6 +233,45 @@ test.describe('Comment navigation', () => {
   });
 });
 
+test.describe('Auto-delete on anchored text removal', () => {
+  // Google Docs/Notion-style behavior: a comment has no meaning once the
+  // text it's attached to is gone. See comments-preview.js's
+  // _pruneDeletedCommentAnchors(), debounced 600ms off the same 'input'
+  // listener that drives preview/margin-dot refresh.
+  test('deleting the exact text a comment is anchored to removes the comment', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, 'Some text to comment on, right here.');
+    await addCommentViaPanel(page, 5, 9, 'delete me'); // "text"
+    await expect(page.locator('.comment-dot')).toHaveCount(1);
+
+    await page.locator('#note-editor').evaluate((el) => {
+      el.focus();
+      const v = el.value;
+      el.value = v.slice(0, 5) + v.slice(9); // remove "text"
+      el.setSelectionRange(5, 5);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await expect(page.locator('.comment-dot')).toHaveCount(0, { timeout: 3000 });
+  });
+
+  test('editing text elsewhere in the document does not delete an unrelated comment', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, 'Some text to comment on, right here.');
+    await addCommentViaPanel(page, 5, 9, 'keep me'); // "text"
+    await expect(page.locator('.comment-dot')).toHaveCount(1);
+
+    await page.locator('#note-editor').evaluate((el) => {
+      el.focus();
+      el.value += ' Appended, unrelated.';
+      el.setSelectionRange(el.value.length, el.value.length);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.waitForTimeout(1000); // past the 600ms prune debounce
+    await expect(page.locator('.comment-dot')).toHaveCount(1);
+  });
+});
+
 test.describe('Comment threads (renderCommentsList grouping)', () => {
   // renderCommentsList() only touches static DOM (#comments-list lives in
   // #app-screen, present in the page regardless of route) and takes plain

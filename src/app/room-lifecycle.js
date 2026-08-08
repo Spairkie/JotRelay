@@ -48,7 +48,7 @@ import {
   _suppressNextResume,
 } from './routing.js';
 import { refreshFiles } from './files-panel.js';
-import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview } from './comments-preview.js';
+import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedPruneDeletedCommentAnchors } from './comments-preview.js';
 import { _closeSlashMenu, _focusActiveEditorSurface } from './editor-behavior.js';
 import { _selectExpirationPreset } from './panels.js';
 import { wireEvents } from './wiring.js';
@@ -1021,6 +1021,9 @@ export function teardownRealtimeSession() {
   state.followedDeviceId = null;
   state.lastComments = [];
   state.activeCommentId = null;
+  // A queued prune from the previous room's typing must not delete comments
+  // in whatever room is joined next.
+  _debouncedPruneDeletedCommentAnchors.cancel?.();
   UI.renderFloatingComments([]);
   _closeSlashMenu();
   // Remove the keydown handler so wireEvents() can install fresh callbacks

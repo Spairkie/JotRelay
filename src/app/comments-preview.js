@@ -19,6 +19,13 @@ import { _uploadAndInsertImages } from './files-panel.js';
 
 // ── Comments ───────────────────────────────────────────────────────────────────
 
+// Matches syncpad_room_comments' anchor_text_len_check constraint
+// (0013_comment_anchor_text.sql). A selection longer than this just isn't
+// tracked for auto-delete (see _pruneDeletedCommentAnchors) — an edge case
+// (commenting on almost the whole document) not worth the fragility of
+// comparing/storing a huge snapshot.
+const ANCHOR_TEXT_MAX = 4000;
+
 /** The selection range a new comment would attach to, in whichever surface
  *  (plain textarea or CM6 live surface) is currently active. */
 export function _currentSelectionRange() {
@@ -57,7 +64,18 @@ export async function _submitComment(text, anchor) {
   if (!canEdit()) { UI.showToast(editBlockedReason() || 'Editing is disabled.', 'warning'); return; }
   try {
     const payloadText = state.encKey ? await encryptContent(text, state.encKey) : text;
-    await addComment(state.roomId, { anchorFrom: anchor.from, anchorTo: anchor.to, text: payloadText });
+    // Snapshot of the anchored text itself, so a later edit can be detected
+    // as "the commented text is gone" and the comment auto-deleted (see
+    // _pruneDeletedCommentAnchors). Point comments (no selection, just a
+    // cursor position) have nothing to snapshot.
+    let anchorText;
+    if (anchor.to > anchor.from) {
+      const raw = UI.getEditorValue().slice(anchor.from, anchor.to);
+      if (raw.length <= ANCHOR_TEXT_MAX) {
+        anchorText = state.encKey ? await encryptContent(raw, state.encKey) : raw;
+      }
+    }
+    await addComment(state.roomId, { anchorFrom: anchor.from, anchorTo: anchor.to, text: payloadText, anchorText });
     await _refreshComments();
     UI.showToast('Comment added.', 'success');
   } catch {
@@ -158,7 +176,19 @@ export async function _refreshComments() {
       const anchorPreview = Number.isFinite(c.anchor_from) && Number.isFinite(c.anchor_to) && c.anchor_to > c.anchor_from
         ? currentText.slice(c.anchor_from, c.anchor_to)
         : null;
-      return { ...c, _preview: preview, _anchorPreview: anchorPreview };
+      // Decrypted creation-time snapshot of the anchored text, for
+      // _pruneDeletedCommentAnchors' "has this text since been deleted?"
+      // comparison — distinct from anchorPreview above, which is a fresh
+      // slice of the CURRENT text at the same (static) offsets.
+      let anchorSnapshot = c.anchor_text || null;
+      if (anchorSnapshot != null && looksEncrypted(anchorSnapshot)) {
+        if (!state.encKey) { anchorSnapshot = null; }
+        else {
+          try { anchorSnapshot = await decryptContent(anchorSnapshot, state.encKey); }
+          catch { anchorSnapshot = null; }
+        }
+      }
+      return { ...c, _preview: preview, _anchorPreview: anchorPreview, _anchorSnapshot: anchorSnapshot };
     }));
     UI.renderCommentsList(withPreviews, {
       onDelete: _deleteCommentClick,
@@ -367,6 +397,34 @@ export const _debouncedRefreshPreview = debounce(_refreshPreviewIfActive, 300);
 // margin dots need to be recomputed after edits too — debounced for the
 // same reason as preview refresh above.
 export const _debouncedRefreshFloatingComments = debounce(_refreshFloatingComments, 300);
+
+// "If the commented text is deleted, the comment is deleted too" — Google
+// Docs/Notion-style behavior. anchor_from/anchor_to are static DB offsets
+// (never re-mapped against edits made elsewhere in the document — the same
+// simplification _refreshComments' own _anchorPreview already relies on),
+// so this only catches an edit that actually overlaps a comment's own
+// anchor range, which is exactly the case being asked for: comparing the
+// text currently sitting at that exact range against the snapshot taken
+// when the comment was created. A comment with no snapshot (point comment,
+// selection too long to track, or created before this feature existed)
+// is left alone rather than guessed at.
+async function _pruneDeletedCommentAnchors() {
+  if (!state.lastComments.length) return;
+  const currentText = UI.getEditorValue();
+  const stale = state.lastComments.filter((c) => {
+    if (c._anchorSnapshot == null) return false;
+    if (!Number.isFinite(c.anchor_from) || !Number.isFinite(c.anchor_to) || c.anchor_to <= c.anchor_from) return false;
+    return currentText.slice(c.anchor_from, c.anchor_to) !== c._anchorSnapshot;
+  });
+  if (!stale.length) return;
+  await Promise.all(stale.map((c) => deleteComment(c.id).catch(() => {})));
+  await _refreshComments();
+}
+
+// Debounced so a comment isn't deleted mid-keystroke while its text is only
+// transiently different (e.g. typing inside the anchored range) — only a
+// settled edit triggers the delete.
+export const _debouncedPruneDeletedCommentAnchors = debounce(_pruneDeletedCommentAnchors, 600);
 
 function _wirePreviewClickOnce() {
   if (state.previewObserverWired) return;
