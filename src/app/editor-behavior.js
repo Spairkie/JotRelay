@@ -596,6 +596,33 @@ export function _wirePasteSanitization() {
 
 }
 
+// Shared implementation for the Settings panel's simple boolean
+// editor-preference toggles (strip-paste, smart-punct, focus/typewriter
+// mode, hide-presence, sync-scroll, code-line-numbers): flip state[stateKey],
+// persist it to localStorage, run any side effect, reflect the button's
+// text/aria-pressed, and toast. Previously each toggle duplicated this same
+// ~12-line read/click/persist/reflect/toast pattern with only the state key,
+// storage key, toast copy, and optional side effect actually differing.
+// Monospace keeps its own _toggleMonospace()/_syncMonospaceSettingUI() pair
+// below since it's also triggered by the Ctrl/Cmd+Shift+M shortcut, not
+// just this button, and needs its update function callable from there too.
+function _wireBoolToggle({ btnId, stateKey, storageKey, onLabel, offLabel, onToggle }) {
+  const btn = document.getElementById(btnId);
+  const update = () => {
+    if (!btn) return;
+    btn.textContent = state[stateKey] ? 'On' : 'Off';
+    btn.setAttribute('aria-pressed', String(state[stateKey]));
+  };
+  update();
+  btn?.addEventListener('click', () => {
+    state[stateKey] = !state[stateKey];
+    try { localStorage.setItem(storageKey, String(state[stateKey])); } catch {}
+    onToggle?.(state[stateKey]);
+    update();
+    UI.showToast(state[stateKey] ? onLabel : offLabel, 'info', 2000);
+  });
+}
+
 export function _wireEditorPreferenceToggles() {
   // ── Monospace setting button (Settings panel) ──────────────────────────────
   _syncMonospaceSettingUI();
@@ -604,128 +631,44 @@ export function _wireEditorPreferenceToggles() {
     _toggleMonospace();
   });
 
-  // ── Strip-paste setting button ─────────────────────────────────────────────
-  const _updateStripPasteUI = () => {
-    const btn = document.getElementById('setting-strip-paste-btn');
-    if (!btn) return;
-    btn.textContent = state.stripPaste ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(state.stripPaste));
-  };
-  _updateStripPasteUI();
-
-  document.getElementById('setting-strip-paste-btn')?.addEventListener('click', () => {
-    state.stripPaste = !state.stripPaste;
-    try { localStorage.setItem(_STRIP_PASTE_KEY, String(state.stripPaste)); } catch {}
-    _updateStripPasteUI();
-    UI.showToast(
-      state.stripPaste ? 'Paste formatting strip: On' : 'Paste formatting strip: Off',
-      'info', 2000
-    );
+  _wireBoolToggle({
+    btnId: 'setting-strip-paste-btn', stateKey: 'stripPaste', storageKey: _STRIP_PASTE_KEY,
+    onLabel: 'Paste formatting strip: On', offLabel: 'Paste formatting strip: Off',
   });
 
-  // ── Smart-punctuation setting button ───────────────────────────────────────
-  const _updateSmartPunctUI = () => {
-    const btn = document.getElementById('setting-smart-punct-btn');
-    if (!btn) return;
-    btn.textContent = state.smartPunct ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(state.smartPunct));
-  };
-  _updateSmartPunctUI();
-
-  document.getElementById('setting-smart-punct-btn')?.addEventListener('click', () => {
-    state.smartPunct = !state.smartPunct;
-    try { localStorage.setItem(_SMART_PUNCT_KEY, String(state.smartPunct)); } catch {}
-    _updateSmartPunctUI();
-    UI.showToast(
-      state.smartPunct ? 'Smart punctuation: On' : 'Smart punctuation: Off',
-      'info', 2000
-    );
+  _wireBoolToggle({
+    btnId: 'setting-smart-punct-btn', stateKey: 'smartPunct', storageKey: _SMART_PUNCT_KEY,
+    onLabel: 'Smart punctuation: On', offLabel: 'Smart punctuation: Off',
   });
 
-  // ── Focus-mode setting button ───────────────────────────────────────────────
-  const _updateFocusModeUI = () => {
-    const btn = document.getElementById('setting-focus-mode-btn');
-    if (!btn) return;
-    btn.textContent = state.focusMode ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(state.focusMode));
-  };
-  _updateFocusModeUI();
-
-  document.getElementById('setting-focus-mode-btn')?.addEventListener('click', () => {
-    state.focusMode = !state.focusMode;
-    try { localStorage.setItem(_FOCUS_MODE_KEY, String(state.focusMode)); } catch {}
-    UI.setFocusMode(state.focusMode);
-    _updateFocusModeUI();
-    UI.showToast(state.focusMode ? 'Focus mode: On' : 'Focus mode: Off', 'info', 2000);
+  _wireBoolToggle({
+    btnId: 'setting-focus-mode-btn', stateKey: 'focusMode', storageKey: _FOCUS_MODE_KEY,
+    onLabel: 'Focus mode: On', offLabel: 'Focus mode: Off',
+    onToggle: (v) => UI.setFocusMode(v),
   });
 
-  // ── Typewriter-mode setting button ───────────────────────────────────────────
-  const _updateTypewriterModeUI = () => {
-    const btn = document.getElementById('setting-typewriter-mode-btn');
-    if (!btn) return;
-    btn.textContent = state.typewriterMode ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(state.typewriterMode));
-  };
-  _updateTypewriterModeUI();
-
-  document.getElementById('setting-typewriter-mode-btn')?.addEventListener('click', () => {
-    state.typewriterMode = !state.typewriterMode;
-    try { localStorage.setItem(_TYPEWRITER_MODE_KEY, String(state.typewriterMode)); } catch {}
-    UI.setTypewriterMode(state.typewriterMode);
-    _updateTypewriterModeUI();
-    UI.showToast(state.typewriterMode ? 'Typewriter mode: On' : 'Typewriter mode: Off', 'info', 2000);
+  _wireBoolToggle({
+    btnId: 'setting-typewriter-mode-btn', stateKey: 'typewriterMode', storageKey: _TYPEWRITER_MODE_KEY,
+    onLabel: 'Typewriter mode: On', offLabel: 'Typewriter mode: Off',
+    onToggle: (v) => UI.setTypewriterMode(v),
   });
 
-  // ── Hide-my-cursor-&-typing setting button ──────────────────────────────────
-  const _updateHidePresenceUI = () => {
-    const btn = document.getElementById('setting-hide-presence-btn');
-    if (!btn) return;
-    btn.textContent = state.hidePresence ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(state.hidePresence));
-  };
-  _updateHidePresenceUI();
-
-  document.getElementById('setting-hide-presence-btn')?.addEventListener('click', () => {
-    state.hidePresence = !state.hidePresence;
-    try { localStorage.setItem(_HIDE_PRESENCE_KEY, String(state.hidePresence)); } catch {}
-    setPresenceHidden(state.hidePresence);
-    _updateHidePresenceUI();
-    UI.showToast(state.hidePresence ? 'Cursor & typing hidden from others' : 'Cursor & typing visible to others', 'info', 2000);
+  _wireBoolToggle({
+    btnId: 'setting-hide-presence-btn', stateKey: 'hidePresence', storageKey: _HIDE_PRESENCE_KEY,
+    onLabel: 'Cursor & typing hidden from others', offLabel: 'Cursor & typing visible to others',
+    onToggle: (v) => setPresenceHidden(v),
   });
 
-  // ── Sync-scroll setting button ──────────────────────────────────────────────
-  const _updateSyncScrollUI = () => {
-    const btn = document.getElementById('setting-sync-scroll-btn');
-    if (!btn) return;
-    btn.textContent = state.syncScroll ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(state.syncScroll));
-  };
-  _updateSyncScrollUI();
-
-  document.getElementById('setting-sync-scroll-btn')?.addEventListener('click', () => {
-    state.syncScroll = !state.syncScroll;
-    try { localStorage.setItem(_SYNC_SCROLL_KEY, String(state.syncScroll)); } catch {}
-    _updateScrollSyncWiring();
-    UI.setSplitScrollSync(state.syncScroll);
-    _updateSyncScrollUI();
-    UI.showToast(state.syncScroll ? 'Sync scroll: On' : 'Sync scroll: Off', 'info', 2000);
+  _wireBoolToggle({
+    btnId: 'setting-sync-scroll-btn', stateKey: 'syncScroll', storageKey: _SYNC_SCROLL_KEY,
+    onLabel: 'Sync scroll: On', offLabel: 'Sync scroll: Off',
+    onToggle: (v) => { _updateScrollSyncWiring(); UI.setSplitScrollSync(v); },
   });
 
-  // ── Code-block line-numbers setting button ──────────────────────────────────
-  const _updateCodeLineNumbersUI = () => {
-    const btn = document.getElementById('setting-code-line-numbers-btn');
-    if (!btn) return;
-    btn.textContent = state.codeLineNumbers ? 'On' : 'Off';
-    btn.setAttribute('aria-pressed', String(state.codeLineNumbers));
-  };
-  _updateCodeLineNumbersUI();
-
-  document.getElementById('setting-code-line-numbers-btn')?.addEventListener('click', () => {
-    state.codeLineNumbers = !state.codeLineNumbers;
-    try { localStorage.setItem(_CODE_LINE_NUMBERS_KEY, String(state.codeLineNumbers)); } catch {}
-    UI.setCodeLineNumbers(state.codeLineNumbers);
-    _updateCodeLineNumbersUI();
-    UI.showToast(state.codeLineNumbers ? 'Code line numbers: On' : 'Code line numbers: Off', 'info', 2000);
+  _wireBoolToggle({
+    btnId: 'setting-code-line-numbers-btn', stateKey: 'codeLineNumbers', storageKey: _CODE_LINE_NUMBERS_KEY,
+    onLabel: 'Code line numbers: On', offLabel: 'Code line numbers: Off',
+    onToggle: (v) => UI.setCodeLineNumbers(v),
   });
 
   // These are simple on/off flips, not navigations — clicking one shouldn't
