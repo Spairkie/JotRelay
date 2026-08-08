@@ -2,7 +2,7 @@
 // Find & Replace panel: open, search, navigation, replace, focus preservation.
 
 import { test, expect } from '@playwright/test';
-import { createRoom, typeInEditor } from './helpers.js';
+import { createRoom, typeInEditor, waitForToast } from './helpers.js';
 
 async function openSearchPanel(page) {
   // Open the search panel via keyboard shortcut or button
@@ -155,6 +155,26 @@ test.describe('Find & Replace panel', () => {
     await page.locator('#search-case').click();
     await expect(page.locator('#search-case')).toHaveAttribute('aria-pressed', 'false');
     await expect(page.locator('#search-count')).toContainText('3');
+  });
+
+  test('a self-overlapping search term counts non-overlapping matches, matching what Replace All actually replaces', async ({ page }) => {
+    // Regression test: "aa" against "aaaa" naively counted 3 overlapping
+    // occurrences (0-2, 1-3, 2-4) while a global regex replace() — which
+    // Replace All uses — only ever performs 2 non-overlapping replacements,
+    // so the "X / Y" counter and the "Replaced N matches" toast disagreed
+    // with what actually happened to the text.
+    await createRoom(page);
+    await typeInEditor(page, 'aaaa');
+    await openSearchPanel(page);
+    await page.locator('#search-input').fill('aa');
+    await expect(page.locator('#search-count')).toContainText('1 / 2');
+
+    await page.locator('#replace-input').fill('X');
+    await page.locator('#replace-all').click();
+    await waitForToast(page, 'Replaced 2 matches.');
+
+    const content = await page.locator('#note-editor').inputValue();
+    expect(content).toBe('XX');
   });
 
   test('Replace All respects case-sensitive mode', async ({ page }) => {
