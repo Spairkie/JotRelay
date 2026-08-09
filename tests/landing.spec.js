@@ -23,6 +23,14 @@ test.describe('Marketing landing page (/)', () => {
     await expect(page.locator('.lp-footer')).toBeAttached();
   });
 
+  test('footer links to the Buy Me a Coffee page', async ({ page }) => {
+    await goToLanding(page);
+    const link = page.locator('.lp-footer a[href="https://buymeacoffee.com/spairkie"]');
+    await expect(link).toBeAttached();
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
   test('brand-intro section renders before the nav, with the hero still present', async ({ page }) => {
     await goToLanding(page);
     const intro = page.locator('#lp-intro');
