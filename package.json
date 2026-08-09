@@ -12,6 +12,7 @@
     "serve": "node tests/spa-server.js",
     "build:vendor": "esbuild vendor/codemirror-entry.js --bundle --format=esm --outfile=vendor/codemirror.js --minify",
     "presskit:icons": "node scripts/generate-icon-pngs.mjs",
+    "presskit:social-preview": "node scripts/generate-social-preview.mjs",
     "presskit:screenshots": "node scripts/build-mockups.mjs && node scripts/generate-screenshots.mjs",
     "presskit:video": "node scripts/generate-demo-video.mjs",
     "presskit:zip": "node scripts/build-presskit-zip.mjs"

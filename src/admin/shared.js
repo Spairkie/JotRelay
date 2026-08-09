@@ -23,7 +23,7 @@ export const SELECT_ALL_PAGE_SIZE      = 1000;
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
-function _basePath() {
+export function _basePath() {
   const raw = String(window.SYNCPAD_CONFIG?.basePath ?? '/JotRelay').trim();
   if (!raw || raw === '/') return '';
   return `/${raw.replace(/^\/+|\/+$/g, '')}`;

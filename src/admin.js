@@ -22,7 +22,7 @@
 // dashboard-shell.js import cycle.
 
 import { getSupabaseClient } from './supabase.js';
-import { _homePath } from './admin/shared.js';
+import { _homePath, _basePath } from './admin/shared.js';
 import { _renderDashboard } from './admin/dashboard-shell.js';
 import { BRAND_NAME } from './brand.js';
 
@@ -34,7 +34,7 @@ function _loadAdminStylesheet() {
   const link = document.createElement('link');
   link.id = 'admin-stylesheet';
   link.rel = 'stylesheet';
-  link.href = '/JotRelay/styles/admin.css';
+  link.href = `${_basePath()}/styles/admin.css`;
   document.head.appendChild(link);
 }
 
