@@ -47,7 +47,7 @@ import {
   LAST_ROOM_KEY, RESUME_SUPPRESS_KEY, _isStandalonePwa, _rememberLastRoom, _rememberRecentRoom,
   _suppressNextResume,
 } from './routing.js';
-import { refreshFiles } from './files-panel.js';
+import { refreshFiles, openFileDeepLink } from './files-panel.js';
 import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedPruneDeletedCommentAnchors, _pruneDeletedCommentAnchors } from './comments-preview.js';
 import { _closeSlashMenu, _focusActiveEditorSurface } from './editor-behavior.js';
 import { _selectExpirationPreset } from './panels.js';
@@ -646,6 +646,23 @@ async function startApp(isNewRoom = false) {
 
   state.unsubFiles = subscribeToFiles(state.roomId, () => refreshFiles());
   await refreshFiles();
+
+  // `?file=<N>` deep link — see files-panel.js's onCopyLink(), which
+  // generates these for encrypted files (a raw signed Storage URL is
+  // useless without the room's key, but a link back into the app can go
+  // through the room's normal passcode/encryption gate first). Handled here
+  // rather than earlier because it needs state.encKey (only set once that
+  // gate has passed) and the just-populated file list above. Stripped from
+  // the URL after use so refreshing the room doesn't reopen the same file
+  // every time.
+  const fileParam = new URLSearchParams(location.search).get('file');
+  if (fileParam != null && /^\d+$/.test(fileParam)) {
+    const qs = new URLSearchParams(location.search);
+    qs.delete('file');
+    const rest = qs.toString();
+    history.replaceState(null, '', `${BASE}/${state.roomId}${rest ? `?${rest}` : ''}`);
+    openFileDeepLink(Number(fileParam));
+  }
 
   // Best-effort: a Supabase project that hasn't run
   // supabase/migrations/0003_room_comments.sql yet just never shows any comments —

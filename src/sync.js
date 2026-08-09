@@ -157,7 +157,19 @@ export async function onLocalInput() {
 
 export function onEditorBlur() { return _debouncedSave.flush?.(); }
 export function flushSave()    { return _debouncedSave.flush?.(); }
-export function cancelPendingSave() { _debouncedSave.cancel?.(); }
+// Every caller (room-lifecycle.js) uses this exclusively for "this room's
+// content was just discarded out from under us" — a remote clear/expiry/
+// view-once consumption/device-limit clear/switch to encrypted-no-key mode —
+// always paired with clearDraft()/setContentNoSave(''). There's genuinely
+// nothing left to save in any of those cases, so reset status here rather
+// than leaving it stuck at whatever it was mid-edit — otherwise
+// hasUnsavedChanges() keeps reporting true (spurious beforeunload warnings)
+// for content that no longer exists to be unsaved.
+export function cancelPendingSave() {
+  _debouncedSave.cancel?.();
+  _onStatusChange('saved');
+  _saveStatus = 'saved';
+}
 
 // ── Debounced DB save ─────────────────────────────────────────────────────────
 

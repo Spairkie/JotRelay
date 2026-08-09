@@ -22,6 +22,25 @@ export const _requireContent = () => {
   return false;
 };
 
+// resolveFileRef() returns a local blob: object URL for an encrypted file
+// (the decrypted bytes, see files.js's _getDecryptedBlobUrl) — that URL
+// only resolves within this tab's current session, so baking it directly
+// into a downloaded/printed document would leave the image broken the
+// moment the tab closes. Convert it to a self-contained data: URI instead,
+// which is portable (the bytes travel with the document, same as any other
+// embedded image). Left alone for an unencrypted file's plain signed URL —
+// that one at least works for its own ~1h window without SyncPad open.
+async function _toEmbeddableUrl(url) {
+  if (!url.startsWith('blob:')) return url;
+  const blob = await (await fetch(url)).blob();
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
 // Exported HTML/PDF are standalone documents with no live JS to resolve
 // syncpad-file: image references (see markdown.js/ui.js) the way the
 // preview pane does — resolve each to an actual URL once, up front, and
@@ -36,7 +55,10 @@ export const _resolveFileImageRefsForExport = async (html) => {
   if (!refs.length) return html;
   const urlByRef = new Map();
   await Promise.all(refs.map(async (ref) => {
-    try { urlByRef.set(ref, await resolveFileRef(state.roomId, ref, state.encKey)); } catch { /* left unresolved */ }
+    try {
+      const url = await resolveFileRef(state.roomId, ref, state.encKey);
+      urlByRef.set(ref, await _toEmbeddableUrl(url));
+    } catch { /* left unresolved */ }
   }));
   return html.replace(/<img data-syncpad-file="([^"]+)"([^>]*)>/g, (full, ref, rest) => {
     const url = urlByRef.get(ref);

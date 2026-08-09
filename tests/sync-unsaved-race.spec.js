@@ -90,3 +90,32 @@ test('hasUnsavedChanges() is already true mid-draft-save, before the debounced D
   expect(result.before).toBe(false);
   expect(result.duringCall).toBe(true);
 });
+
+test('cancelPendingSave() resets hasUnsavedChanges() — a discarded room (remote clear/expiry/view-once) has nothing left to warn about', async ({ page }) => {
+  await page.goto('/SyncPad/');
+  const result = await page.evaluate(async () => {
+    const Sync = await import('/SyncPad/src/sync.js');
+    let value = 'content about to be discarded';
+    Sync.initSync({
+      roomId: 'test-room-cancel-reset',
+      getEditorVal: () => value,
+      setEditorVal: (v) => { value = v; },
+      onStatusChange: () => {},
+    });
+
+    await Sync.onLocalInput();
+    const beforeCancel = Sync.hasUnsavedChanges();
+
+    // Every real call site (room-lifecycle.js's remote clear/expiry/
+    // view-once/device-limit/encrypted-no-key handlers) pairs this with
+    // wiping the content — nothing is actually left to save afterward.
+    Sync.cancelPendingSave();
+    const afterCancel = Sync.hasUnsavedChanges();
+
+    Sync.destroySync();
+    return { beforeCancel, afterCancel };
+  });
+
+  expect(result.beforeCancel).toBe(true);
+  expect(result.afterCancel).toBe(false);
+});

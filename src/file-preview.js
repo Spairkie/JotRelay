@@ -119,12 +119,27 @@ function _renderImage(file, url) {
 }
 
 function _renderSvgLink(file, url) {
+  // An unencrypted SVG's `url` is a cross-origin Supabase signed URL —
+  // opening it in a new tab is safe even though SVG can legally embed
+  // <script>: a script in that document runs in Supabase Storage's origin,
+  // with no access to SyncPad's own localStorage/sessionStorage/drafts.
+  // An encrypted SVG's `url` is a same-origin blob: URL (the decrypted
+  // bytes, built in files.js), which does NOT have that isolation — a
+  // script embedded in a malicious upload would run as SyncPad itself.
+  // Route it through a forced download instead of a navigation so the
+  // browser saves the bytes rather than rendering them as a document.
+  const linkAttrs = file.encrypted
+    ? `download="${escapeHtml(file.filename)}"`
+    : `target="_blank" rel="noopener noreferrer"`;
+  const msg = file.encrypted
+    ? 'Encrypted SVG files are downloaded rather than opened, for safety.'
+    : 'SVG files are opened in a new tab for safety.';
   _setBody(`<div class="preview-unsupported">
     <div class="preview-type-badge">SVG</div>
     <p class="preview-unsupported-name">${escapeHtml(file.filename)}</p>
     <p class="preview-size">${formatFileSize(file.file_size)}</p>
-    <p class="preview-unsupported-msg">SVG files are opened in a new tab for safety.</p>
-    <a class="preview-open-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open SVG</a>
+    <p class="preview-unsupported-msg">${msg}</p>
+    <a class="preview-open-btn" href="${escapeHtml(url)}" ${linkAttrs}>${file.encrypted ? 'Download SVG' : 'Open SVG'}</a>
   </div>`);
 }
 

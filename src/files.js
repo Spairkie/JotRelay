@@ -49,9 +49,27 @@ const URL_TTL_MS = 55 * 60 * 1000; // 55 minutes in milliseconds
 // query on a cache miss (e.g. a reference to a file inserted by another
 // device, in a session where this device never opened the Files panel).
 const _fileByRoomAndNo = new Map();
+// listFiles() returns the room's full, authoritative current file list every
+// time it's called (initial load, and again on every realtime files-change
+// event via refreshFiles() — see room-lifecycle.js) — the only signal this
+// module gets for "a file was deleted on another device" the local
+// deleteFile() path doesn't cover. Reconcile both per-file caches against it
+// here so a since-deleted file's stale row/decrypted blob can't keep being
+// served from cache after this device's own view of the room refreshes.
 function _cacheFileRows(roomId, files) {
+  const liveNos   = new Set();
+  const livePaths = new Set();
   for (const f of files) {
-    if (f.file_no != null) _fileByRoomAndNo.set(`${roomId}:${f.file_no}`, f);
+    if (f.file_no != null) { _fileByRoomAndNo.set(`${roomId}:${f.file_no}`, f); liveNos.add(f.file_no); }
+    livePaths.add(f.file_path);
+  }
+  for (const key of _fileByRoomAndNo.keys()) {
+    if (!key.startsWith(`${roomId}:`)) continue;
+    const no = Number(key.slice(roomId.length + 1));
+    if (!liveNos.has(no)) _fileByRoomAndNo.delete(key);
+  }
+  for (const filePath of _blobUrlCache.keys()) {
+    if (filePath.startsWith(`${roomId}/`) && !livePaths.has(filePath)) _evictBlobUrl(filePath);
   }
 }
 
@@ -70,28 +88,44 @@ function _evictExpired(cache) {
 // ── Decrypted blob URL cache (encrypted files only) ─────────────────────────
 // A decrypted file's plaintext bytes never change, so — unlike the signed-URL
 // caches above — this has no TTL; it's cached for the tab's lifetime and only
-// evicted when the file itself is deleted (see deleteFile()). Each entry is a
-// browser object URL (URL.createObjectURL), which must be explicitly revoked
-// on eviction or it leaks the underlying Blob for the life of the page.
-const _blobUrlCache = new Map(); // filePath → object URL string
+// evicted when the file itself is deleted (see deleteFile()) or found gone on
+// a fresh listFiles() (see _cacheFileRows() above, for deletion by another
+// device). Each entry is a browser object URL (URL.createObjectURL), which
+// must be explicitly revoked on eviction or it leaks the underlying Blob for
+// the life of the page.
+//
+// Stores the in-flight Promise itself, not just its eventual resolved value —
+// the same file reference can appear more than once in a single rendered
+// note (or be requested again before the first request finishes), and
+// without this every one of those calls would independently re-fetch and
+// re-decrypt the same bytes into a separate, unrelated Blob that only the
+// last one to finish stays reachable to revoke.
+const _blobUrlCache = new Map(); // filePath → Promise<object URL string>
 
-async function _getDecryptedBlobUrl(filePath, mimeType, key) {
+function _getDecryptedBlobUrl(filePath, mimeType, key) {
   const cached = _blobUrlCache.get(filePath);
   if (cached) return cached;
 
-  const signedUrl = await getDownloadUrl(filePath);
-  const res = await fetch(signedUrl);
-  if (!res.ok) throw new Error(`Could not fetch file (HTTP ${res.status}).`);
-  const cipherBuf = await res.arrayBuffer();
-  const plainBuf  = await decryptBuffer(cipherBuf, key);
-  const url = URL.createObjectURL(new Blob([plainBuf], { type: mimeType || 'application/octet-stream' }));
-  _blobUrlCache.set(filePath, url);
-  return url;
+  const promise = (async () => {
+    const signedUrl = await getDownloadUrl(filePath);
+    const res = await fetch(signedUrl);
+    if (!res.ok) throw new Error(`Could not fetch file (HTTP ${res.status}).`);
+    const cipherBuf = await res.arrayBuffer();
+    const plainBuf  = await decryptBuffer(cipherBuf, key);
+    return URL.createObjectURL(new Blob([plainBuf], { type: mimeType || 'application/octet-stream' }));
+  })();
+  // A failed fetch/decrypt must not poison the cache forever — evict so the
+  // next call gets a fresh attempt instead of the same rejected promise.
+  promise.catch(() => { if (_blobUrlCache.get(filePath) === promise) _blobUrlCache.delete(filePath); });
+  _blobUrlCache.set(filePath, promise);
+  return promise;
 }
 
 function _evictBlobUrl(filePath) {
-  const url = _blobUrlCache.get(filePath);
-  if (url) { URL.revokeObjectURL(url); _blobUrlCache.delete(filePath); }
+  const promise = _blobUrlCache.get(filePath);
+  if (!promise) return;
+  _blobUrlCache.delete(filePath);
+  promise.then((url) => URL.revokeObjectURL(url)).catch(() => {});
 }
 
 /**

@@ -4,12 +4,12 @@
 // delete, and bulk-select.
 
 import { copyToClipboard } from '../utils.js';
-import { uploadFile, listFiles, deleteFile, getFilePreviewUrl, getFileDownloadUrl, getForceDownloadUrl } from '../files.js';
+import { uploadFile, listFiles, deleteFile, getFileByNo, getFilePreviewUrl, getFileDownloadUrl, getForceDownloadUrl } from '../files.js';
 import { canUploadFiles, canDeleteFiles, canEdit, editBlockedReason } from '../permissions.js';
 import { broadcastFilesChange } from '../live-broadcast.js';
 import * as UI from '../ui.js';
 import { openFilePreview, _isImage, _ext } from '../file-preview.js';
-import { state } from './state.js';
+import { state, BASE } from './state.js';
 import { _insertTextAtActiveCursor } from './editor-behavior.js';
 
 function _updateBulkBar() {
@@ -38,6 +38,16 @@ function _escapeMdLabel(s) {
  */
 function _fileRefId(file) {
   return file.file_no != null ? file.file_no : file.file_path;
+}
+
+/** Shared by the panel's Download button and the preview modal's Download button. */
+async function _downloadFile(file) {
+  try {
+    const url = await getFileDownloadUrl(file, state.encKey);
+    const a   = document.createElement('a');
+    a.href = url; a.download = file.filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  } catch { UI.showToast('Could not download file.', 'error'); }
 }
 
 function _sortFiles(files) {
@@ -106,14 +116,7 @@ export async function refreshFiles() {
   }
   UI.renderFilesList(
     files,
-    async (file) => {
-      try {
-        const url = await getFileDownloadUrl(file, state.encKey);
-        const a   = document.createElement('a');
-        a.href = url; a.download = file.filename;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      } catch { UI.showToast('Could not download file.', 'error'); }
-    },
+    _downloadFile,
     async (file) => {
       if (!canDeleteFiles()) { UI.showToast(editBlockedReason() || 'File deletion is disabled.', 'warning'); return; }
       const ok = await UI.showConfirm(
@@ -162,26 +165,30 @@ export async function refreshFiles() {
       } : null,
       onPreview: async (file) => {
         try {
-          await openFilePreview(
-            file,
-            () => getFilePreviewUrl(file, state.encKey),
-            async (f) => {
-              try {
-                const url = await getFileDownloadUrl(f, state.encKey);
-                const a   = document.createElement('a');
-                a.href = url; a.download = f.filename;
-                document.body.appendChild(a); a.click(); document.body.removeChild(a);
-              } catch { UI.showToast('Could not download file.', 'error'); }
-            }
-          );
+          await openFilePreview(file, () => getFilePreviewUrl(file, state.encKey), _downloadFile);
         } catch { UI.showToast('Could not open preview.', 'error'); }
       },
       onCopyLink: async (file) => {
-        // A copied link is a raw signed Storage URL, opened outside the app —
-        // for an encrypted file that would just hand out ciphertext with no
-        // way to decrypt it, so there's nothing useful to copy.
+        // An encrypted file's bytes are only meaningful with the room's key,
+        // which a raw Storage URL never carries — copying one would just
+        // hand out ciphertext. Instead, copy a link back into the app itself
+        // (room + file number): opening it goes through the room's normal
+        // passcode/encryption gate exactly like any other room link, and
+        // once past that gate the file opens automatically — see
+        // room-lifecycle.js's `?file=` handling and _fileRefId() above for
+        // the same file_no this reuses. Unlike a signed URL, this link never
+        // expires either.
         if (file.encrypted) {
-          UI.showToast('This file is encrypted — download it instead of copying a link.', 'warning');
+          if (file.file_no == null) {
+            UI.showToast('This file predates short file links and can’t be deep-linked — download it instead.', 'warning');
+            return;
+          }
+          const url = `${location.origin}${BASE}/${state.roomId}?file=${file.file_no}`;
+          const ok  = await copyToClipboard(url);
+          UI.showToast(
+            ok ? 'Link copied — opens this file once the room is unlocked.' : 'Could not copy link.',
+            ok ? 'success' : 'error',
+          );
           return;
         }
         try {
@@ -199,6 +206,24 @@ export async function refreshFiles() {
       },
     }
   );
+}
+
+/**
+ * Open a file's preview modal directly from its short number — the target
+ * of a `?file=<N>` deep link (see room-lifecycle.js's startApp(), and
+ * onCopyLink above, which is what generates these links for an encrypted
+ * file). Runs after the room's normal passcode/encryption gate and after
+ * refreshFiles() has populated the panel, so this is just "does file N
+ * exist in this room" at this point — no separate auth of its own.
+ */
+export async function openFileDeepLink(fileNo) {
+  let file;
+  try { file = await getFileByNo(state.roomId, fileNo); }
+  catch { file = null; }
+  if (!file) { UI.showToast('That file link is no longer valid.', 'warning'); return; }
+  try {
+    await openFilePreview(file, () => getFilePreviewUrl(file, state.encKey), _downloadFile);
+  } catch { UI.showToast('Could not open preview.', 'error'); }
 }
 
 export function _wireFiles() {

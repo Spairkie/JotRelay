@@ -114,6 +114,41 @@ test.describe('File uploads in an encrypted room', () => {
     expect(downloadPath).toBeTruthy();
   });
 
+  test('copy-link for an encrypted file produces a working in-app deep link instead of a raw storage URL', async ({ page, context }) => {
+    test.skip(!(await supabaseAvailable(page)), 'Supabase unavailable in this environment');
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+
+    await createRoom(page);
+    await openSettingsPanel(page);
+    await page.locator('#setting-enc-btn').click();
+    await fillPromptDialog(page, 'deep-link-test-passphrase');
+    await waitForToast(page, /encryption enabled/i);
+
+    await openPanel(page, 'files');
+    await page.locator('#file-input').setInputFiles([fixture('sample-a.txt')]);
+    await waitForToast(page, /uploaded/i);
+
+    const fileItem = page.locator('.file-item', { hasText: 'sample-a.txt' });
+    await fileItem.locator('.file-action-btn.copy-link').click();
+    await waitForToast(page, /link copied/i);
+
+    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+    const roomId = new URL(page.url()).pathname.split('/').filter(Boolean).pop();
+    expect(clipboardText).toBe(`${new URL(page.url()).origin}/SyncPad/${roomId}?file=1`);
+
+    // Opening the link cold (fresh context, no encKey in memory) must hit
+    // the room's normal encryption gate — the link carries no secret.
+    await page.goto(clipboardText);
+    await expect(page.locator('#encryption-screen:not(.hidden)')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#encryption-input').fill('deep-link-test-passphrase');
+    await page.locator('#encryption-submit-btn').click();
+
+    // Past the gate, the linked file's preview opens automatically with the
+    // correctly decrypted content.
+    await waitForModal(page, 'file-preview-modal');
+    await expect(page.locator('#file-preview-body')).toContainText('First fixture file for SyncPad file-upload tests.');
+  });
+
   test('a room can enable encryption and keep uploading files afterward (no longer blocked)', async ({ page }) => {
     test.skip(!(await supabaseAvailable(page)), 'Supabase unavailable in this environment');
 
@@ -129,5 +164,56 @@ test.describe('File uploads in an encrypted room', () => {
     // now the upload should succeed since content is encrypted.
     await waitForToast(page, /uploaded/i);
     await expect(page.locator('.file-item', { hasText: 'sample-b.txt' })).toBeVisible();
+  });
+});
+
+test.describe('Codex-flagged file-encryption fixes', () => {
+  test('disabling encryption is blocked while encrypted files exist, instead of stranding them undecryptable', async ({ page }) => {
+    test.skip(!(await supabaseAvailable(page)), 'Supabase unavailable in this environment');
+
+    await createRoom(page);
+    await openSettingsPanel(page);
+    await page.locator('#setting-enc-btn').click();
+    await fillPromptDialog(page, 'strand-test-passphrase');
+    await waitForToast(page, /encryption enabled/i);
+
+    await openPanel(page, 'files');
+    await page.locator('#file-input').setInputFiles([fixture('sample-a.txt')]);
+    await waitForToast(page, /uploaded/i);
+
+    await openSettingsPanel(page);
+    await page.locator('#setting-enc-btn').click();
+    // Blocked before ever reaching the "Disable?" confirm dialog — a
+    // passphrase prompt or confirm modal appearing here would mean the
+    // guard didn't fire.
+    await waitForToast(page, /delete.*first/i);
+    await expect(page.locator('#sp-confirm-modal.visible')).toHaveCount(0);
+  });
+
+  test('previewing an encrypted SVG offers a download, not a same-origin open-in-new-tab link', async ({ page }) => {
+    test.skip(!(await supabaseAvailable(page)), 'Supabase unavailable in this environment');
+
+    await createRoom(page);
+    await openSettingsPanel(page);
+    await page.locator('#setting-enc-btn').click();
+    await fillPromptDialog(page, 'svg-test-passphrase');
+    await waitForToast(page, /encryption enabled/i);
+
+    await openPanel(page, 'files');
+    // Inline buffer rather than a fixture file — keeps the (deliberately
+    // malicious-shaped) payload this test is actually about visible right here.
+    await page.locator('#file-input').setInputFiles([{
+      name: 'sample.svg', mimeType: 'image/svg+xml',
+      buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>window.__xss=true</script></svg>'),
+    }]);
+    await waitForToast(page, /uploaded/i);
+
+    await page.locator('.file-item', { hasText: 'sample.svg' }).locator('.file-action-btn.preview').click();
+    await waitForModal(page, 'file-preview-modal');
+
+    const openBtn = page.locator('#file-preview-body .preview-open-btn');
+    await expect(openBtn).toHaveText(/download svg/i);
+    await expect(openBtn).toHaveAttribute('download', 'sample.svg');
+    await expect(openBtn).not.toHaveAttribute('target', '_blank');
   });
 });
