@@ -1,4 +1,4 @@
-// SyncPad – icons.js
+// JotRelay – icons.js
 // Stroke-based SVG icons (24x24 viewBox, currentColor).
 // Used in dynamic DOM rendering (ui.js).  Static HTML uses inline SVGs.
 

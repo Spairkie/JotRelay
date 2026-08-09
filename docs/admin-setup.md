@@ -1,6 +1,6 @@
 # Admin Setup
 
-SyncPad's `/admin` screen uses Supabase Auth for sign-in and the `public.syncpad_admins` table for authorization. A user can sign in only if they exist in Supabase Auth, and they can access admin data only if their Auth user ID is present in `syncpad_admins`.
+JotRelay's `/admin` screen uses Supabase Auth for sign-in and the `public.syncpad_admins` table for authorization. A user can sign in only if they exist in Supabase Auth, and they can access admin data only if their Auth user ID is present in `syncpad_admins`.
 
 ## 1. Apply Database Setup
 
@@ -22,7 +22,7 @@ In Supabase Dashboard:
 3. Confirm the email if your project requires confirmation.
 4. Copy the user's UUID from the user details page.
 
-## 3. Grant SyncPad Admin Access
+## 3. Grant JotRelay Admin Access
 
 Run this in SQL Editor, replacing the values:
 

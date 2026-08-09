@@ -1,5 +1,5 @@
 {
-  "name": "syncpad",
+  "name": "jotrelay",
   "version": "1.0.0",
   "description": "> **A temporary shared notepad for fast handoff between devices.**   > Create a room, share an editable or read-only link, and sync notes and files in real time — no account needed.",
   "main": "service-worker.js",
@@ -18,7 +18,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Spairkie/SyncPad.git"
+    "url": "https://github.com/Spairkie/JotRelay.git"
   },
   "keywords": [],
   "author": "",

@@ -1,4 +1,4 @@
-// SyncPad – theme.js
+// JotRelay – theme.js
 // CSS-variable-based theme system. Themes override :root variables
 // via a data-theme attribute on <html>.
 

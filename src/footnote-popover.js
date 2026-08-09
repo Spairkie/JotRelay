@@ -1,4 +1,4 @@
-// SyncPad – footnote-popover.js
+// JotRelay – footnote-popover.js
 // Click/tap-to-toggle footnote preview popover, shared by the static
 // preview (src/ui/editor.js) and the CM6 Live surface (src/live-editor.js)
 // so the interaction — and its accessibility behavior — can't drift between

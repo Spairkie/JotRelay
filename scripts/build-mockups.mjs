@@ -1,4 +1,4 @@
-// SyncPad — presskit screenshot mockup builder.
+// JotRelay — presskit screenshot mockup builder.
 //
 // Pulls real screens (app shell, side panels, share modal, encryption
 // gate) out of the live index.html by id and drops them into small,
@@ -228,9 +228,9 @@ const PREVIEW_CONTENT = `
   let modal = shareModal;
   modal = modal.replace('id="share-modal-title">Share room<', 'id="share-modal-title">Share "Design Crit — Sprint 14"<');
   modal = modal.replace('id="share-editable-text" type="text" readonly',
-    'id="share-editable-text" type="text" readonly value="syncpad.app/design-crit-sprint-14"');
+    'id="share-editable-text" type="text" readonly value="jotrelay.app/design-crit-sprint-14"');
   modal = modal.replace('id="share-readonly-text" type="text" readonly',
-    'id="share-readonly-text" type="text" readonly value="syncpad.app/share/8f2c1a9e5d"');
+    'id="share-readonly-text" type="text" readonly value="jotrelay.app/share/8f2c1a9e5d"');
   modal = modal.replace('id="share-code-text" type="text" readonly',
     'id="share-code-text" type="text" readonly value="7QK9M2"');
   modal = addClass(modal, 'share-modal', 'visible');

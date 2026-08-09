@@ -1,4 +1,4 @@
-// SyncPad – shortcuts.js
+// JotRelay – shortcuts.js
 // Keyboard shortcut handling. All modifying shortcuts respect read-only mode.
 //
 // "In the editor" means either the plain Write-mode textarea OR the CM6

@@ -1,6 +1,6 @@
-# SyncPad Architecture
+# JotRelay Architecture
 
-SyncPad is a vanilla-JS realtime notepad built on Supabase with no build step. There is no bundler, no framework, and no compilation phase — the browser loads ES modules directly from disk.
+JotRelay is a vanilla-JS realtime notepad built on Supabase with no build step. There is no bundler, no framework, and no compilation phase — the browser loads ES modules directly from disk.
 
 ---
 
@@ -67,13 +67,13 @@ Handles file upload to the `syncpad-files` Storage bucket, maintains the signed-
 Renders the in-app preview modal for attached files (images, PDFs, text, etc.). It requests signed URLs from `files.js` and inserts the appropriate preview element into the modal. It does NOT manage the file list or interact with Storage directly.
 
 ### `markdown.js`
-Implements a safe, custom Markdown renderer without relying on an external library. It sanitises output to prevent XSS and applies SyncPad-specific rendering rules. It does NOT handle editing or preview toggling — those are managed by `app.js` and `ui.js`.
+Implements a safe, custom Markdown renderer without relying on an external library. It sanitises output to prevent XSS and applies JotRelay-specific rendering rules. It does NOT handle editing or preview toggling — those are managed by `app.js` and `ui.js`.
 
 ### `encryption.js`
 Provides AES-256-GCM encryption and decryption using the Web Crypto API, with PBKDF2 key derivation. It exposes functions to encrypt/decrypt room content given a passphrase and salt. It does NOT store keys or passphrases — key material is held in `app.js` module-level state and never written to disk or the database.
 
 ### `permissions.js`
-Maintains the frontend permission context for the current session (e.g. read-only vs. read-write, owner status). It exposes getter functions used throughout the app to gate UI actions. It does NOT enforce permissions on the server; SyncPad intentionally keeps normal room/file RLS broad for a transparent demo project.
+Maintains the frontend permission context for the current session (e.g. read-only vs. read-write, owner status). It exposes getter functions used throughout the app to gate UI actions. It does NOT enforce permissions on the server; JotRelay intentionally keeps normal room/file RLS broad for a transparent demo project.
 
 ### `settings.js`
 Implements handlers for the room settings panel: expiry presets, passcode changes, read-only toggles, and share-link management. It does NOT own the settings UI structure — the DOM is defined in `ui.js` and `index.html`.
@@ -91,7 +91,7 @@ Registers global `keydown` listeners and maps key combinations to application ac
 Implements the `/admin` dashboard: Supabase Auth sign-in, RLS-gated admin queries, and the three admin tabs (Rooms, Reports, Cleanup). It calls the `run_cleanup_expired_syncpad_rooms_as_admin` RPC for the Cleanup tab. It does NOT share any state or logic with the regular room flow — it is a self-contained screen activated only on the `/admin` route.
 
 ### `utils.js`
-Collects small, stateless helper functions (string formatting, date utilities, debounce, etc.) used across multiple modules. It does NOT import from any other SyncPad module — it is a pure utility leaf with no side effects.
+Collects small, stateless helper functions (string formatting, date utilities, debounce, etc.) used across multiple modules. It does NOT import from any other JotRelay module — it is a pure utility leaf with no side effects.
 
 ### `keyboard-viewport.js`
 Tracks the on-screen keyboard via `window.visualViewport`, exposing the covered height as a live `--kb-inset` CSS custom property that any bottom-anchored fixed element can consume, and re-triggers each editor surface's own native caret-visibility scroll shortly after a keyboard resize settles (a passive container resize alone doesn't make a `<textarea>` or CodeMirror re-scroll to keep the caret visible). Separately, it also toggles `body.keyboard-open` on focus entering/leaving any text-editing element (textarea, non-button `<input>`, or a `contenteditable`) while the viewport is at the mobile breakpoint — a focus-driven signal rather than a `--kb-inset`-driven one, since `--kb-inset` is legitimately `0px` on platforms where the layout viewport already resizes natively for the keyboard, which leaves no geometric gap to detect "the keyboard is open" there even though it is. CSS (`modals.css`'s "KEYBOARD OPEN — MOBILE" rules) uses that class to hide the bottom action bar outright and reclaim its footprint, rather than only repositioning it above the keyboard. It does NOT itself position any UI beyond that one class toggle — consuming elements opt in via their own CSS/JS. Imported by `app.js` for its side effects only; exports nothing.
@@ -158,7 +158,7 @@ A handful of properties are deliberately **user-global, not room-scoped**, and p
 
 ## 6. Sync Tracks
 
-SyncPad uses two parallel synchronisation tracks to balance perceived latency against durability.
+JotRelay uses two parallel synchronisation tracks to balance perceived latency against durability.
 
 ### Broadcast Lane (live typing)
 - **Transport**: Supabase Broadcast channel (WebSocket message, no DB write)

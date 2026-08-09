@@ -1,4 +1,4 @@
-// SyncPad – app/tools-and-modals.js
+// JotRelay – app/tools-and-modals.js
 // Generic panel/modal close-wiring, the report-room modal, the Tools panel
 // actions (clear/download/import/templates/find/history/comments), and the
 // keyboard-shortcuts modal.

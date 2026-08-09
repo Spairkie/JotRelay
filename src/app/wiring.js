@@ -1,4 +1,4 @@
-// SyncPad – app/wiring.js
+// JotRelay – app/wiring.js
 // Glues keyboard shortcuts (shortcuts.js) to the scattered action functions
 // spread across app/*, and is the single orchestrator that wires every
 // room-scoped DOM listener exactly once per page lifecycle.
@@ -97,5 +97,5 @@ export function wireEvents() {
   // Test-synchronization hook only — tests/helpers.js's createRoom() waits on
   // this so a test's first interaction with the room never races the one-time
   // DOM wiring above. Not read by any app code.
-  window.__syncpadEventsWired = true;
+  window.__jotrelayEventsWired = true;
 }

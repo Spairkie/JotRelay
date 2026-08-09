@@ -1,4 +1,4 @@
-// SyncPad – revisions.js
+// JotRelay – revisions.js
 // Version history: saves/lists snapshots of a room's content
 // (syncpad_room_revisions, see supabase/migrations/0004_version_history.sql).
 //

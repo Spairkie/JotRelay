@@ -1,4 +1,4 @@
-// SyncPad – live-editor.js
+// JotRelay – live-editor.js
 // The Typora-style editable live-preview surface: a CodeMirror 6 instance
 // over the same plain-markdown string the Write textarea holds. Mounted in
 // Preview mode (and the right pane of Split); the textarea remains the

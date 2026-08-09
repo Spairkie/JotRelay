@@ -105,7 +105,7 @@ test.describe('Coded hero demo (/)', () => {
     await goToLanding(page);
     await page.locator('.lp-demo-tab[data-scene="share"]').click();
     await expect(page.locator('#lp-demo-share-view')).toHaveCSS('opacity', '1');
-    await expect(page.locator('.lp-demo-share-url')).toHaveText('syncpad.app/product-launch-plan');
+    await expect(page.locator('.lp-demo-share-url')).toHaveText('jotrelay.app/product-launch-plan');
     await expect(page.locator('.lp-demo-perm[data-perm="edit"]')).toHaveClass(/active/);
     await page.locator('.lp-demo-perm[data-perm="view"]').click();
     await expect(page.locator('.lp-demo-perm[data-perm="view"]')).toHaveClass(/active/);

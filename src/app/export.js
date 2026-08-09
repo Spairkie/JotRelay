@@ -1,4 +1,4 @@
-// SyncPad – app/export.js
+// JotRelay – app/export.js
 // The Export modal: .txt/.md download, copy as text/HTML, HTML export, and
 // print-to-PDF.
 
@@ -29,7 +29,7 @@ export const _requireContent = () => {
 // moment the tab closes. Convert it to a self-contained data: URI instead,
 // which is portable (the bytes travel with the document, same as any other
 // embedded image). Left alone for an unencrypted file's plain signed URL —
-// that one at least works for its own ~1h window without SyncPad open.
+// that one at least works for its own ~1h window without JotRelay open.
 async function _toEmbeddableUrl(url) {
   if (!url.startsWith('blob:')) return url;
   const blob = await (await fetch(url)).blob();
@@ -90,7 +90,7 @@ export function _wireExportModal() {
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SyncPad – ${escapeHtml(state.roomId)}</title>
+<title>JotRelay – ${escapeHtml(state.roomId)}</title>
 <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;color:#1a1a1a;line-height:1.7}
 pre{background:#f5f5f5;padding:1em;border-radius:4px;overflow:auto}code{background:#f5f5f5;padding:2px 4px;border-radius:2px}
 blockquote{border-left:3px solid #ccc;margin:0;padding-left:1em;color:#666}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:6px 10px}

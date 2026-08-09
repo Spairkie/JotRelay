@@ -1,4 +1,4 @@
-// SyncPad – app/files-panel.js
+// JotRelay – app/files-panel.js
 // The Files side panel: listing/sorting, upload (including the shared
 // paste/drop-image upload path used by editor-behavior.js), download,
 // delete, and bulk-select.

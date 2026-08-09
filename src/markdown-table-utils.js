@@ -1,4 +1,4 @@
-// SyncPad – markdown-table-utils.js
+// JotRelay – markdown-table-utils.js
 // The one piece of Lezer-tree-interpretation logic genuinely shared between
 // the static HTML renderer (markdown.js) and the live CM6 editor's table
 // widget (live-editor.js): parsing a GFM table's alignment-delimiter row

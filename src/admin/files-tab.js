@@ -1,4 +1,4 @@
-// SyncPad – admin/files-tab.js
+// JotRelay – admin/files-tab.js
 // The Files tab: search, pagination, storage totals, per-file delete.
 
 import { state } from './state.js';

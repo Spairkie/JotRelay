@@ -1,4 +1,4 @@
-// SyncPad – app/pwa.js
+// JotRelay – app/pwa.js
 // Service worker registration/update banner, the install-app prompt banner,
 // and the "local drafts can't save" storage-full warning. Import for its
 // side effects only — nothing here is exported.
@@ -69,7 +69,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
 // ── Draft storage warning ─────────────────────────────────────────────────────
 // Fires at most once per page load when offline.js detects QuotaExceededError.
 // Using { once: true } so repeated keystrokes don't re-show the toast.
-window.addEventListener('syncpad:draft-storage-full', () => {
+window.addEventListener('jotrelay:draft-storage-full', () => {
   UI.showToast(
     'Browser storage is full — local drafts cannot be saved. Your notes still sync to the server.',
     'warning',

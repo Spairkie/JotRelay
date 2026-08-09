@@ -1,4 +1,4 @@
-// SyncPad – keyboard-viewport.js
+// JotRelay – keyboard-viewport.js
 // Keeps the app's own bottom-anchored fixed UI (mobile action bar, the PWA
 // install/update bars, toasts) — AND the actively-focused editor's own
 // caret — above the on-screen keyboard on platforms where index.html's

@@ -1,8 +1,8 @@
-# SyncPad — Release Checklist
+# JotRelay — Release Checklist
 
 Use this checklist before publishing a new version or sharing the demo link.
 
-> ⚠️ Reminder: SyncPad is a personal/demo project. All room controls are frontend-only.  
+> ⚠️ Reminder: JotRelay is a personal/demo project. All room controls are frontend-only.  
 > View-once is convenience-only, not secure destruction; viewers may still copy or capture content before it clears.  
 > Do not use for sensitive data.
 

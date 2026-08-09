@@ -1,4 +1,4 @@
-// SyncPad – admin/cleanup-tab.js
+// JotRelay – admin/cleanup-tab.js
 // The Cleanup tab: server-side expired-room RPC, manual danger-button
 // deletion, and Storage orphan reconciliation via the syncpad-cleanup
 // Edge Function.
@@ -49,7 +49,7 @@ export async function _renderCleanupTab(contentEl) {
           interrupted uploads or gaps this dashboard doesn't otherwise cover — and remove
           them. Starts with a dry run; nothing is deleted until you confirm the count.
           This is a separate, optional deploy step — it does not run automatically and
-          is not required for the rest of SyncPad to work.
+          is not required for the rest of JotRelay to work.
           Requires the Edge Function to be deployed (<code>supabase functions deploy syncpad-cleanup --no-verify-jwt</code>,
           see <code>supabase/functions/syncpad-cleanup/README.md</code>).
         </p>

@@ -1,6 +1,6 @@
-# SyncPad Security Model
+# JotRelay Security Model
 
-> **Scope:** This document describes the security architecture of SyncPad as a personal/demo project. SyncPad is not designed for sensitive data — see [Known Limitations](#known-limitations--threat-model) before storing anything confidential.
+> **Scope:** This document describes the security architecture of JotRelay as a personal/demo project. JotRelay is not designed for sensitive data — see [Known Limitations](#known-limitations--threat-model) before storing anything confidential.
 
 ---
 
@@ -19,7 +19,7 @@
 
 ## Security Model Overview
 
-SyncPad has two distinct categories of access controls: controls that are enforced by the backend (Supabase RLS policies and RPCs) and controls that are implemented purely in frontend JavaScript. The distinction matters because frontend-only controls can be bypassed by anyone who can call the Supabase REST API directly using the public anon key.
+JotRelay has two distinct categories of access controls: controls that are enforced by the backend (Supabase RLS policies and RPCs) and controls that are implemented purely in frontend JavaScript. The distinction matters because frontend-only controls can be bypassed by anyone who can call the Supabase REST API directly using the public anon key.
 
 ### Frontend-Only Controls (NOT Backend-Enforced)
 
@@ -48,7 +48,7 @@ These controls are implemented as Supabase Row Level Security (RLS) policies and
 
 ## Text Encryption
 
-SyncPad supports optional in-browser AES-256-GCM encryption for room text content. When encryption is enabled, plaintext is never transmitted over the network.
+JotRelay supports optional in-browser AES-256-GCM encryption for room text content. When encryption is enabled, plaintext is never transmitted over the network.
 
 ### Algorithm and Key Derivation
 
@@ -126,7 +126,7 @@ Files are stored in a private Supabase Storage bucket named `syncpad-files`. The
 
 Signed URLs provide time-limited access control regardless of encryption — anyone who obtains a valid signed URL within its 1-hour window can fetch whatever bytes sit at that Storage path.
 
-For an unencrypted room, those bytes are the plaintext file — do not store sensitive files in an unencrypted SyncPad room.
+For an unencrypted room, those bytes are the plaintext file — do not store sensitive files in an unencrypted JotRelay room.
 
 For an encrypted room, `uploadFile()` (`src/files.js`) encrypts the file's bytes with the room's derived key (AES-256-GCM, IV prepended) before upload, and the Storage object's `Content-Type` is set to the opaque `application/octet-stream` rather than the file's real MIME type — so a signed URL by itself, without the room passphrase, yields only ciphertext. The client decrypts fetched bytes into a local, in-memory `Blob`/object URL for preview and download; the plaintext is never written back to Storage. `syncpad_files.encrypted` marks which files went through this path (`supabase/migrations/0014_file_encryption.sql`).
 
@@ -134,7 +134,7 @@ For an encrypted room, `uploadFile()` (`src/files.js`) encrypts the file's bytes
 
 ## Supabase RLS Summary
 
-Row Level Security is enabled on all SyncPad tables. The policies are the authoritative enforcement layer for data access.
+Row Level Security is enabled on all JotRelay tables. The policies are the authoritative enforcement layer for data access.
 
 | Table | Anon SELECT | Anon INSERT | Anon UPDATE | Anon DELETE | Notes |
 |---|---|---|---|---|---|
@@ -155,7 +155,7 @@ Admin queries are additionally gated by the `is_syncpad_admin()` function, which
 
 ### Admin session and Supabase role
 
-SyncPad uses a single shared Supabase client for both the normal app and the admin dashboard. After a user signs in via Supabase Auth at `/admin`, the client's effective role changes from `anon` to `authenticated`. Supabase RLS policies are role-specific — policies written for `to anon` do not apply to `authenticated` requests, and vice versa.
+JotRelay uses a single shared Supabase client for both the normal app and the admin dashboard. After a user signs in via Supabase Auth at `/admin`, the client's effective role changes from `anon` to `authenticated`. Supabase RLS policies are role-specific — policies written for `to anon` do not apply to `authenticated` requests, and vice versa.
 
 Without a matching set of baseline policies for the `authenticated` role, normal app operations (saving room content, uploading files, etc.) fail with RLS permission errors after admin login. The `supabase/migrations/0001_base_schema.sql` script includes **authenticated baseline** policies that mirror the anon policies for `syncpad_rooms`, `syncpad_files`, and the `syncpad-files` storage bucket. These do not grant additional privileges — they simply ensure normal app features continue to work during an authenticated session. Elevated admin actions (delete rooms, bulk manage files) are still gated by `is_syncpad_admin()` in separate policies.
 
@@ -163,9 +163,9 @@ Without a matching set of baseline policies for the `authenticated` role, normal
 
 ## Known Limitations / Threat Model
 
-SyncPad is a personal/demo project. The following are known weaknesses that should be understood before using it for anything important.
+JotRelay is a personal/demo project. The following are known weaknesses that should be understood before using it for anything important.
 
-**Anonymous by design.** SyncPad has no backend-enforced user identity system. There are no user accounts tied to rooms at the database level. "Ownership" of a room is a frontend concept only.
+**Anonymous by design.** JotRelay has no backend-enforced user identity system. There are no user accounts tied to rooms at the database level. "Ownership" of a room is a frontend concept only.
 
 **Anon key is public.** The Supabase anon key is embedded in the frontend bundle and is not secret. Anyone who reads the page source has the anon key and can call the Supabase REST API directly. This bypasses the passcode check and read-only links specifically (see above) — it does not bypass room lock or, if applied, room quarantine, both of which are independently enforced server-side regardless of how the request is made (see Supabase RLS Summary above).
 
@@ -175,21 +175,21 @@ SyncPad is a personal/demo project. The following are known weaknesses that shou
 
 **Files are not end-to-end encrypted for the filename/type, and not encrypted at all outside an encrypted room.** In an unencrypted room, files sit in Supabase Storage in plaintext. In an encrypted room, a file's *content* is AES-256-GCM-encrypted client-side with the room's key before upload (see [Encryption Note](#encryption-note) above) — but its filename and MIME type are not, and files uploaded before the room's encryption was turned on stay plaintext. Either way, signed URLs provide time-limited access, not encryption at rest from Supabase's own perspective (ciphertext or plaintext, Supabase can still read the bucket).
 
-**localStorage is origin-scoped.** Custom templates and drafts stored in `localStorage` are accessible to any JavaScript running on the same origin. If a third-party script is ever loaded on the SyncPad origin (analytics, embeds), it would have access to this data.
+**localStorage is origin-scoped.** Custom templates and drafts stored in `localStorage` are accessible to any JavaScript running on the same origin. If a third-party script is ever loaded on the JotRelay origin (analytics, embeds), it would have access to this data.
 
 **View-once display precedes clearing, by design.** The client must render the content before the server clears it, so a viewer can always copy or screenshot the content in that window — no server-side design can prevent that without refusing to show the content at all. The clearing *write* itself is atomic: `consumeViewOnceAtomic()` (`src/rooms.js`) conditions the `UPDATE` on `viewed = false`, so two viewers opening the same view-once link at nearly the same instant can't both have their write "win" — exactly one clear succeeds, closing the read-then-write race a naive check-then-update would have.
 
-**Recommendation:** Do NOT use SyncPad to store passwords, personal health information (HIPAA/PHI), personally identifiable information (PII), classified or regulated data, or any information that would cause harm if disclosed.
+**Recommendation:** Do NOT use JotRelay to store passwords, personal health information (HIPAA/PHI), personally identifiable information (PII), classified or regulated data, or any information that would cause harm if disclosed.
 
 ---
 
 ## Before Going to Production
 
-If SyncPad is ever deployed for broader use, the following items should be addressed first.
+If JotRelay is ever deployed for broader use, the following items should be addressed first.
 
 **Web3Forms allowed domain.** The contact/report form uses Web3Forms. Configure the allowed domain in the Web3Forms dashboard to restrict form submissions to your production domain. Without this, anyone can submit forms using your Web3Forms key from any origin.
 
-**RLS audit.** SyncPad intentionally keeps `syncpad_rooms` and file RLS broad for a transparent demo project — `room_id` is the only credential, for both reading and writing. What's actually enforced independent of RLS: the room lock trigger, and (if `0008_quarantine_enforcement.sql` is applied) the quarantine trigger. Everything else — `syncpad_rooms` SELECT/UPDATE/INSERT and all of `syncpad_files`' policies — is broad by design (file access is tied to room access, not a separate credential).
+**RLS audit.** JotRelay intentionally keeps `syncpad_rooms` and file RLS broad for a transparent demo project — `room_id` is the only credential, for both reading and writing. What's actually enforced independent of RLS: the room lock trigger, and (if `0008_quarantine_enforcement.sql` is applied) the quarantine trigger. Everything else — `syncpad_rooms` SELECT/UPDATE/INSERT and all of `syncpad_files`' policies — is broad by design (file access is tied to room access, not a separate credential).
 
 **Storage bucket review.** Confirm the `syncpad-files` bucket has no public access enabled. Review the storage policies to ensure that file SELECT and INSERT are tied to room membership in a way that RLS enforces, not just frontend logic.
 

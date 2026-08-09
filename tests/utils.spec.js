@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
 import { goToLanding } from './helpers.js';
 
 /**
- * Import a SyncPad module in the browser context and return the result of fn.
+ * Import a JotRelay module in the browser context and return the result of fn.
  */
 async function inBrowser(page, modulePath, fn) {
   return page.evaluate(

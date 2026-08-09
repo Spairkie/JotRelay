@@ -11,8 +11,8 @@ test.describe('Editor', () => {
     await ensureWriteMode(page);
     const editor = page.locator('#note-editor');
     await expect(editor).toBeVisible();
-    await editor.fill('Hello SyncPad!');
-    expect(await editor.inputValue()).toBe('Hello SyncPad!');
+    await editor.fill('Hello JotRelay!');
+    expect(await editor.inputValue()).toBe('Hello JotRelay!');
   });
 
   test('word count updates as user types', async ({ page }) => {

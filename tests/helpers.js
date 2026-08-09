@@ -1,9 +1,9 @@
 // tests/helpers.js
-// Shared Playwright helpers for SyncPad tests.
+// Shared Playwright helpers for JotRelay tests.
 
 import { test, expect } from '@playwright/test';
 
-/** Navigate to the SyncPad root (marketing landing page) and wait for it. */
+/** Navigate to the JotRelay root (marketing landing page) and wait for it. */
 export async function goToLanding(page) {
   await page.goto('/SyncPad/');
   await page.waitForSelector('#landing-screen:not(.hidden)', { timeout: 10_000 });
@@ -67,7 +67,7 @@ export async function createFreshRoom(page, { skipOnboarding = true } = {}) {
   }
   await page.click('.landing-create-btn');
   await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
-  await page.waitForFunction(() => window.__syncpadEventsWired === true, null, { timeout: 5000 });
+  await page.waitForFunction(() => window.__jotrelayEventsWired === true, null, { timeout: 5000 });
   // Extract room ID from URL
   const url = page.url();
   const match = url.match(/\/SyncPad\/([^/?#]+)/);
@@ -145,7 +145,7 @@ export async function createRoom(page) {
   await _resetRoomToPristine(page, _FIXTURE_ROOM_ID);
   await page.goto(`/SyncPad/${_FIXTURE_ROOM_ID}`);
   await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
-  await page.waitForFunction(() => window.__syncpadEventsWired === true, null, { timeout: 5000 });
+  await page.waitForFunction(() => window.__jotrelayEventsWired === true, null, { timeout: 5000 });
   return _FIXTURE_ROOM_ID;
 }
 

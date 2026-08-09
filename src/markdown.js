@@ -1,4 +1,4 @@
-// SyncPad – markdown.js
+// JotRelay – markdown.js
 // Markdown → HTML renderer, built over the shared Lezer parse tree (the same
 // `@lezer/markdown` grammar CodeMirror's live editor already parses with —
 // see markdown-highlight-extension.js for the one grammar extension shared

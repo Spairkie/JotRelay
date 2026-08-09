@@ -1,4 +1,4 @@
-// SyncPad – markdown-emoji-map.js
+// JotRelay – markdown-emoji-map.js
 // GitHub-style :shortcode: → Unicode emoji, shared by markdown.js (the
 // classic renderer) and live-editor.js (the CM6 live surface's emoji widget
 // decoration) so both surfaces agree on exactly which shortcodes resolve.

@@ -1,6 +1,6 @@
 # Markdown feature audit
 
-SyncPad's Markdown renderer (`src/markdown.js`) targets **GitHub Flavored
+JotRelay's Markdown renderer (`src/markdown.js`) targets **GitHub Flavored
 Markdown (GFM)** as its reference flavor — it's the most widely recognized
 extended Markdown spec (GitHub, GitLab, Reddit, Discourse, and most chat/doc
 tools either implement it directly or something very close to it), and its
@@ -12,7 +12,7 @@ implementation (`<center>`, inline `style=`, HTML comments, `<video>`) are
 listed below as out of scope for that reason.
 
 This audit checks the ~38 features on the Markdown Guide's basic, extended,
-and hacks pages against SyncPad's actual behavior — verified by running
+and hacks pages against JotRelay's actual behavior — verified by running
 `renderMarkdown()` directly against each page's own example syntax (not just
 inspecting the source), so this table reflects real output, not intent.
 
@@ -45,7 +45,7 @@ inspecting the source), so this table reflects real output, not intent.
 | Disabling Automatic URL Linking | wrap in backtick code span — code spans are extracted before autolinking runs |
 | Admonitions | GFM alerts — `> [!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` |
 | Table of Contents | Typora-style `[TOC]` marker |
-| Link Targets | not per-link syntax — SyncPad opens every external link in a new tab (`target="_blank"`) by consistent site-wide policy instead |
+| Link Targets | not per-link syntax — JotRelay opens every external link in a new tab (`target="_blank"`) by consistent site-wide policy instead |
 | Emoji Shortcodes | `:smile:`, `:tada:`, `:rocket:`, `:thumbsup:`, etc. — a curated ~150-entry table of the shortcodes people actually type from muscle memory (`_EMOJI_MAP` in `markdown.js`), not the full multi-thousand-entry Unicode set. An unrecognized shortcode renders as literal text rather than being dropped or guessed at. `markdownLanguage`'s own grammar only recognizes `[a-zA-Z_0-9]+` between the colons, so symbol-only codes like `:+1:`/`:-1:` never reach this table at all (`thumbsup`/`thumbsdown` cover the same emoji under names the grammar can actually match) |
 
 ## Deliberately not supported
@@ -61,14 +61,14 @@ inspecting the source), so this table reflects real output, not intent.
 | Subscript / Superscript | Pandoc/kramdown extensions, not GFM |
 | Underline | no flavor has a clean non-HTML syntax for this (`__x__` is bold in GFM); introducing a non-standard marker would surprise anyone pasting content from elsewhere |
 | Custom Heading IDs (`{#id}`) | Pandoc/Markdown Extra syntax, not GFM — auto-generated ids already cover the actual use case (linkable headings) |
-| Setext Headings (`Text\n===`, `Text\n---`) | basic CommonMark, but a legacy alternate style to the `#`/`##` ATX form SyncPad already implements (and the toolbar's H1/H2/H3 buttons insert). The `---` underline form is also genuinely ambiguous with horizontal rules — CommonMark itself resolves this with a lookback rule this renderer's single-pass block scanner doesn't have. Low real-world value for a quick-notepad tool given ATX already covers headings; revisit only if requested |
-| Symbols (typographic replacement) | SyncPad already does this at typing time via the opt-in Smart Punctuation editor feature; doing it again at render time would double-process already-converted text |
+| Setext Headings (`Text\n===`, `Text\n---`) | basic CommonMark, but a legacy alternate style to the `#`/`##` ATX form JotRelay already implements (and the toolbar's H1/H2/H3 buttons insert). The `---` underline form is also genuinely ambiguous with horizontal rules — CommonMark itself resolves this with a lookback rule this renderer's single-pass block scanner doesn't have. Low real-world value for a quick-notepad tool given ATX already covers headings; revisit only if requested |
+| Symbols (typographic replacement) | JotRelay already does this at typing time via the opt-in Smart Punctuation editor feature; doing it again at render time would double-process already-converted text |
 | Indent (Tab) → code block | CommonMark's 4-space-indent rule is ambiguous against this renderer's indent-based list-nesting logic; fenced code blocks already cover the same need unambiguously |
 | Image Size / Image Captions | not in GFM; needs either an attribute-syntax extension (Kramdown-style `{width=…}`) or raw HTML |
 
 ## Both renderers
 
-SyncPad has two rendering surfaces:
+JotRelay has two rendering surfaces:
 - `markdown.js` — the classic parser, used for read-only-viewer preview
   (when the live surface fails to mount), HTML/print export, copy-as-HTML,
   and the reference behavior this audit describes.
@@ -90,7 +90,7 @@ SyncPad has two rendering surfaces:
   for headings/emphasis/lists/links/images/blockquotes/code/highlight/`[TOC]`/
   checklists before this fix. Confirmed via a byte-for-byte diff against a
   prior golden HTML export of this repo's own markdown feature-test document
-  (`syncpad-markdown-test.md`) for the classic renderer, then a targeted CM6
+  (`jotrelay-markdown-test.md`) for the classic renderer, then a targeted CM6
   mount harness for the live surface specifically. Footnotes still don't get
   a relocated "Footnotes" section the way the classic renderer's read-only
   output does (just an inline superscript + a labeled definition line) —

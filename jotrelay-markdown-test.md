@@ -1,8 +1,8 @@
 [TOC]
 
-# Markdown Feature Test — SyncPad
+# Markdown Feature Test — JotRelay
 
-Paste this whole note into SyncPad's editor (Source/Write mode), then switch to **Live** or **Split** to check every feature below renders correctly. Each section is self-contained and labeled with what you should see. This document is the source of truth for `docs/markdown-feature-audit.md`'s verification claims — if you change what `src/markdown.js` or `src/live-editor.js` support, update both together, in the same commit, so they can't drift apart again (see the note on emoji shortcodes in §19 for exactly what silent drift looks like).
+Paste this whole note into JotRelay's editor (Source/Write mode), then switch to **Live** or **Split** to check every feature below renders correctly. Each section is self-contained and labeled with what you should see. This document is the source of truth for `docs/markdown-feature-audit.md`'s verification claims — if you change what `src/markdown.js` or `src/live-editor.js` support, update both together, in the same commit, so they can't drift apart again (see the note on emoji shortcodes in §19 for exactly what silent drift looks like).
 
 ---
 
@@ -161,7 +161,7 @@ Fenced code block, with language (syntax highlighting expected):
 function greet(name) {
   return `Hello, ${name}!`;
 }
-console.log(greet("SyncPad"));
+console.log(greet("JotRelay"));
 ```
 
 A longer fenced code block, for testing the optional "Code line numbers" setting (Settings → Editor):
@@ -364,7 +364,7 @@ Every heading in this document already has an auto-generated id — confirmed by
 
 ## 18. Definition Lists — NOT supported (by design)
 
-Not part of GFM; SyncPad doesn't render this Markdown Extra syntax. The lines below should just appear as plain paragraph text, not a styled definition list:
+Not part of GFM; JotRelay doesn't render this Markdown Extra syntax. The lines below should just appear as plain paragraph text, not a styled definition list:
 
 Term
 : Definition of the term
@@ -427,7 +427,7 @@ CommonMark's 4-space-indent-equals-code-block rule is intentionally not implemen
 
 ## 27. Admonitions
 
-See §4 above (GFM Alerts) — `> [!NOTE]` etc. are SyncPad's supported admonition syntax.
+See §4 above (GFM Alerts) — `> [!NOTE]` etc. are JotRelay's supported admonition syntax.
 
 ---
 
@@ -450,7 +450,7 @@ See §4 above (GFM Alerts) — `> [!NOTE]` etc. are SyncPad's supported admoniti
 
 ## 30. Link Targets
 
-SyncPad doesn't use per-link target syntax — instead, every external link opens in a new tab automatically as a site-wide policy. Click the link in §8 above and confirm it opens in a new tab.
+JotRelay doesn't use per-link target syntax — instead, every external link opens in a new tab automatically as a site-wide policy. Click the link in §8 above and confirm it opens in a new tab.
 
 ---
 
@@ -484,7 +484,7 @@ Expect: literal escaped text, not a video player.
 
 ## 35. Live vs. Split vs. Preview parity
 
-SyncPad has two rendering surfaces (see `docs/markdown-feature-audit.md`'s "Both renderers" section for the full breakdown): the classic `markdown.js` renderer (read-only preview fallback, HTML/PDF export, copy-as-HTML) and the CodeMirror 6 Live surface (what Preview/Split actually show almost all the time). Switch this whole document between **Write**, **Preview**, **Live**, and **Split** now and confirm every section above looks the same across all of them — tables, alerts, footnotes, checklists, and the `[TOC]` box all have matching decorations in both surfaces as of this writing, but a future change to only one of them is exactly the kind of drift this section exists to catch.
+JotRelay has two rendering surfaces (see `docs/markdown-feature-audit.md`'s "Both renderers" section for the full breakdown): the classic `markdown.js` renderer (read-only preview fallback, HTML/PDF export, copy-as-HTML) and the CodeMirror 6 Live surface (what Preview/Split actually show almost all the time). Switch this whole document between **Write**, **Preview**, **Live**, and **Split** now and confirm every section above looks the same across all of them — tables, alerts, footnotes, checklists, and the `[TOC]` box all have matching decorations in both surfaces as of this writing, but a future change to only one of them is exactly the kind of drift this section exists to catch.
 
 ---
 
@@ -504,4 +504,4 @@ A paragraph mixing **bold**, *italic*, ~~strikethrough~~, ==highlight==, `inline
 
 ---
 
-*End of test document. If every section above matches its "Expect" note, SyncPad's Markdown rendering is working correctly.*
+*End of test document. If every section above matches its "Expect" note, JotRelay's Markdown rendering is working correctly.*

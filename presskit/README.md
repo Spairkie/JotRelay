@@ -1,12 +1,12 @@
-# SyncPad Presskit
+# JotRelay Presskit
 
-Press and media resources for **SyncPad** — logos, product screenshots, and
+Press and media resources for **JotRelay** — logos, product screenshots, and
 the background information you need to write about it. Everything in this
 folder is free to use under the terms in [Asset usage](#asset-usage) below.
 
 If you need something that isn't here, see [Contact](#contact).
 
-**[⬇ Download everything in this folder as one .zip](https://raw.githubusercontent.com/Spairkie/SyncPad/main/presskit/SyncPad-Presskit.zip)**
+**[⬇ Download everything in this folder as one .zip](https://raw.githubusercontent.com/Spairkie/JotRelay/main/presskit/SyncPad-Presskit.zip)**
 (logos, screenshots, and the demo video together — regenerated from the
 files below with `npm run presskit:zip`, so it's always this same content,
 just zipped)
@@ -18,9 +18,9 @@ resolves from inside an already-extracted copy, not just from the repo.
 
 ---
 
-## What SyncPad is
+## What JotRelay is
 
-**SyncPad is a real-time shared notepad you can open and use in seconds —
+**JotRelay is a real-time shared notepad you can open and use in seconds —
 no account required.**
 
 Create a room, share the link, and everyone with it is editing the same
@@ -30,14 +30,14 @@ one device — or one person — to another, right now.
 
 ### Short description (one-liner)
 
-> SyncPad is an accountless, real-time shared notepad for fast handoff
+> JotRelay is an accountless, real-time shared notepad for fast handoff
 > between people and devices.
 
 ### Longer description
 
-SyncPad solves a small, common problem: you need to move a note, a
+JotRelay solves a small, common problem: you need to move a note, a
 snippet, or a file from one place to another, and every tool built for
-that job wants you to sign up first. SyncPad doesn't. Open the site, hit
+that job wants you to sign up first. JotRelay doesn't. Open the site, hit
 **Create a Room**, and you have a private, synced notepad — shareable by
 link, room ID, or a short spoken code — that updates on every connected
 device in well under a second.
@@ -50,7 +50,7 @@ themes. Rooms can be locked down with a passcode, encrypted end-to-end with
 a passphrase, capped to a device limit, or set to auto-expire — all
 configurable without ever creating an account.
 
-SyncPad is a solo-built, source-available project (see the repository for
+JotRelay is a solo-built, source-available project (see the repository for
 current license terms) — a portfolio piece and a genuinely useful tool at
 the same time, not a funded startup. Its target audience is anyone who
 wants Typora-level writing polish and Google-Docs-level realtime sync
@@ -73,20 +73,20 @@ without the sign-up friction either usually implies.
 - **Auto-expiration & device limits** — rooms that clear themselves after a set time or once too many devices have joined
 - **10 visual themes**, a command palette, keyboard shortcuts, and a full PWA install path
 
-Full feature list: see the [project README](https://github.com/Spairkie/SyncPad#features).
+Full feature list: see the [project README](https://github.com/Spairkie/JotRelay#features).
 
 ---
 
 ## Product positioning
 
-SyncPad sits between two kinds of tools people usually reach for:
+JotRelay sits between two kinds of tools people usually reach for:
 
 | | Note apps with sign-up (Notion, Google Docs) | Ephemeral pastebins (Pastebin, plain text drops) |
 |---|---|---|
-| **SyncPad** | ✅ Real-time collaboration | ✅ No account, instant to open |
+| **JotRelay** | ✅ Real-time collaboration | ✅ No account, instant to open |
 | | ❌ Requires an account | ❌ No live sync, no presence |
 
-SyncPad is the option when you want the collaborative feel of a shared
+JotRelay is the option when you want the collaborative feel of a shared
 document without asking the other person to make an account first — a
 room link *is* the invite.
 
@@ -102,7 +102,7 @@ as a "secure" product in the compliance sense.
 
 | | |
 |---|---|
-| **Name** | SyncPad |
+| **Name** | JotRelay |
 | **Category** | Real-time shared notepad / accountless collaboration tool |
 | **Live app** | [spairkie.github.io/SyncPad](https://spairkie.github.io/SyncPad/) |
 | **Platform** | Web (any modern browser); installable as a PWA on desktop and mobile |
@@ -110,7 +110,7 @@ as a "secure" product in the compliance sense.
 | **Pricing** | Free |
 | **Built with** | Vanilla JavaScript (ES modules, no framework, no bundler), Supabase (Postgres, Realtime, Storage, Auth for the admin dashboard), CodeMirror 6 |
 | **Hosting** | Static site on GitHub Pages |
-| **Source code** | [github.com/Spairkie/SyncPad](https://github.com/Spairkie/SyncPad) |
+| **Source code** | [github.com/Spairkie/JotRelay](https://github.com/Spairkie/JotRelay) |
 | **Maintainer** | Spairkie |
 | **Status** | Actively developed, personal/portfolio project |
 
@@ -118,9 +118,9 @@ as a "secure" product in the compliance sense.
 
 ## Branding notes
 
-- The product name is **SyncPad** — one word, capital S and capital P. Not "Sync Pad" or "Syncpad."
-- The wordmark styles it as **Sync** in the primary text color and **Pad** in the brand accent color (amber, `#f5a623` in the default theme) — see [`icon/`](icon/) and the landing page header for reference.
-- SyncPad ships 10 visual themes; the amber-on-charcoal "Charcoal Amber" theme shown in these assets is the default, not the only look. Screenshots in other themes are equally representative of the product.
+- The product name is **JotRelay** — one word, capital J and capital R. Not "Jot Relay" or "Jotrelay."
+- The wordmark styles it as **Jot** in the primary text color and **Relay** in the brand accent color (amber, `#f5a623` in the default theme) — see [`icon/`](icon/) and the landing page header for reference.
+- JotRelay ships 10 visual themes; the amber-on-charcoal "Charcoal Amber" theme shown in these assets is the default, not the only look. Screenshots in other themes are equally representative of the product.
 - Please don't alter the icon's proportions, add drop shadows/effects beyond what's already baked in, or recolor the mark. Cropping to a square or circle for platform-specific placements (app store tiles, avatars) is fine.
 
 ---
@@ -148,7 +148,7 @@ presskit/
 - Pre-rendered PNGs: `icon-512.png`, `icon-256.png`, `icon-128.png`,
   `favicon.png` (64×64), `favicon-32.png`
 - Regenerate the PNGs after editing the SVG with `npm run presskit:icons`
-  (see [the repo's scripts documentation](https://github.com/Spairkie/SyncPad/blob/main/docs/marketing-site.md#scripts)
+  (see [the repo's scripts documentation](https://github.com/Spairkie/JotRelay/blob/main/docs/marketing-site.md#scripts)
   for details and how to add more sizes)
 
 ### Screenshots
@@ -171,7 +171,7 @@ content (a fictional "Q3 Product Roadmap" room, sample files, etc.) rather
 than a live production room, so no real user data appears in them. Replace
 them with real captures once you have production screenshots you're happy
 with; see
-[docs/marketing-site.md](https://github.com/Spairkie/SyncPad/blob/main/docs/marketing-site.md#swapping-in-real-assets)
+[docs/marketing-site.md](https://github.com/Spairkie/JotRelay/blob/main/docs/marketing-site.md#swapping-in-real-assets)
 for how the current ones were generated and how to redo the process.
 
 ### Video
@@ -186,7 +186,7 @@ produce a narrated cut.
 The landing page hero itself no longer autoplays this file — it's a coded,
 interactive five-scene demo instead (`src/app/landing-demo.js` /
 `styles/landing-demo.css`; see
-[docs/marketing-site.md#coded-hero-demo](https://github.com/Spairkie/SyncPad/blob/main/docs/marketing-site.md#coded-hero-demo)).
+[docs/marketing-site.md#coded-hero-demo](https://github.com/Spairkie/JotRelay/blob/main/docs/marketing-site.md#coded-hero-demo)).
 `demo.mp4` remains available as a presskit/social-media asset and via the
 hero's "Watch recorded demo" link, which opens it on click rather than
 loading it automatically. See [`video/README.md`](video/README.md) for the
@@ -197,14 +197,14 @@ full story on the file itself and how to upgrade/regenerate it.
 ## Asset usage
 
 You're welcome to use the assets in this folder in an article, review, or
-similar piece of coverage about SyncPad, including:
+similar piece of coverage about JotRelay, including:
 
 - The icon/logo, unmodified except for simple resizing or cropping to a
   square/circle
 - The screenshots, cropped or annotated as needed for your layout
 
-Please don't imply SyncPad endorses your product or organization, and
-please don't use the assets in a way that suggests SyncPad is more
+Please don't imply JotRelay endorses your product or organization, and
+please don't use the assets in a way that suggests JotRelay is more
 established, funded, or "official" than a personal/portfolio project is —
 see [Product positioning](#product-positioning) above.
 
@@ -215,7 +215,7 @@ These assets are provided as-is, without warranty, for editorial use.
 ## Contact
 
 For interview requests, questions, or anything not covered here, use the
-[contact form on the SyncPad site](https://spairkie.github.io/SyncPad/contact).
+[contact form on the JotRelay site](https://spairkie.github.io/SyncPad/contact).
 
 *(This section is a placeholder — swap in a direct press email once one
 exists. Until then, the contact form is the reliable route.)*

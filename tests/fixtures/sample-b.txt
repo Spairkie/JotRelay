@@ -1,1 +1,1 @@
-Second fixture file for SyncPad file-upload tests.
+Second fixture file for JotRelay file-upload tests.

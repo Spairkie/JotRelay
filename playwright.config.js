@@ -2,7 +2,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * SyncPad Playwright configuration.
+ * JotRelay Playwright configuration.
  *
  * Tests are split across focused spec files. They run against a
  * locally-served copy of the app (http://localhost:5555).

@@ -1,4 +1,4 @@
-// SyncPad – comments.js
+// JotRelay – comments.js
 // Ephemeral comments anchored to a text range in a room's note
 // (syncpad_room_comments, see supabase/migrations/0003_room_comments.sql).
 //

@@ -73,7 +73,7 @@ test.describe('Accessibility & keyboard', () => {
   });
 
   test('custom confirm modal accessible: has role=dialog and aria-modal', async ({ page }) => {
-    // Confirm modal only needs the SyncPad app loaded — goToLanding avoids
+    // Confirm modal only needs the JotRelay app loaded — goToLanding avoids
     // the Supabase room-creation call that createRoom() requires.
     await goToLanding(page);
 

@@ -1,4 +1,4 @@
-// SyncPad – sync.js
+// JotRelay – sync.js
 // Coordinates two sync tracks:
 //   • Live Typing Lane  – Supabase Broadcast ~250 ms throttle, ephemeral
 //   • Save Lane         – Postgres, 1000 ms debounce + flush on blur/unload

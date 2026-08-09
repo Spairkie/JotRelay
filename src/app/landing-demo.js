@@ -1,4 +1,4 @@
-// SyncPad – app/landing-demo.js
+// JotRelay – app/landing-demo.js
 //
 // Coded, interactive hero demo for the marketing page (replaces the old
 // autoplaying MP4). A small explicit state machine over five scenes —
@@ -384,7 +384,7 @@ export function initLandingDemo() {
   });
 
   els.copyBtn?.addEventListener('click', async () => {
-    try { await navigator.clipboard?.writeText('syncpad.app/product-launch-plan'); } catch { /* clipboard permission denied — still show feedback */ }
+    try { await navigator.clipboard?.writeText('jotrelay.app/product-launch-plan'); } catch { /* clipboard permission denied — still show feedback */ }
     els.copyBtn.textContent = 'Copied!';
     els.copyBtn.classList.add('copied');
     setTimeout(() => {

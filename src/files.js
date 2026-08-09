@@ -1,4 +1,4 @@
-// SyncPad – files.js
+// JotRelay – files.js
 // File upload, download, and deletion.
 //
 // Delete order: storage FIRST, then metadata.

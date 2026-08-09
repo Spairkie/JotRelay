@@ -1,4 +1,4 @@
-// SyncPad – ui.js
+// JotRelay – ui.js
 // All DOM manipulation lives here. No business logic.
 //
 // This file is a barrel: the actual implementation lives in src/ui/, split

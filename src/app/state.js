@@ -1,4 +1,4 @@
-// SyncPad – app/state.js
+// JotRelay – app/state.js
 // Shared mutable state for the app/* modules — one object, imported by
 // reference everywhere (mutate its properties, never reassign the binding),
 // mirroring the pattern used by src/admin/state.js. Also home to the
