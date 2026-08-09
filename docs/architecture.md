@@ -61,7 +61,7 @@ Tracks which devices are currently in the room and renders the device list, typi
 Provides a thin abstraction over Supabase Broadcast channels. It dispatches outbound broadcast events and registers listeners that other modules subscribe to. It does NOT implement any sync logic itself — it is purely a transport layer for the Broadcast lane.
 
 ### `files.js`
-Handles file upload to the `syncpad-files` Storage bucket, maintains the signed-URL cache (`_urlCache`, 55-min TTL), and implements file deletion. It does NOT render file previews — that responsibility belongs to `file-preview.js`.
+Handles file upload to the `syncpad-files` Storage bucket, maintains the signed-URL cache (`_urlCache`, 55-min TTL), and implements file deletion. For an encrypted room, `uploadFile()` encrypts the file's bytes client-side (AES-256-GCM, same key as note text) before upload, and `getFilePreviewUrl()`/`getFileDownloadUrl()`/`resolveFileRef()` decrypt on the way back out into a local `Blob` object URL (`_blobUrlCache`, uncapped TTL — cached for the tab's lifetime, evicted on delete) — filename/mime_type stay plaintext in the DB regardless. It does NOT render file previews — that responsibility belongs to `file-preview.js`.
 
 ### `file-preview.js`
 Renders the in-app preview modal for attached files (images, PDFs, text, etc.). It requests signed URLs from `files.js` and inserts the appropriate preview element into the modal. It does NOT manage the file list or interact with Storage directly.

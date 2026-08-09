@@ -85,6 +85,46 @@ export async function decryptContent(cipherB64, key) {
 }
 
 /**
+ * Encrypt raw binary data (e.g. an uploaded file's bytes) with a CryptoKey.
+ * Same IV-prepended AES-GCM construction as encryptContent(), but operates
+ * on an ArrayBuffer directly instead of round-tripping through a base64
+ * string — for file-sized payloads (up to 10 MB) that round trip would
+ * needlessly inflate memory use by ~33% for no benefit, since the result is
+ * uploaded as a binary Blob, not embedded in JSON/text like note content.
+ * @param {ArrayBuffer} data
+ * @param {CryptoKey} key
+ * @returns {Promise<ArrayBuffer>} IV (12 bytes) + ciphertext, ready to upload as-is
+ */
+export async function encryptBuffer(data, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+  const combined = new Uint8Array(12 + cipher.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(cipher), 12);
+  return combined.buffer;
+}
+
+/**
+ * Decrypt an IV-prepended AES-GCM buffer produced by encryptBuffer().
+ * @param {ArrayBuffer} data
+ * @param {CryptoKey} key
+ * @returns {Promise<ArrayBuffer>} plaintext bytes
+ */
+export async function decryptBuffer(data, key) {
+  const combined = new Uint8Array(data);
+  if (combined.byteLength < 12) throw new Error('DECRYPT_FAILED');
+  try {
+    return await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: combined.slice(0, 12) },
+      key,
+      combined.slice(12)
+    );
+  } catch {
+    throw new Error('DECRYPT_FAILED');
+  }
+}
+
+/**
  * Returns true if the string looks like it could be AES-GCM base64 ciphertext.
  * Used as a heuristic before attempting decryption.
  *

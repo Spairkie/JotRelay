@@ -4,7 +4,7 @@
 
 import { escapeHtml, copyToClipboard } from '../utils.js';
 import { renderMarkdown, renderMarkdownWithToc, renderTocHtml, markdownToPlainText } from '../markdown.js';
-import { getDownloadUrl } from '../files.js';
+import { resolveFileRef } from '../files.js';
 import * as UI from '../ui.js';
 import { state } from './state.js';
 import { closeMoreDropdown } from './header.js';
@@ -24,18 +24,22 @@ export const _requireContent = () => {
 
 // Exported HTML/PDF are standalone documents with no live JS to resolve
 // syncpad-file: image references (see markdown.js/ui.js) the way the
-// preview pane does — resolve each to an actual signed URL once, up front,
-// and bake it in. An image whose file was since deleted (or fails to
-// resolve for any reason) is left as-is: no `src`, alt text still shows.
+// preview pane does — resolve each to an actual URL once, up front, and
+// bake it in. Each ref is the raw syncpad-file: value (a short file_no or,
+// for pre-0011 notes, a full legacy storage path) — resolveFileRef() (same
+// resolver the live preview pane uses) is what turns either shape into a
+// real URL, decrypting first for an encrypted file's blob if the room's key
+// is available. An image whose file was since deleted, or that can't be
+// decrypted (key unavailable), is left as-is: no `src`, alt text still shows.
 export const _resolveFileImageRefsForExport = async (html) => {
-  const paths = [...new Set(Array.from(html.matchAll(/data-syncpad-file="([^"]+)"/g), (m) => m[1]))];
-  if (!paths.length) return html;
-  const urlByPath = new Map();
-  await Promise.all(paths.map(async (path) => {
-    try { urlByPath.set(path, await getDownloadUrl(path)); } catch { /* left unresolved */ }
+  const refs = [...new Set(Array.from(html.matchAll(/data-syncpad-file="([^"]+)"/g), (m) => m[1]))];
+  if (!refs.length) return html;
+  const urlByRef = new Map();
+  await Promise.all(refs.map(async (ref) => {
+    try { urlByRef.set(ref, await resolveFileRef(state.roomId, ref, state.encKey)); } catch { /* left unresolved */ }
   }));
-  return html.replace(/<img data-syncpad-file="([^"]+)"([^>]*)>/g, (full, path, rest) => {
-    const url = urlByPath.get(path);
+  return html.replace(/<img data-syncpad-file="([^"]+)"([^>]*)>/g, (full, ref, rest) => {
+    const url = urlByRef.get(ref);
     return url ? `<img src="${escapeHtml(url)}"${rest}>` : full;
   });
 };

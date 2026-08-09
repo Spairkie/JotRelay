@@ -13,6 +13,7 @@
 // syncpad-files Storage bucket. Those must be cleaned up separately.
 import { getSupabaseClient } from './supabase.js';
 import { logSupabaseError, getDeviceId } from './utils.js';
+import { encryptBuffer, decryptBuffer } from './encryption.js';
 
 const BUCKET   = 'syncpad-files';
 const TABLE    = 'syncpad_files';
@@ -66,14 +67,62 @@ function _evictExpired(cache) {
   }
 }
 
-export async function uploadFile(roomId, file) {
+// ── Decrypted blob URL cache (encrypted files only) ─────────────────────────
+// A decrypted file's plaintext bytes never change, so — unlike the signed-URL
+// caches above — this has no TTL; it's cached for the tab's lifetime and only
+// evicted when the file itself is deleted (see deleteFile()). Each entry is a
+// browser object URL (URL.createObjectURL), which must be explicitly revoked
+// on eviction or it leaks the underlying Blob for the life of the page.
+const _blobUrlCache = new Map(); // filePath → object URL string
+
+async function _getDecryptedBlobUrl(filePath, mimeType, key) {
+  const cached = _blobUrlCache.get(filePath);
+  if (cached) return cached;
+
+  const signedUrl = await getDownloadUrl(filePath);
+  const res = await fetch(signedUrl);
+  if (!res.ok) throw new Error(`Could not fetch file (HTTP ${res.status}).`);
+  const cipherBuf = await res.arrayBuffer();
+  const plainBuf  = await decryptBuffer(cipherBuf, key);
+  const url = URL.createObjectURL(new Blob([plainBuf], { type: mimeType || 'application/octet-stream' }));
+  _blobUrlCache.set(filePath, url);
+  return url;
+}
+
+function _evictBlobUrl(filePath) {
+  const url = _blobUrlCache.get(filePath);
+  if (url) { URL.revokeObjectURL(url); _blobUrlCache.delete(filePath); }
+}
+
+/**
+ * @param {string} roomId
+ * @param {File} file
+ * @param {{ encryptionKey?: CryptoKey }} [opts] – pass the room's derived key
+ *   for an encrypted room to encrypt the file's bytes client-side before
+ *   upload (AES-256-GCM, same key as the note text). Omit for an
+ *   unencrypted room — the file uploads as-is, unchanged from before.
+ */
+export async function uploadFile(roomId, file, { encryptionKey } = {}) {
   if (file.size > MAX_SIZE) throw new Error('File too large. Maximum size is 10 MB.');
   const sb       = getSupabaseClient();
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const filePath = `${roomId}/${Date.now()}_${safeName}`;
 
+  let body        = file;
+  let contentType = file.type || 'application/octet-stream';
+  const encrypted = !!encryptionKey;
+  if (encrypted) {
+    const plainBuf  = await file.arrayBuffer();
+    const cipherBuf = await encryptBuffer(plainBuf, encryptionKey);
+    // Opaque content-type for ciphertext — the real mime_type is still kept
+    // in metadata (see below) so preview/render logic can route on it
+    // synchronously without decrypting first.
+    body        = new Blob([cipherBuf], { type: 'application/octet-stream' });
+    contentType = 'application/octet-stream';
+  }
+
   const { error: uploadError } = await sb.storage.from(BUCKET).upload(
-    filePath, file, { contentType: file.type || 'application/octet-stream' }
+    filePath, body, { contentType }
   );
   if (uploadError) {
     logSupabaseError('uploadFile:storage', uploadError, { room_id: roomId });
@@ -85,9 +134,13 @@ export async function uploadFile(roomId, file) {
       room_id:           roomId,
       filename:          file.name,
       file_path:         filePath,
+      // Original plaintext size, not the ~28-byte-larger ciphertext blob —
+      // more accurate for display and cheap to keep since it's already
+      // known before encryption.
       file_size:         file.size,
       mime_type:         file.type || null,
       uploaded_by_device: getDeviceId(),
+      encrypted,
     })
     .select()
     .single();
@@ -164,6 +217,33 @@ export async function getForceDownloadUrl(filePath, filename, { fresh = false } 
 }
 
 /**
+ * Get a URL suitable for inline preview (image src, PDF/SVG new-tab link,
+ * fetch()'d text/markdown/CSV) — same use as getDownloadUrl(), but decrypts
+ * first when the file was uploaded encrypted. Returns a local blob: object
+ * URL for encrypted files (see _getDecryptedBlobUrl above) or a plain signed
+ * URL otherwise.
+ * @param {object} file – row from syncpad_files
+ * @param {CryptoKey|null} [key] – the room's decryption key, if available
+ */
+export async function getFilePreviewUrl(file, key) {
+  if (file.encrypted && key) return _getDecryptedBlobUrl(file.file_path, file.mime_type, key);
+  return getDownloadUrl(file.file_path);
+}
+
+/**
+ * Get a URL suitable for a "Download" action, saving under the file's
+ * original name. For an encrypted file this is a decrypted blob: URL — same
+ * origin, so the anchor's `download` attribute is honored natively without
+ * needing Storage's `download` query param trick (see getForceDownloadUrl).
+ * @param {object} file – row from syncpad_files
+ * @param {CryptoKey|null} [key] – the room's decryption key, if available
+ */
+export async function getFileDownloadUrl(file, key) {
+  if (file.encrypted && key) return _getDecryptedBlobUrl(file.file_path, file.mime_type, key);
+  return getForceDownloadUrl(file.file_path, file.filename);
+}
+
+/**
  * Delete a file. Removes storage first, then metadata.
  *
  * Step 1: Delete from storage. If it fails, abort with an error — the file
@@ -193,6 +273,7 @@ export async function deleteFile(fileId, filePath, { roomId, fileNo } = {}) {
   // Evict cached signed URLs so stale links are not returned after deletion.
   _urlCache.delete(filePath);
   _downloadUrlCache.delete(filePath);
+  _evictBlobUrl(filePath);
   if (roomId != null && fileNo != null) _fileByRoomAndNo.delete(`${roomId}:${fileNo}`);
 
   // Step 1: Delete from storage. Abort if this fails.
@@ -245,13 +326,18 @@ export async function getFileByNo(roomId, fileNo) {
  *     every insert/paste/drop has produced since 0011_short_file_references.sql.
  *   - anything else — a full legacy storage path (contains "/"), the only
  *     shape that existed before file_no; resolved exactly as before so
- *     notes written before this change keep working unmodified.
+ *     notes written before this change keep working unmodified. Legacy
+ *     paths predate the `encrypted` column entirely, so they're never
+ *     encrypted — no row lookup (and thus no decryption) is needed for them.
+ * @param {string} roomId
+ * @param {string} ref
+ * @param {CryptoKey|null} [key] – the room's decryption key, if available
  */
-export async function resolveFileRef(roomId, ref) {
+export async function resolveFileRef(roomId, ref, key) {
   if (/^\d+$/.test(ref)) {
     const row = await getFileByNo(roomId, Number(ref));
     if (!row) throw new Error('File not found.');
-    return getDownloadUrl(row.file_path);
+    return getFilePreviewUrl(row, key);
   }
   return getDownloadUrl(ref);
 }

@@ -90,10 +90,12 @@ export function canToggleLock() {
 }
 
 export function canUploadFiles() {
-  // File attachments are stored in Supabase Storage and are not protected by
-  // the room text-encryption key, so v1 blocks new uploads while text
-  // encryption is enabled to avoid a false sense of end-to-end file security.
-  return !_anyEditBlock() && !_ctx.isEncryptionEnabled;
+  // Uploads to an encrypted room are themselves encrypted client-side with
+  // the room's key before they ever reach Supabase Storage (see files.js's
+  // uploadFile()), so — unlike the earlier v1 behavior that blocked uploads
+  // outright while encryption was enabled — having the key is enough; no
+  // separate isEncryptionEnabled block is needed here.
+  return !_anyEditBlock();
 }
 
 export function canDeleteFiles() {

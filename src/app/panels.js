@@ -552,7 +552,7 @@ export function _wireSettings() {
       let existingFiles;
       try { existingFiles = await listFiles(state.roomId); }
       catch { existingFiles = []; } // non-critical — just skip the warning if file list fails
-      if (existingFiles.length && !await UI.showConfirm('This room has file attachments. SyncPad v1 encrypts note text only — files are not encrypted. Continue?', { confirmLabel: 'Continue' })) return;
+      if (existingFiles.length && !await UI.showConfirm('This room already has file attachments that were uploaded before encryption was turned on — they will stay unencrypted. Only newly uploaded files will be encrypted. Continue?', { confirmLabel: 'Continue' })) return;
       const pp = await UI.showPrompt('Set an encryption passphrase:', { placeholder: 'Passphrase…', confirmLabel: 'Enable encryption' });
       if (!pp?.trim()) return;
       // PBKDF2 key derivation takes 1-3 s — indicate progress on the button.

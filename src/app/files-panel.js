@@ -4,7 +4,7 @@
 // delete, and bulk-select.
 
 import { copyToClipboard } from '../utils.js';
-import { uploadFile, listFiles, deleteFile, getDownloadUrl, getForceDownloadUrl } from '../files.js';
+import { uploadFile, listFiles, deleteFile, getFilePreviewUrl, getFileDownloadUrl, getForceDownloadUrl } from '../files.js';
 import { canUploadFiles, canDeleteFiles, canEdit, editBlockedReason } from '../permissions.js';
 import { broadcastFilesChange } from '../live-broadcast.js';
 import * as UI from '../ui.js';
@@ -60,7 +60,7 @@ function _sortFiles(files) {
  */
 export async function _uploadAndInsertImages(files) {
   if (!canUploadFiles()) {
-    UI.showToast(editBlockedReason() || 'File upload is disabled. Text-encrypted rooms do not allow new file uploads in v1.', 'warning');
+    UI.showToast(editBlockedReason() || 'File upload is disabled.', 'warning');
     return;
   }
   const tooLarge = files.filter(f => f.size > 10 * 1024 * 1024);
@@ -78,7 +78,7 @@ export async function _uploadAndInsertImages(files) {
   for (let i = 0; i < toUpload.length; i++) {
     if (toUpload.length > 1) UI.setUploadingState(true, `Uploading image ${i + 1} of ${toUpload.length}…`);
     try {
-      const record = await uploadFile(state.roomId, toUpload[i]);
+      const record = await uploadFile(state.roomId, toUpload[i], { encryptionKey: state.encKey });
       _insertTextAtActiveCursor(`![${_escapeMdLabel(record.filename)}](syncpad-file:${_fileRefId(record)})\n`);
       succeeded++;
     } catch { failed++; }
@@ -108,7 +108,7 @@ export async function refreshFiles() {
     files,
     async (file) => {
       try {
-        const url = await getForceDownloadUrl(file.file_path, file.filename);
+        const url = await getFileDownloadUrl(file, state.encKey);
         const a   = document.createElement('a');
         a.href = url; a.download = file.filename;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -164,10 +164,10 @@ export async function refreshFiles() {
         try {
           await openFilePreview(
             file,
-            getDownloadUrl,
+            () => getFilePreviewUrl(file, state.encKey),
             async (f) => {
               try {
-                const url = await getForceDownloadUrl(f.file_path, f.filename);
+                const url = await getFileDownloadUrl(f, state.encKey);
                 const a   = document.createElement('a');
                 a.href = url; a.download = f.filename;
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -177,6 +177,13 @@ export async function refreshFiles() {
         } catch { UI.showToast('Could not open preview.', 'error'); }
       },
       onCopyLink: async (file) => {
+        // A copied link is a raw signed Storage URL, opened outside the app —
+        // for an encrypted file that would just hand out ciphertext with no
+        // way to decrypt it, so there's nothing useful to copy.
+        if (file.encrypted) {
+          UI.showToast('This file is encrypted — download it instead of copying a link.', 'warning');
+          return;
+        }
         try {
           // Always mint a fresh URL rather than reusing a cached one — a
           // cached entry can already be up to 55 minutes old, and this link
@@ -197,7 +204,7 @@ export async function refreshFiles() {
 export function _wireFiles() {
   // ── Files ──────────────────────────────────────────────────────────────────
   UI.setFileHandlers(async (files) => {
-    if (!canUploadFiles()) { UI.showToast(editBlockedReason() || 'File upload is disabled. Text-encrypted rooms do not allow new file uploads in v1.', 'warning'); return; }
+    if (!canUploadFiles()) { UI.showToast(editBlockedReason() || 'File upload is disabled.', 'warning'); return; }
 
     const tooLarge = files.filter(f => f.size > 10 * 1024 * 1024);
     const toUpload = files.filter(f => f.size <= 10 * 1024 * 1024);
@@ -219,7 +226,7 @@ export function _wireFiles() {
     for (let i = 0; i < toUpload.length; i++) {
       if (toUpload.length > 1) UI.setUploadingState(true, `Uploading ${i + 1} of ${toUpload.length}…`);
       try {
-        await uploadFile(state.roomId, toUpload[i]);
+        await uploadFile(state.roomId, toUpload[i], { encryptionKey: state.encKey });
         succeeded++;
       } catch { failed++; }
     }

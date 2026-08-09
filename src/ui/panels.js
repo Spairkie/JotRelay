@@ -308,7 +308,7 @@ export function renderFilesList(files, onDownload, onDelete, opts = {}) {
       ${selectMode ? `<input type="checkbox" class="file-select-cb" aria-label="Select ${escapeHtml(file.filename)}"${selectedIds.has(file.id) ? ' checked' : ''}>` : ''}
       <div class="file-emoji" aria-hidden="true">${fileEmoji(file.mime_type, file.filename)}</div>
       <div class="file-info">
-        <div class="file-name">${escapeHtml(file.filename)}</div>
+        <div class="file-name">${file.encrypted ? `<span class="file-encrypted-icon" title="Content encrypted with the room's passphrase" aria-label="Encrypted">${getIcon('lock', 11)}</span>` : ''}${escapeHtml(file.filename)}</div>
         <div class="file-meta">${formatFileSize(file.file_size)} · ${formatTimestamp(file.uploaded_at)}${
           (!selectMode && onCopyRef && file.file_no != null)
             ? ` · <button class="file-ref-badge" type="button" title="Copy reference: syncpad-file:${file.file_no} — type this directly into the note to link this file, no need to open this panel" aria-label="Copy reference for ${escapeHtml(file.filename)}">#${file.file_no}</button>`

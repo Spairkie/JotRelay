@@ -103,6 +103,11 @@
 .file-emoji { font-size: 20px; flex-shrink: 0; line-height: 1; }
 .file-info { flex: 1; min-width: 0; }
 .file-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-encrypted-icon {
+  display: inline-flex; vertical-align: -1px; margin-right: 4px;
+  color: var(--text-secondary);
+}
+.file-encrypted-icon svg { width: 11px; height: 11px; }
 .file-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
 /* Short, human-typable file reference (syncpad-file:<N>) — click to copy.
    Monospace + a subtle pill so it visually reads as "code you could type",
