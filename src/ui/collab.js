@@ -26,8 +26,23 @@ export function openFloatingCommentComposer(coords, onSubmit) {
 
   const wrap = document.createElement('div');
   wrap.className = 'comment-floating-composer';
-  wrap.style.left = `${coords.x}px`;
-  wrap.style.top  = `${coords.y}px`;
+
+  // On narrow viewports this docks to the bottom via CSS (see modals.css)
+  // instead of the caret-relative position below — coords.y is a snapshot
+  // taken BEFORE input.focus() opens the on-screen keyboard, and never
+  // gets corrected afterward, so a caret anywhere in the lower half of the
+  // screen ends up placing the composer on top of the bottom action bar
+  // once the keyboard (and --kb-inset) actually show up. The bottom dock
+  // sidesteps the staleness entirely by not depending on a pre-keyboard
+  // coordinate at all — same fix already applied to Find & Replace (see
+  // #search-panel's mobile rules).
+  const mobile = window.matchMedia?.('(max-width: 639px)').matches;
+  if (mobile) {
+    wrap.classList.add('comment-floating-composer-dock');
+  } else {
+    wrap.style.left = `${coords.x}px`;
+    wrap.style.top  = `${coords.y}px`;
+  }
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -38,20 +53,22 @@ export function openFloatingCommentComposer(coords, onSubmit) {
   layer.appendChild(wrap);
   _floatingComposerEl = wrap;
 
-  // coords is the raw caret position and, combined with the CSS
-  // translate(-8px,-100%) anchor, can place the composer partly or fully
-  // off-screen — most easily on narrow phones, where the editor spans
-  // nearly the full viewport width so a caret near the right/top edge is
-  // common. Nudge left/top back on-screen using the actual rendered box.
-  const margin = 8;
-  const rect = wrap.getBoundingClientRect();
-  let dx = 0, dy = 0;
-  if (rect.left < margin) dx = margin - rect.left;
-  else if (rect.right > window.innerWidth - margin) dx = (window.innerWidth - margin) - rect.right;
-  if (rect.top < margin) dy = margin - rect.top;
-  if (dx || dy) {
-    wrap.style.left = `${coords.x + dx}px`;
-    wrap.style.top  = `${coords.y + dy}px`;
+  if (!mobile) {
+    // coords is the raw caret position and, combined with the CSS
+    // translate(-8px,-100%) anchor, can place the composer partly or fully
+    // off-screen — most easily on narrow phones, where the editor spans
+    // nearly the full viewport width so a caret near the right/top edge is
+    // common. Nudge left/top back on-screen using the actual rendered box.
+    const margin = 8;
+    const rect = wrap.getBoundingClientRect();
+    let dx = 0, dy = 0;
+    if (rect.left < margin) dx = margin - rect.left;
+    else if (rect.right > window.innerWidth - margin) dx = (window.innerWidth - margin) - rect.right;
+    if (rect.top < margin) dy = margin - rect.top;
+    if (dx || dy) {
+      wrap.style.left = `${coords.x + dx}px`;
+      wrap.style.top  = `${coords.y + dy}px`;
+    }
   }
 
   input.focus();

@@ -309,6 +309,27 @@
   padding: 6px 10px; box-shadow: var(--shadow-md); outline: none;
 }
 @keyframes comment-floating-in { from{ opacity:0; transform:translate(-8px, -94%); } to{ opacity:1; transform:translate(-8px, -100%); } }
+/* Mobile: docks to the bottom above the keyboard instead of the caret-
+   relative position above — see openFloatingCommentComposer()'s own
+   comment for why a caret-anchored snapshot goes stale the moment the
+   on-screen keyboard opens and shifts the visible viewport. A dedicated
+   class (added by JS, replacing the inline left/top the desktop path
+   sets) rather than a plain media-query override, since overriding those
+   inline styles would need !important and fighting the shared entrance
+   keyframe's own transform. Mirrors #search-panel's mobile treatment,
+   including replacing .mobile-action-bar's footprint (rules further
+   down) instead of stacking above it. */
+@media (max-width: 639px) {
+  .comment-floating-composer-dock {
+    position: fixed; left: 8px; right: 8px; top: auto;
+    bottom: calc(8px + var(--kb-inset, 0px));
+    max-width: none; transform: none;
+    transition: bottom 0.15s ease;
+    animation: comment-floating-in-dock 0.15s ease forwards;
+  }
+  .comment-floating-composer-dock input { width: 100%; font-size: 16px; }
+  @keyframes comment-floating-in-dock { from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:translateY(0); } }
+}
 
 /* ══════════════════════════════════════════════════════════════
    MOBILE BOTTOM ACTION BAR
@@ -796,4 +817,25 @@ kbd {
      clear rather than hidden. 350px covers the same worst-case (expanded,
      ~312px) height as the toast, plus its own 8px bottom margin. */
   body:has(#search-panel.open) .remote-notice { bottom: 350px; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FLOATING COMMENT COMPOSER — MOBILE: same "replaces the bottom
+   action bar's footprint" treatment as Find & Replace above — see
+   that section's comments for the full reasoning.
+══════════════════════════════════════════════════════════════ */
+@media (max-width: 639px) {
+  body:has(.comment-floating-composer-dock) .mobile-action-bar { display: none; }
+  body:has(.comment-floating-composer-dock) #app-screen {
+    padding-bottom: calc(8px + var(--kb-inset, 0px));
+  }
+  /* ~40px tall (16px input line-height + 12px padding + 8px bottom gap) —
+     64px clears it with a little headroom. */
+  body:has(.comment-floating-composer-dock) #toast-container {
+    bottom: calc(64px + var(--kb-inset, 0px));
+  }
+  /* The add-comment FAB is what opened this composer — hide it while open,
+     same as it's hidden for #search-panel above. */
+  body:has(.comment-floating-composer-dock) #btn-add-comment-fab { display: none; }
+  body:has(.comment-floating-composer-dock) .remote-notice { bottom: 64px; }
 }
