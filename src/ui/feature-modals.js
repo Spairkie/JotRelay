@@ -4,6 +4,7 @@ import { escapeHtml, copyToClipboard } from '../utils.js';
 import { TEMPLATE_CATEGORY_ORDER } from '../templates.js';
 import { showToast } from './core.js';
 import { openModal, closeModal, showConfirm, showPrompt } from './dialogs.js';
+import { BRAND_NAME } from '../brand.js';
 
 // ── Command palette ─────────────────────────────────────────────────────────
 
@@ -227,7 +228,7 @@ function _wireNativeShare(btnId, url, label) {
   btn.title = hasNativeShare ? '' : 'Native share is not available on this device.';
   btn.onclick = () => {
     if (!canShare) return;
-    navigator.share({ title: 'JotRelay', text: label, url }).catch(() => {});
+    navigator.share({ title: BRAND_NAME, text: label, url }).catch(() => {});
   };
 }
 

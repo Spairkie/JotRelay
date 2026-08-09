@@ -8,6 +8,7 @@ import { resolveFileRef } from '../files.js';
 import * as UI from '../ui.js';
 import { state } from './state.js';
 import { closeMoreDropdown } from './header.js';
+import { BRAND_NAME } from '../brand.js';
 
 export const _downloadBlob = (content, filename, mime) => {
   const blob = new Blob([content], { type: mime });
@@ -90,7 +91,7 @@ export function _wireExportModal() {
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>JotRelay – ${escapeHtml(state.roomId)}</title>
+<title>${BRAND_NAME} – ${escapeHtml(state.roomId)}</title>
 <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;color:#1a1a1a;line-height:1.7}
 pre{background:#f5f5f5;padding:1em;border-radius:4px;overflow:auto}code{background:#f5f5f5;padding:2px 4px;border-radius:2px}
 blockquote{border-left:3px solid #ccc;margin:0;padding-left:1em;color:#666}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:6px 10px}
