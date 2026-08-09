@@ -12,6 +12,15 @@
 import { test, expect } from '@playwright/test';
 import { createRoom, typeInEditor, setEditorMode, getEditorContent, ensureWriteMode } from './helpers.js';
 
+test.describe('Keyboard Shortcuts modal', () => {
+  // Static markup, present regardless of route — no room/Supabase needed.
+  test('notes that every listed shortcut also has a touch-accessible button', async ({ page }) => {
+    await page.goto('/SyncPad/');
+    await page.evaluate(() => document.getElementById('shortcuts-modal')?.classList.add('visible'));
+    await expect(page.locator('#shortcuts-modal')).toContainText('No physical keyboard?');
+  });
+});
+
 test.describe('Keyboard shortcuts inside the CM6 live surface', () => {
   test('Ctrl+B bolds the selection when focus is in the live surface, not the Write textarea', async ({ page }) => {
     await createRoom(page);
