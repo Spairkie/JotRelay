@@ -452,3 +452,14 @@ export function filterCommands(commands, query) {
     .sort((a, b) => a.rank - b.rank)
     .map((x) => x.cmd);
 }
+
+/** Stable per-device colour derived from its id — the same colour a
+ *  device's caret/selection renders in inside the Live editor surface
+ *  (live-editor.js) and the Devices panel's presence dot (ui/panels.js),
+ *  so a collaborator's colour reads the same wherever it shows up. */
+export function colorForDevice(deviceId) {
+  let hash = 0;
+  const s = String(deviceId || '');
+  for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
+  return `hsl(${((hash % 360) + 360) % 360}, 65%, 48%)`;
+}

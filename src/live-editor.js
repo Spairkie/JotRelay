@@ -21,7 +21,7 @@ import {
   StateField, StateEffect,
   javascript, python, json, html, css, shell,
 } from '../vendor/codemirror.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, colorForDevice } from './utils.js';
 import { highlightExtension } from './markdown-highlight-extension.js';
 import { parseTableAlignments } from './markdown-table-utils.js';
 import { EMOJI_MAP } from './markdown-emoji-map.js';
@@ -878,13 +878,10 @@ const _tableField = StateField.define({
   provide: (f) => EditorView.decorations.from(f),
 });
 
-/** Stable per-device caret colour derived from its id. */
-export function colorForDevice(deviceId) {
-  let hash = 0;
-  const s = String(deviceId || '');
-  for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
-  return `hsl(${((hash % 360) + 360) % 360}, 65%, 48%)`;
-}
+// colorForDevice() moved to utils.js — shared with the Devices panel's
+// presence dot (ui/panels.js), so a collaborator's colour matches between
+// their in-editor caret and their row in that list.
+export { colorForDevice };
 
 /**
  * Render carets (and selection ranges, when a collaborator has one) for

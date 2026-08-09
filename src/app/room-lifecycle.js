@@ -592,7 +592,12 @@ async function startApp(isNewRoom = false) {
     }
     UI.renderDevicesList(devices, deviceId, (name) => {
       setDeviceName(name);
-      updatePresenceDeviceName(getDeviceName());
+      // setDeviceName() trims/falls back to a fresh generated name for a
+      // blank input, so read back the name that actually got applied
+      // rather than trusting the raw input the rename came from.
+      const applied = getDeviceName();
+      updatePresenceDeviceName(applied);
+      UI.showToast(`Renamed to "${applied}" — visible to everyone in this room.`, 'success');
     }, {
       followedDeviceId: state.followedDeviceId,
       onToggleFollow: (id) => {

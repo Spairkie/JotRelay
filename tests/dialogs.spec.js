@@ -403,6 +403,62 @@ test.describe('Presence live announcer', () => {
   });
 });
 
+test.describe('Devices list rename input', () => {
+  // renderDevicesList() re-renders on every presence 'sync' event, which
+  // fires for ANY connected device's typing/cursor activity — a full
+  // rebuild while this device's own rename input is mid-edit would yank
+  // focus and the in-progress text out from under the user.
+  test('a re-render triggered by another device does not disturb an in-progress rename', async ({ page }) => {
+    await goToLanding(page);
+    const result = await page.evaluate(async () => {
+      const ui = await import('/SyncPad/src/ui.js');
+      ui.renderDevicesList([
+        { device_id: 'me', device_name: 'Me' },
+        { device_id: 'a', device_name: 'Alice', typing: false },
+      ], 'me', () => {});
+
+      const input = document.querySelector('.device-name-edit');
+      input.focus();
+      input.value = 'Mid-rename tex';
+      input.setSelectionRange(5, 5); // caret mid-string, not just at the end
+
+      // Simulate the re-render that Alice's cursor broadcast would trigger.
+      ui.renderDevicesList([
+        { device_id: 'me', device_name: 'Me' },
+        { device_id: 'a', device_name: 'Alice', typing: true, cursor_line: 7 },
+      ], 'me', () => {});
+
+      const stillThere = document.querySelector('.device-name-edit');
+      return {
+        sameNode: stillThere === input,
+        value: stillThere?.value,
+        stillFocused: document.activeElement === stillThere,
+        selectionStart: stillThere?.selectionStart,
+      };
+    });
+    expect(result.sameNode).toBe(true);
+    expect(result.value).toBe('Mid-rename tex');
+    expect(result.stillFocused).toBe(true);
+    expect(result.selectionStart).toBe(5);
+  });
+
+  test('a render after blurring the rename input applies normally', async ({ page }) => {
+    await goToLanding(page);
+    const result = await page.evaluate(async () => {
+      const ui = await import('/SyncPad/src/ui.js');
+      ui.renderDevicesList([{ device_id: 'me', device_name: 'Me' }], 'me', () => {});
+      document.querySelector('.device-name-edit').focus();
+      document.querySelector('.device-name-edit').blur();
+      ui.renderDevicesList([
+        { device_id: 'me', device_name: 'Me' },
+        { device_id: 'a', device_name: 'Alice', typing: false },
+      ], 'me', () => {});
+      return document.querySelectorAll('.device-item').length;
+    });
+    expect(result).toBe(2);
+  });
+});
+
 // ── Pasted-image resolution in preview ──────────────────────────────────────────
 
 test.describe('Preview resolves syncpad-file: image references', () => {

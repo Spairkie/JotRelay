@@ -393,7 +393,9 @@
   background: var(--bg-elevated); border: 1px solid var(--border); margin-bottom: 8px;
 }
 .device-item.me { border-color: rgba(245,166,35,0.25); }
-.device-dot  { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; margin-top: 2px; }
+/* background is set inline per device (colorForDevice()) — matches that
+   device's caret/selection colour in the Live editor surface. */
+.device-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
 .device-info { flex: 1; min-width: 0; }
 .device-name-text { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .device-meta { display: flex; align-items: center; gap: 4px; margin-top: 2px; flex-wrap: wrap; }
@@ -411,6 +413,13 @@
   color: var(--text-muted); border: 1px solid transparent;
 }
 .device-follow-btn:hover { color: var(--text-primary); background: var(--bg-base); }
+@media (max-width: 639px) {
+  /* Same fixes as Find/Replace and the Comments panel: under 16px triggers
+     iOS Safari's zoom-on-focus, and 26px is under the ~44px touch-target
+     guideline used elsewhere in this pass. */
+  .device-name-edit { font-size: 16px; }
+  .device-follow-btn { width: 40px; height: 40px; }
+}
 .device-follow-btn.is-active { color: var(--accent); background: var(--accent-dim); border-color: var(--accent); }
 .device-name-edit {
   width: 100%; padding: 4px 8px; border-radius: var(--radius-sm);
