@@ -24,11 +24,11 @@ export const THEMES = [
 
 /**
  * Apply a theme by setting data-theme on <html>.
- * 'charcoal-amber' is the default and removes the attribute.
+ * 'midnight-blue' is the default and removes the attribute.
  */
 export function applyTheme(id) {
   const root = document.documentElement;
-  if (!id || id === 'charcoal-amber') {
+  if (!id || id === 'midnight-blue') {
     root.removeAttribute('data-theme');
   } else {
     root.setAttribute('data-theme', id);
@@ -128,11 +128,11 @@ function _updateFaviconForTheme(id) {
 export function loadSavedTheme() {
   let saved;
   try { saved = localStorage.getItem(THEME_KEY); } catch {}
-  applyTheme(saved || 'charcoal-amber');
+  applyTheme(saved || 'midnight-blue');
 }
 
 /** Return the currently active theme ID. */
 export function getSavedTheme() {
-  try { return localStorage.getItem(THEME_KEY) || 'charcoal-amber'; } catch {}
-  return 'charcoal-amber';
+  try { return localStorage.getItem(THEME_KEY) || 'midnight-blue'; } catch {}
+  return 'midnight-blue';
 }

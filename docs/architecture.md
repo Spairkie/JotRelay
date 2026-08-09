@@ -261,13 +261,16 @@ Styles are split across several plain CSS files under `styles/`, loaded via orde
 ### Available Themes
 | Theme key | Description |
 |---|---|
-| `charcoal-amber` | Dark charcoal background with amber accent (default) |
-| `midnight-blue` | Deep navy tones with blue highlights |
+| `midnight-blue` | Deep navy tones with blue highlights (default) |
+| `charcoal-amber` | Dark charcoal background with amber accent |
 | `forest-green` | Dark green palette |
-| `paper-light` | Light parchment — the only light theme |
 | `terminal` | High-contrast black with green monospace aesthetic |
 | `mocha-dark` | Warm dark brown palette |
-| `lavender-light` | Light lilac — the second light theme |
+| `crimson-night` | Near-black with a red accent |
+| `paper-light` | Light parchment |
+| `lavender-light` | Light lilac |
+| `arctic` | Light, cool teal-accented palette |
+| `rose` | Light, pink-accented palette |
 
 ### Transitions
 Theme switches animate smoothly, but only on appropriate elements to avoid janky flashes on interactive controls:

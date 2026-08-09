@@ -119,8 +119,8 @@ as a "secure" product in the compliance sense.
 ## Branding notes
 
 - The product name is **JotRelay** — one word, capital J and capital R. Not "Jot Relay" or "Jotrelay."
-- The wordmark styles it as **Jot** in the primary text color and **Relay** in the brand accent color (amber, `#f5a623` in the default theme) — see [`icon/`](icon/) and the landing page header for reference.
-- JotRelay ships 10 visual themes; the amber-on-charcoal "Charcoal Amber" theme shown in these assets is the default, not the only look. Screenshots in other themes are equally representative of the product.
+- The wordmark styles it as **Jot** in the primary text color and **Relay** in the brand accent color (blue, `#60a5fa` in the default theme) — see [`icon/`](icon/) and the landing page header for reference.
+- JotRelay ships 10 visual themes; the blue-on-navy "Midnight Blue" theme is the default, not the only look. Screenshots in these assets may show other themes (e.g. the amber-on-charcoal "Charcoal Amber" theme) — all are equally representative of the product.
 - Please don't alter the icon's proportions, add drop shadows/effects beyond what's already baked in, or recolor the mark. Cropping to a square or circle for platform-specific placements (app store tiles, avatars) is fine.
 
 ---
