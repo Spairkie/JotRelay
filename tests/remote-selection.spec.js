@@ -15,7 +15,7 @@ import { createRoom, createFreshRoom, setEditorMode, typeInEditor, openPanel } f
 
 async function setRemoteCursors(page, cursors) {
   await page.evaluate(async (cursors) => {
-    const LE = await import('/SyncPad/src/live-editor.js');
+    const LE = await import('/JotRelay/src/live-editor.js');
     LE.setRemoteCursors(cursors);
   }, cursors);
 }
@@ -62,7 +62,7 @@ test.describe('Follow mode', () => {
     await openPanel(page, 'presence');
 
     await page.evaluate(async () => {
-      const UI = await import('/SyncPad/src/ui.js');
+      const UI = await import('/JotRelay/src/ui.js');
       window.__jotrelayFollowed = null;
       UI.renderDevicesList(
         [
@@ -91,7 +91,7 @@ test.describe('Devices panel — joined time & followed-by indicator', () => {
     await openPanel(page, 'presence');
 
     await page.evaluate(async () => {
-      const UI = await import('/SyncPad/src/ui.js');
+      const UI = await import('/JotRelay/src/ui.js');
       UI.renderDevicesList(
         [
           { device_id: 'me', device_name: 'Me', isMe: true, read_only: false, typing: false, cursor_line: null, joined_at: Date.now() - 5000 },
@@ -112,7 +112,7 @@ test.describe('Devices panel — joined time & followed-by indicator', () => {
     await openPanel(page, 'presence');
 
     await page.evaluate(async () => {
-      const UI = await import('/SyncPad/src/ui.js');
+      const UI = await import('/JotRelay/src/ui.js');
       UI.renderDevicesList(
         [
           { device_id: 'me', device_name: 'Me', isMe: true, read_only: false, typing: false, cursor_line: null, followedByCount: 2 },

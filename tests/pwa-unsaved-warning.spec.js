@@ -10,9 +10,9 @@
 import { test, expect } from '@playwright/test';
 
 test('hasUnsavedChanges() flips true synchronously on local input, false at rest', async ({ page }) => {
-  await page.goto('/SyncPad/');
+  await page.goto('/JotRelay/');
   const result = await page.evaluate(async () => {
-    const Sync = await import('/SyncPad/src/sync.js');
+    const Sync = await import('/JotRelay/src/sync.js');
     let value = 'hello';
     Sync.initSync({
       roomId: 'test-room-unsaved-check',

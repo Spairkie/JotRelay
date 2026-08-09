@@ -15,13 +15,13 @@ async function supabaseAvailable(page) {
 }
 
 test.describe('Admin route', () => {
-  test('navigating to /SyncPad/admin shows admin screen', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+  test('navigating to /JotRelay/admin shows admin screen', async ({ page }) => {
+    await page.goto('/JotRelay/admin');
     await expect(page.locator('#admin-screen')).not.toHaveClass(/hidden/);
   });
 
   test('admin screen does not show app screen', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForTimeout(1000);
     // App screen should be hidden on admin route
     const appScreen = page.locator('#app-screen');
@@ -31,7 +31,7 @@ test.describe('Admin route', () => {
   });
 
   test('admin screen shows login form when not authenticated', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForTimeout(2000);
     if (!(await supabaseAvailable(page))) {
       test.skip(true, 'Supabase JS not available (CDN blocked)');
@@ -46,7 +46,7 @@ test.describe('Admin route', () => {
   });
 
   test('login form shows error for missing credentials', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForTimeout(2000);
     if (!(await supabaseAvailable(page))) {
       test.skip(true, 'Supabase JS not available (CDN blocked)');
@@ -60,7 +60,7 @@ test.describe('Admin route', () => {
   });
 
   test('login form shows error for wrong credentials', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForTimeout(2000);
     if (!(await supabaseAvailable(page))) {
       test.skip(true, 'Supabase JS not available (CDN blocked)');
@@ -86,7 +86,7 @@ test.describe('Admin route', () => {
   });
 
   test('Back to JotRelay button navigates to landing', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForTimeout(2000);
     if (!(await supabaseAvailable(page))) {
       test.skip(true, 'Supabase JS not available (CDN blocked)');
@@ -102,7 +102,7 @@ test.describe('Admin route', () => {
   });
 
   test('Enter key in email field moves focus to password field', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForTimeout(2000);
     if (!(await supabaseAvailable(page))) {
       test.skip(true, 'Supabase JS not available (CDN blocked)');
@@ -247,7 +247,7 @@ test.describe('Admin dashboard — Rooms tab pagination', () => {
   });
 
   test('shows 25 rooms per page with Prev disabled and Next enabled on page 1', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForSelector('#admin-rooms-tbody tr', { timeout: ADMIN_TIMEOUT }).catch(() => {});
     if (await page.locator('#admin-rooms-tbody tr').count() === 0) {
       test.skip(true, 'Dashboard did not render (Supabase JS likely blocked)');
@@ -261,7 +261,7 @@ test.describe('Admin dashboard — Rooms tab pagination', () => {
   });
 
   test('Next loads the remaining rooms and disables itself at the last page', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForSelector('#admin-rooms-tbody tr', { timeout: ADMIN_TIMEOUT }).catch(() => {});
     if (await page.locator('#admin-rooms-tbody tr').count() === 0) {
       test.skip(true, 'Dashboard did not render (Supabase JS likely blocked)');
@@ -275,7 +275,7 @@ test.describe('Admin dashboard — Rooms tab pagination', () => {
   });
 
   test('Prev returns to the first page', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForSelector('#admin-rooms-tbody tr', { timeout: ADMIN_TIMEOUT }).catch(() => {});
     if (await page.locator('#admin-rooms-tbody tr').count() === 0) {
       test.skip(true, 'Dashboard did not render (Supabase JS likely blocked)');
@@ -289,7 +289,7 @@ test.describe('Admin dashboard — Rooms tab pagination', () => {
   });
 
   test('no "Load more" button remains anywhere in the dashboard', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForSelector('#admin-rooms-tbody tr', { timeout: ADMIN_TIMEOUT }).catch(() => {});
     if (await page.locator('#admin-rooms-tbody tr').count() === 0) {
       test.skip(true, 'Dashboard did not render (Supabase JS likely blocked)');
@@ -305,7 +305,7 @@ test.describe('Admin dashboard — Files tab pagination', () => {
   });
 
   test('paginates files at 50 per page', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForSelector('#admin-tabs', { timeout: ADMIN_TIMEOUT }).catch(() => {});
     if (await page.locator('#admin-tabs').count() === 0) {
       test.skip(true, 'Dashboard did not render (Supabase JS likely blocked)');
@@ -327,7 +327,7 @@ test.describe('Admin dashboard overhaul', () => {
   });
 
   test('stat cards render icons and the room-creation activity chart', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForSelector('#admin-stats-row', { timeout: ADMIN_TIMEOUT }).catch(() => {});
     if (await page.locator('#admin-stats-row').count() === 0) {
       test.skip(true, 'Dashboard did not render (Supabase JS likely blocked)');
@@ -341,7 +341,7 @@ test.describe('Admin dashboard overhaul', () => {
   });
 
   test('clicking the "Active today" stat card filters the Rooms tab', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForSelector('#stat-card-active', { timeout: ADMIN_TIMEOUT }).catch(() => {});
     if (await page.locator('#stat-card-active').count() === 0) {
       test.skip(true, 'Dashboard did not render (Supabase JS likely blocked)');

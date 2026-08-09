@@ -161,7 +161,7 @@ await page.waitForTimeout(400);
 // with the app's real formatting logic so it reads correctly on screen
 // throughout the capture instead of showing placeholder text.
 await page.evaluate(async () => {
-  const { updateWordCount, updateFooterClock } = await import('/SyncPad/src/ui/core.js');
+  const { updateWordCount, updateFooterClock } = await import('/JotRelay/src/ui/core.js');
   updateWordCount(document.getElementById('note-editor').value);
   updateFooterClock();
 });
@@ -181,7 +181,7 @@ await typeLine('# Product Launch Checklist\n\n', 40);
 await typeLine('- [ ] Finalize pricing page\n', 34);
 await typeLine('- [ ] QA the onboarding flow\n', 34);
 await page.evaluate(async () => {
-  const { updateWordCount } = await import('/SyncPad/src/ui/core.js');
+  const { updateWordCount } = await import('/JotRelay/src/ui/core.js');
   updateWordCount(document.getElementById('note-editor').value);
 });
 await hold(1000);
@@ -189,7 +189,7 @@ await hold(1000);
 // ── Beat 2: switch to Live — reveal the rendered version ───────────────────
 logBeat('Switches to Live, rendered checklist');
 await page.evaluate(async () => {
-  const { renderMarkdown } = await import('/SyncPad/src/markdown.js');
+  const { renderMarkdown } = await import('/JotRelay/src/markdown.js');
   const src = document.getElementById('note-editor').value;
   const preview = document.getElementById('note-preview');
   preview.innerHTML = renderMarkdown(src);
@@ -215,8 +215,8 @@ await page.evaluate(() => {
 await hold(1800);
 logBeat('Remote line arrives, flashes in');
 await page.evaluate(async () => {
-  const { renderMarkdown } = await import('/SyncPad/src/markdown.js');
-  const { updateWordCount } = await import('/SyncPad/src/ui/core.js');
+  const { renderMarkdown } = await import('/JotRelay/src/markdown.js');
+  const { updateWordCount } = await import('/JotRelay/src/ui/core.js');
   const src = document.getElementById('note-editor').value + '- [ ] Confirm launch date with marketing\n';
   document.getElementById('note-editor').value = src;
   const preview = document.getElementById('note-preview');

@@ -5,19 +5,19 @@ import { test, expect } from '@playwright/test';
 
 /** Navigate to the JotRelay root (marketing landing page) and wait for it. */
 export async function goToLanding(page) {
-  await page.goto('/SyncPad/');
+  await page.goto('/JotRelay/');
   await page.waitForSelector('#landing-screen:not(.hidden)', { timeout: 10_000 });
 }
 
 /**
- * Navigate to the bare create/join screen at /SyncPad/app/ and wait for it.
+ * Navigate to the bare create/join screen at /JotRelay/app/ and wait for it.
  * The marketing page at `/` (goToLanding above) is copy-only — its CTAs are
  * plain links to here. Anything that needs `.landing-create-btn`,
  * `.landing-join-input`, `.landing-join-btn`, or `#landing-recent` must use
  * this, not goToLanding().
  */
 export async function goToAppLanding(page) {
-  await page.goto('/SyncPad/app/');
+  await page.goto('/JotRelay/app/');
   await page.waitForSelector('#app-landing-screen:not(.hidden)', { timeout: 10_000 });
 }
 
@@ -28,7 +28,7 @@ export async function goToAppLanding(page) {
  * Use this to skip tests gracefully rather than timing out.
  */
 export async function supabaseAvailable(page) {
-  await page.goto('/SyncPad/');
+  await page.goto('/JotRelay/');
   return page.evaluate(() => typeof window.supabase !== 'undefined');
 }
 
@@ -70,7 +70,7 @@ export async function createFreshRoom(page, { skipOnboarding = true } = {}) {
   await page.waitForFunction(() => window.__jotrelayEventsWired === true, null, { timeout: 5000 });
   // Extract room ID from URL
   const url = page.url();
-  const match = url.match(/\/SyncPad\/([^/?#]+)/);
+  const match = url.match(/\/JotRelay\/([^/?#]+)/);
   return match?.[1] ?? '';
 }
 
@@ -107,7 +107,7 @@ async function _resetRoomToPristine(page, roomId) {
     // etc.), not an initialized client — the app's own already-configured
     // client lives behind getSupabaseClient() in src/supabase.js, same as
     // every other in-page Supabase call this suite makes.
-    const { getSupabaseClient } = await import('/SyncPad/src/supabase.js');
+    const { getSupabaseClient } = await import('/JotRelay/src/supabase.js');
     const sb = getSupabaseClient();
     await sb.from('syncpad_rooms').update({
       content: '', room_name: '', passcode_hash: null, passcode_salt: null,
@@ -143,7 +143,7 @@ export async function createRoom(page) {
   const sbAvail = await page.evaluate(() => typeof window.supabase !== 'undefined');
   _skipIfSupabaseUnavailable(sbAvail);
   await _resetRoomToPristine(page, _FIXTURE_ROOM_ID);
-  await page.goto(`/SyncPad/${_FIXTURE_ROOM_ID}`);
+  await page.goto(`/JotRelay/${_FIXTURE_ROOM_ID}`);
   await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
   await page.waitForFunction(() => window.__jotrelayEventsWired === true, null, { timeout: 5000 });
   return _FIXTURE_ROOM_ID;
@@ -281,7 +281,7 @@ export async function closePanels(page) {
 
 /** Parse a room URL and return the room ID. */
 export function roomIdFromUrl(url) {
-  const match = url.match(/\/SyncPad\/([^/?#]+)/);
+  const match = url.match(/\/JotRelay\/([^/?#]+)/);
   return match?.[1] ?? '';
 }
 

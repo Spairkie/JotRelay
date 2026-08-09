@@ -12,7 +12,7 @@ test.describe('Marketing landing page (/)', () => {
     await expect(page.locator('.lp-h1')).toBeVisible();
     await expect(page.locator('.lp-sub')).toBeVisible();
     await expect(page.locator('.lp-btn-primary').first()).toBeVisible();
-    await expect(page.locator('.lp-btn-primary').first()).toHaveAttribute('href', '/SyncPad/app/');
+    await expect(page.locator('.lp-btn-primary').first()).toHaveAttribute('href', '/JotRelay/app/');
   });
 
   test('marketing sections and footer render', async ({ page }) => {
@@ -217,7 +217,7 @@ test.describe('App landing screen (/app)', () => {
     // budget as other full-reload waits in this suite (CDN scripts reload
     // from scratch, which is slow under a degraded/proxied network).
     await page.waitForSelector('#landing-screen:not(.hidden)', { timeout: 20_000 });
-    expect(page.url()).toBe('http://localhost:5555/SyncPad/');
+    expect(page.url()).toBe('http://localhost:5555/JotRelay/');
   });
 
   test('"New room" creates a room and navigates to app screen', { timeout: 60_000 }, async ({ page }) => {
@@ -228,7 +228,7 @@ test.describe('App landing screen (/app)', () => {
     await goToAppLanding(page);
     await page.click('.landing-create-btn');
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 25_000 });
-    expect(page.url()).toMatch(/\/SyncPad\/[a-zA-Z0-9_-]+/);
+    expect(page.url()).toMatch(/\/JotRelay\/[a-zA-Z0-9_-]+/);
   });
 
   test('"New room" URL contains a valid room ID (no reserved paths)', { timeout: 60_000 }, async ({ page }) => {
@@ -302,7 +302,7 @@ test.describe('App landing screen (/app)', () => {
     // same fallback via direct navigation, which goes through boot()'s
     // route handling instead of the join box).
     const roomId = `test-direct-nav-${Date.now()}`;
-    await page.goto(`/SyncPad/${roomId}`);
+    await page.goto(`/JotRelay/${roomId}`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 25_000 });
     expect(page.url()).toContain(roomId);
   });

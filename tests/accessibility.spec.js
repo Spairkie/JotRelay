@@ -6,7 +6,7 @@ import { createRoom, goToLanding, openPanel } from './helpers.js';
 
 test.describe('Accessibility & keyboard', () => {
   test('landing page is keyboard-navigable (Tab reaches key buttons)', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     await page.waitForSelector('#landing-screen:not(.hidden)');
     // Tab through to the Create button
     await page.keyboard.press('Tab');
@@ -80,7 +80,7 @@ test.describe('Accessibility & keyboard', () => {
     // Trigger the custom confirm via showConfirm() in the page context.
     // The evaluate() returns a Promise that resolves when OK/Cancel is clicked.
     const confirmPromise = page.evaluate(() =>
-      import('/SyncPad/src/ui.js').then(({ showConfirm }) =>
+      import('/JotRelay/src/ui.js').then(({ showConfirm }) =>
         showConfirm('Test confirm message?', { confirmLabel: 'OK', danger: false })
       )
     );
@@ -102,7 +102,7 @@ test.describe('Accessibility & keyboard', () => {
   test('custom confirm modal: OK button resolves true', async ({ page }) => {
     await goToLanding(page);
     const confirmPromise = page.evaluate(() =>
-      import('/SyncPad/src/ui.js').then(({ showConfirm }) =>
+      import('/JotRelay/src/ui.js').then(({ showConfirm }) =>
         showConfirm('Are you sure?', { confirmLabel: 'Yes', danger: false })
       )
     );
@@ -116,7 +116,7 @@ test.describe('Accessibility & keyboard', () => {
   test('custom confirm modal: Escape closes and resolves false', async ({ page }) => {
     await goToLanding(page);
     const confirmPromise = page.evaluate(() =>
-      import('/SyncPad/src/ui.js').then(({ showConfirm }) =>
+      import('/JotRelay/src/ui.js').then(({ showConfirm }) =>
         showConfirm('Escape test', {})
       )
     );
@@ -131,7 +131,7 @@ test.describe('Accessibility & keyboard', () => {
     // Await the evaluate so the import completes and showConfirm() is called
     // before waitForSelector runs. Don't await showConfirm itself (would deadlock).
     await page.evaluate(async () => {
-      const { showConfirm } = await import('/SyncPad/src/ui.js');
+      const { showConfirm } = await import('/JotRelay/src/ui.js');
       showConfirm('Delete?', { danger: true, confirmLabel: 'Delete' }); // intentionally not awaited
     });
     await page.waitForSelector('#sp-confirm-modal.visible', { timeout: 5000 });
@@ -164,7 +164,7 @@ test.describe('Accessibility & keyboard', () => {
   });
 
   test('landing join input has aria-label', async ({ page }) => {
-    await page.goto('/SyncPad/app/');
+    await page.goto('/JotRelay/app/');
     await page.waitForSelector('#app-landing-screen:not(.hidden)');
     const input = page.locator('#landing-join-input');
     const ariaLabel = await input.getAttribute('aria-label');
@@ -172,26 +172,26 @@ test.describe('Accessibility & keyboard', () => {
   });
 
   test('passcode input has aria-label', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     const input = page.locator('#passcode-input');
     const ariaLabel = await input.getAttribute('aria-label');
     expect(ariaLabel).toBeTruthy();
   });
 
   test('passcode error has role=alert', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     const errorEl = page.locator('#passcode-error');
     await expect(errorEl).toHaveAttribute('role', 'alert');
   });
 
   test('encryption error has role=alert', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     const errorEl = page.locator('#encryption-error');
     await expect(errorEl).toHaveAttribute('role', 'alert');
   });
 
   test('encryption passphrase input has aria-label', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     const input = page.locator('#encryption-input');
     const ariaLabel = await input.getAttribute('aria-label');
     expect(ariaLabel).toBeTruthy();

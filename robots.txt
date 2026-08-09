@@ -1,12 +1,12 @@
 User-agent: *
-Allow: /SyncPad/$
-Allow: /SyncPad/app/
-Allow: /SyncPad/privacy
-Allow: /SyncPad/terms
-Allow: /SyncPad/contact
-Allow: /SyncPad/presskit/
-Disallow: /SyncPad/admin
-Disallow: /SyncPad/share/
-Disallow: /SyncPad/
+Allow: /JotRelay/$
+Allow: /JotRelay/app/
+Allow: /JotRelay/privacy
+Allow: /JotRelay/terms
+Allow: /JotRelay/contact
+Allow: /JotRelay/presskit/
+Disallow: /JotRelay/admin
+Disallow: /JotRelay/share/
+Disallow: /JotRelay/
 
-Sitemap: https://spairkie.github.io/SyncPad/sitemap.xml
+Sitemap: https://spairkie.github.io/JotRelay/sitemap.xml

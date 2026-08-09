@@ -15,7 +15,7 @@ test.describe('Theme accent contrast', () => {
     await goToLanding(page);
 
     const results = await page.evaluate(async () => {
-      const { THEMES, applyTheme } = await import('/SyncPad/src/theme.js');
+      const { THEMES, applyTheme } = await import('/JotRelay/src/theme.js');
 
       function lin(c) {
         c = c / 255;

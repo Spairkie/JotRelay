@@ -126,14 +126,14 @@ test.describe('Settings panel', () => {
     await createFreshRoom(page);
 
     const reference = await page.evaluate(async () => {
-      const { applyTheme } = await import('/SyncPad/src/theme.js');
+      const { applyTheme } = await import('/JotRelay/src/theme.js');
       applyTheme('rose');
       await new Promise((r) => setTimeout(r, 400));
       return document.querySelector('link[rel="icon"][sizes="32x32"]').href;
     });
 
     const raced = await page.evaluate(async () => {
-      const { applyTheme } = await import('/SyncPad/src/theme.js');
+      const { applyTheme } = await import('/JotRelay/src/theme.js');
       const RealImage = window.Image;
       let callCount = 0;
       window.Image = function (...args) {
@@ -165,9 +165,9 @@ test.describe('Settings panel', () => {
     // index.html markup present regardless of route — so this doesn't need
     // a real room/Supabase to verify, unlike the SVG/PNG favicon tests
     // above (which exercise it through the Settings panel's theme picker).
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     const result = await page.evaluate(async () => {
-      const { applyTheme } = await import('/SyncPad/src/theme.js');
+      const { applyTheme } = await import('/JotRelay/src/theme.js');
       const link = document.querySelector('link[rel="apple-touch-icon"]');
       const before = link.href;
       applyTheme('forest-green');
@@ -264,8 +264,8 @@ test.describe('View-once mode', () => {
     // simultaneously would), only one write can go through — never both,
     // and never neither.
     const result = await page.evaluate(async (rid) => {
-      const { enableViewOnce, consumeViewOnce } = await import('/SyncPad/src/settings.js');
-      const { loadRoom } = await import('/SyncPad/src/rooms.js');
+      const { enableViewOnce, consumeViewOnce } = await import('/JotRelay/src/settings.js');
+      const { loadRoom } = await import('/JotRelay/src/rooms.js');
       await enableViewOnce(rid);
       const room = await loadRoom(rid);
       const [a, b] = await Promise.all([

@@ -11,10 +11,10 @@ read those first for how the app itself is structured.
 
 Two routes split marketing from product:
 
-- **`/SyncPad/`** — the marketing page. Pure copy and CTAs, no working
+- **`/JotRelay/`** — the marketing page. Pure copy and CTAs, no working
   create/join form. `#landing-screen` in `index.html`, shown by
   `src/app/routing.js`'s `_parseRoute()` when the URL has no room segment.
-- **`/SyncPad/app/`** — the bare create/join screen (logo, tagline, Create
+- **`/JotRelay/app/`** — the bare create/join screen (logo, tagline, Create
   Room button, Join box, recent rooms). This is the *original* landing
   screen content, split out to its own route rather than removed —
   `#app-landing-screen` in `index.html`, route type `'app-landing'` in
@@ -22,7 +22,7 @@ Two routes split marketing from product:
   already means `#app-screen`, the room editor itself).
 
 Every "Create a Room" / "Join a room" control on the marketing page is a
-plain `<a href="/SyncPad/app/">` — no click handler, just a link. The real
+plain `<a href="/JotRelay/app/">` — no click handler, just a link. The real
 create/join logic (`generateRoomId()`, the join-box submit handler, recent
 rooms) lives entirely in `wireLandingEvents()`, which only runs for the
 `/app` route. The marketing page's own JS (`wireMarketingPageEvents()`) is
@@ -79,9 +79,9 @@ page (they'd be dead weight — nothing on `/` wires them up anymore).
 
 The nav, hero, and closing CTA band each have their own Create-a-Room
 button, plus the hero's own "Join a room" link. All of them are plain
-`<a href="/SyncPad/app/">` — no JS involved, no click handler to keep in
+`<a href="/JotRelay/app/">` — no JS involved, no click handler to keep in
 sync across entry points. Add a new CTA anywhere on the marketing page by
-linking it to `/SyncPad/app/` (or `${BASE}/app/` if you're generating the
+linking it to `/JotRelay/app/` (or `${BASE}/app/` if you're generating the
 href in JS) — nothing else to wire up.
 
 ### Coded hero demo
@@ -195,7 +195,7 @@ script just packages whatever they produced.
 | `scripts/build-mockups.mjs` | Pulls real screens (header, editor, side panels, share modal, encryption gate) out of `index.html` by id (via `scripts/lib/extract-fragment.mjs`) and writes six standalone HTML files to `scripts/mockups/`, populated with realistic placeholder content |
 | `scripts/generate-screenshots.mjs` | Serves the repo with `tests/spa-server.js` and screenshots each `scripts/mockups/*.html` into `presskit/screenshot/` |
 | `scripts/generate-demo-video.mjs` | Drives the real app markup/CSS through a scripted ~25s sequence (type → live-render → simulated second device → Share modal → Files panel) and assembles it into `presskit/video/demo.mp4` + a poster frame — see `presskit/video/README.md` for why it captures frame-by-frame instead of using Playwright's `recordVideo` |
-| `scripts/build-presskit-zip.mjs` | Zips `presskit/{README.md,icon,screenshot,video}` into `presskit/SyncPad-Presskit.zip` (requires the `zip` CLI on `PATH`) — the single download linked from the top of `presskit/README.md` |
+| `scripts/build-presskit-zip.mjs` | Zips `presskit/{README.md,icon,screenshot,video}` into `presskit/JotRelay-Presskit.zip` (requires the `zip` CLI on `PATH`) — the single download linked from the top of `presskit/README.md` |
 
 Regenerate screenshots after a visual change to the app shell, editor, or
 any panel/modal touched by the mockups:
@@ -284,11 +284,11 @@ which case update the watch-link's `href`.
 The landing page itself needs no changes for a custom domain — it's just
 `index.html`. What does need updating is the app's base-path configuration
 (`window.SYNCPAD_CONFIG.basePath`, `manifest.json`, `404.html`'s redirect
-script, and the hard-coded `/SyncPad/` prefixes sprinkled through the
+script, and the hard-coded `/JotRelay/` prefixes sprinkled through the
 static HTML). That process is already documented in
 [`DEPLOYMENT.md`](../DEPLOYMENT.md#base-path) — follow "To host at the
 root" there. The one presskit-specific thing to update afterward: the
-`https://spairkie.github.io/SyncPad/` links in `presskit/README.md`'s fact
+`https://spairkie.github.io/JotRelay/` links in `presskit/README.md`'s fact
 sheet and contact section.
 
 ### `robots.txt` / `sitemap.xml`
@@ -301,12 +301,12 @@ CLAUDE.md §5), so it should never end up indexed by a search engine.
 `sitemap.xml` lists the same allow-listed routes.
 
 One caveat: crawlers fetch `robots.txt` from the *origin* root
-(`https://spairkie.github.io/robots.txt`), not from `/SyncPad/robots.txt` —
-so on the current `spairkie.github.io/SyncPad/` project-page hosting, this
+(`https://spairkie.github.io/robots.txt`), not from `/JotRelay/robots.txt` —
+so on the current `spairkie.github.io/JotRelay/` project-page hosting, this
 file only takes effect for crawlers that happen to check it relative to the
 page they found (not guaranteed). It becomes fully effective automatically
 if the site ever moves to root hosting or a custom domain (see above) —
-both URLs in these two files hard-code `https://spairkie.github.io/SyncPad/`
+both URLs in these two files hard-code `https://spairkie.github.io/JotRelay/`
 and need updating at the same time as the other custom-domain changes.
 
 ### Font loading

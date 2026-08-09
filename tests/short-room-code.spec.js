@@ -31,7 +31,7 @@ test.describe('Short room codes', () => {
 
   test('the code section is hidden in a read-only session', async ({ page }) => {
     const roomId = await createFreshRoom(page);
-    await page.goto(`/SyncPad/${roomId}?mode=read`);
+    await page.goto(`/JotRelay/${roomId}?mode=read`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
     await closePanels(page);
     await page.locator('#btn-share').click();

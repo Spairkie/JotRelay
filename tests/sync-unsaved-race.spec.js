@@ -17,9 +17,9 @@
 import { test, expect } from '@playwright/test';
 
 test('a generation bump mid-save prevents a stale completion from clobbering newer unsaved state', async ({ page }) => {
-  await page.goto('/SyncPad/');
+  await page.goto('/JotRelay/');
   const result = await page.evaluate(async () => {
-    const Sync = await import('/SyncPad/src/sync.js');
+    const Sync = await import('/JotRelay/src/sync.js');
     let value = 'first edit';
     Sync.initSync({
       roomId: 'test-room-race-check',
@@ -62,9 +62,9 @@ test('a generation bump mid-save prevents a stale completion from clobbering new
 });
 
 test('hasUnsavedChanges() is already true mid-draft-save, before the debounced DB save is even scheduled', async ({ page }) => {
-  await page.goto('/SyncPad/');
+  await page.goto('/JotRelay/');
   const result = await page.evaluate(async () => {
-    const Sync = await import('/SyncPad/src/sync.js');
+    const Sync = await import('/JotRelay/src/sync.js');
     let value = 'x';
     Sync.initSync({
       roomId: 'test-room-encrypt-timing',
@@ -92,9 +92,9 @@ test('hasUnsavedChanges() is already true mid-draft-save, before the debounced D
 });
 
 test('cancelPendingSave() resets hasUnsavedChanges() — a discarded room (remote clear/expiry/view-once) has nothing left to warn about', async ({ page }) => {
-  await page.goto('/SyncPad/');
+  await page.goto('/JotRelay/');
   const result = await page.evaluate(async () => {
-    const Sync = await import('/SyncPad/src/sync.js');
+    const Sync = await import('/JotRelay/src/sync.js');
     let value = 'content about to be discarded';
     Sync.initSync({
       roomId: 'test-room-cancel-reset',

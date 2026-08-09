@@ -3,7 +3,7 @@
 > **A temporary shared notepad for fast handoff between devices.**  
 > Create a room, share an editable or read-only link, and sync notes and files in real time — no account needed.
 
-**Live demo:** `https://spairkie.github.io/SyncPad/`
+**Live demo:** `https://spairkie.github.io/JotRelay/`
 
 ---
 
@@ -338,7 +338,7 @@ npm run test:chrome    # chromium only
 npm run test:report    # open HTML report
 ```
 
-To browse the app itself (not run tests), `npm run serve` and open `http://localhost:5555/SyncPad/` — it runs the same `tests/spa-server.js` the test suite uses, so `/SyncPad`-prefixed assets and in-app routes both resolve correctly.
+To browse the app itself (not run tests), `npm run serve` and open `http://localhost:5555/JotRelay/` — it runs the same `tests/spa-server.js` the test suite uses, so `/JotRelay`-prefixed assets and in-app routes both resolve correctly.
 
 See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 
@@ -370,7 +370,7 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 - [x] Keep JotRelay as a transparent demo project and document frontend-only permission boundaries
 - [x] Encrypt file attachment content client-side for encrypted rooms and document Storage behavior
 - [x] Allow read-only viewers to unlock passcode/encrypted rooms when they separately have the secret
-- [x] Keep GitHub Pages `/SyncPad` as the permanent target while centralizing runtime base-path handling
+- [x] Keep GitHub Pages `/JotRelay` as the permanent target while centralizing runtime base-path handling
 - [x] Delete known physical Storage objects during admin room deletion paths
 - [x] Add optional service-role Edge Function for backend Storage cleanup and orphan cleanup
 - [x] Batch admin expired-room cleanup queries for larger room sets

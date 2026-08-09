@@ -10,7 +10,7 @@ test.describe('showPrompt dialog', () => {
   test('renders modal with role=dialog and aria-modal', async ({ page }) => {
     await goToLanding(page);
     await page.evaluate(async () => {
-      const { showPrompt } = await import('/SyncPad/src/ui.js');
+      const { showPrompt } = await import('/JotRelay/src/ui.js');
       showPrompt('Enter your name:', { confirmLabel: 'Save' }); // not awaited — would deadlock
     });
     await page.waitForSelector('#sp-prompt-modal.visible', { timeout: 5000 });
@@ -25,7 +25,7 @@ test.describe('showPrompt dialog', () => {
     // showPrompt does not trim — callers decide whether to trim at the point of use.
     await goToLanding(page);
     const resultPromise = page.evaluate(async () => {
-      const { showPrompt } = await import('/SyncPad/src/ui.js');
+      const { showPrompt } = await import('/JotRelay/src/ui.js');
       return showPrompt('Your name:', { confirmLabel: 'Save' });
     });
     await page.waitForSelector('#sp-prompt-modal.visible', { timeout: 5000 });
@@ -38,7 +38,7 @@ test.describe('showPrompt dialog', () => {
   test('Cancel resolves with null', async ({ page }) => {
     await goToLanding(page);
     const resultPromise = page.evaluate(async () => {
-      const { showPrompt } = await import('/SyncPad/src/ui.js');
+      const { showPrompt } = await import('/JotRelay/src/ui.js');
       return showPrompt('Confirm?');
     });
     await page.waitForSelector('#sp-prompt-modal.visible', { timeout: 5000 });
@@ -50,7 +50,7 @@ test.describe('showPrompt dialog', () => {
   test('Escape closes and resolves null', async ({ page }) => {
     await goToLanding(page);
     const resultPromise = page.evaluate(async () => {
-      const { showPrompt } = await import('/SyncPad/src/ui.js');
+      const { showPrompt } = await import('/JotRelay/src/ui.js');
       return showPrompt('Escape test');
     });
     await page.waitForSelector('#sp-prompt-modal.visible', { timeout: 5000 });
@@ -63,7 +63,7 @@ test.describe('showPrompt dialog', () => {
   test('Enter in input field submits', async ({ page }) => {
     await goToLanding(page);
     const resultPromise = page.evaluate(async () => {
-      const { showPrompt } = await import('/SyncPad/src/ui.js');
+      const { showPrompt } = await import('/JotRelay/src/ui.js');
       return showPrompt('Name:');
     });
     await page.waitForSelector('#sp-prompt-modal.visible', { timeout: 5000 });
@@ -76,7 +76,7 @@ test.describe('showPrompt dialog', () => {
   test('defaultValue pre-fills input', async ({ page }) => {
     await goToLanding(page);
     await page.evaluate(async () => {
-      const { showPrompt } = await import('/SyncPad/src/ui.js');
+      const { showPrompt } = await import('/JotRelay/src/ui.js');
       showPrompt('Rename:', { defaultValue: 'My template' });
     });
     await page.waitForSelector('#sp-prompt-modal.visible', { timeout: 5000 });
@@ -88,7 +88,7 @@ test.describe('showPrompt dialog', () => {
   test('empty input resolves null (not empty string)', async ({ page }) => {
     await goToLanding(page);
     const resultPromise = page.evaluate(async () => {
-      const { showPrompt } = await import('/SyncPad/src/ui.js');
+      const { showPrompt } = await import('/JotRelay/src/ui.js');
       return showPrompt('Name:');
     });
     await page.waitForSelector('#sp-prompt-modal.visible', { timeout: 5000 });
@@ -105,7 +105,7 @@ test.describe('showPrompt dialog', () => {
     // do so themselves (e.g. template names, passcodes).
     await goToLanding(page);
     const resultPromise = page.evaluate(async () => {
-      const { showPrompt } = await import('/SyncPad/src/ui.js');
+      const { showPrompt } = await import('/JotRelay/src/ui.js');
       return showPrompt('Passphrase:');
     });
     await page.waitForSelector('#sp-prompt-modal.visible', { timeout: 5000 });
@@ -123,7 +123,7 @@ test.describe('Confirm modal wraps long content', () => {
     await goToLanding(page);
     const longName = 'AVD-Instructions-For-New-Employees-Onboarding-2024-Final-Draft-VeryLongFilename.pdf';
     await page.evaluate(async (name) => {
-      const { showConfirm } = await import('/SyncPad/src/ui.js');
+      const { showConfirm } = await import('/JotRelay/src/ui.js');
       showConfirm(`Delete "${name}"?`, { confirmLabel: 'Delete', danger: true });
     }, longName);
     await page.waitForSelector('#sp-confirm-modal.visible', { timeout: 5000 });
@@ -143,7 +143,7 @@ test.describe('Toast wraps long messages', () => {
     await goToLanding(page);
     const longMessage = 'File removed from storage, but the metadata row could not be deleted. Refresh the file list.';
     await page.evaluate(async (msg) => {
-      const { showToast } = await import('/SyncPad/src/ui.js');
+      const { showToast } = await import('/JotRelay/src/ui.js');
       showToast(msg, 'error', 10000);
     }, longMessage);
     await page.waitForSelector('.toast', { timeout: 5000 });
@@ -160,11 +160,11 @@ test.describe('Toast wraps long messages', () => {
 
 test.describe('Shared dialogs stack above the admin screen', () => {
   test('showConfirm renders above #admin-screen and is the actual click target', async ({ page }) => {
-    await page.goto('/SyncPad/admin');
+    await page.goto('/JotRelay/admin');
     await page.waitForSelector('#admin-screen:not(.hidden)', { timeout: 10_000 });
 
     await page.evaluate(async () => {
-      const { showConfirm } = await import('/SyncPad/src/ui.js');
+      const { showConfirm } = await import('/JotRelay/src/ui.js');
       showConfirm('Run server-side cleanup to delete all expired rooms?', { confirmLabel: 'Run cleanup' });
     });
     await page.waitForSelector('#sp-confirm-modal.visible', { timeout: 5000 });
@@ -194,7 +194,7 @@ test.describe('Confirm modal focus trap (A-2)', () => {
   test('Tab cycles within confirm modal buttons', async ({ page }) => {
     await goToLanding(page);
     await page.evaluate(async () => {
-      const { showConfirm } = await import('/SyncPad/src/ui.js');
+      const { showConfirm } = await import('/JotRelay/src/ui.js');
       showConfirm('Focus trap test?', { danger: false });
     });
     await page.waitForSelector('#sp-confirm-modal.visible', { timeout: 5000 });
@@ -214,7 +214,7 @@ test.describe('Confirm modal focus trap (A-2)', () => {
   test('Shift+Tab reverse-cycles within confirm modal', async ({ page }) => {
     await goToLanding(page);
     await page.evaluate(async () => {
-      const { showConfirm } = await import('/SyncPad/src/ui.js');
+      const { showConfirm } = await import('/JotRelay/src/ui.js');
       showConfirm('Shift+Tab test?');
     });
     await page.waitForSelector('#sp-confirm-modal.visible', { timeout: 5000 });
@@ -237,7 +237,7 @@ test.describe('Prompt modal focus trap (A-2)', () => {
   test('Tab cycles: input → cancel → ok → input', async ({ page }) => {
     await goToLanding(page);
     await page.evaluate(async () => {
-      const { showPrompt } = await import('/SyncPad/src/ui.js');
+      const { showPrompt } = await import('/JotRelay/src/ui.js');
       showPrompt('Trap test:');
     });
     await page.waitForSelector('#sp-prompt-modal.visible', { timeout: 5000 });
@@ -335,7 +335,7 @@ test.describe('Presence live announcer', () => {
   test('does not announce already-present devices as joining on first render', async ({ page }) => {
     await goToLanding(page);
     const text = await page.evaluate(async () => {
-      const ui = await import('/SyncPad/src/ui.js');
+      const ui = await import('/JotRelay/src/ui.js');
       ui.resetPresenceAnnouncer();
       ui.renderDevicesList([
         { device_id: 'me', device_name: 'Me' },
@@ -349,7 +349,7 @@ test.describe('Presence live announcer', () => {
   test('announces a device joining after the first render', async ({ page }) => {
     await goToLanding(page);
     const text = await page.evaluate(async () => {
-      const ui = await import('/SyncPad/src/ui.js');
+      const ui = await import('/JotRelay/src/ui.js');
       ui.resetPresenceAnnouncer();
       ui.renderDevicesList([{ device_id: 'me', device_name: 'Me' }], 'me', () => {});
       ui.renderDevicesList([
@@ -364,7 +364,7 @@ test.describe('Presence live announcer', () => {
   test('announces a device starting to type, but not per-keystroke cursor movement', async ({ page }) => {
     await goToLanding(page);
     const result = await page.evaluate(async () => {
-      const ui = await import('/SyncPad/src/ui.js');
+      const ui = await import('/JotRelay/src/ui.js');
       const region = () => document.getElementById('presence-live-region').textContent;
       ui.resetPresenceAnnouncer();
       ui.renderDevicesList([
@@ -390,7 +390,7 @@ test.describe('Presence live announcer', () => {
   test('announces a device leaving', async ({ page }) => {
     await goToLanding(page);
     const text = await page.evaluate(async () => {
-      const ui = await import('/SyncPad/src/ui.js');
+      const ui = await import('/JotRelay/src/ui.js');
       ui.resetPresenceAnnouncer();
       ui.renderDevicesList([
         { device_id: 'me', device_name: 'Me' },
@@ -411,7 +411,7 @@ test.describe('Devices list rename input', () => {
   test('a re-render triggered by another device does not disturb an in-progress rename', async ({ page }) => {
     await goToLanding(page);
     const result = await page.evaluate(async () => {
-      const ui = await import('/SyncPad/src/ui.js');
+      const ui = await import('/JotRelay/src/ui.js');
       ui.renderDevicesList([
         { device_id: 'me', device_name: 'Me' },
         { device_id: 'a', device_name: 'Alice', typing: false },
@@ -445,7 +445,7 @@ test.describe('Devices list rename input', () => {
   test('a render after blurring the rename input applies normally', async ({ page }) => {
     await goToLanding(page);
     const result = await page.evaluate(async () => {
-      const ui = await import('/SyncPad/src/ui.js');
+      const ui = await import('/JotRelay/src/ui.js');
       ui.renderDevicesList([{ device_id: 'me', device_name: 'Me' }], 'me', () => {});
       document.querySelector('.device-name-edit').focus();
       document.querySelector('.device-name-edit').blur();
@@ -465,8 +465,8 @@ test.describe('Preview resolves syncpad-file: image references', () => {
   test('resolves to a real src on success, and clears the data attribute', async ({ page }) => {
     await goToLanding(page);
     const result = await page.evaluate(async () => {
-      const ui = await import('/SyncPad/src/ui.js');
-      const md = await import('/SyncPad/src/markdown.js');
+      const ui = await import('/JotRelay/src/ui.js');
+      const md = await import('/JotRelay/src/markdown.js');
       document.getElementById('note-preview').classList.remove('hidden');
       ui.setFileImageResolver(async (path) => `https://cdn.example.com/${path}?token=abc`);
       ui.refreshPreview(() => md.renderMarkdown('![photo](syncpad-file:room1/167_photo.png)'));
@@ -481,8 +481,8 @@ test.describe('Preview resolves syncpad-file: image references', () => {
   test('shows a broken-image fallback when resolution fails, without throwing', async ({ page }) => {
     await goToLanding(page);
     const result = await page.evaluate(async () => {
-      const ui = await import('/SyncPad/src/ui.js');
-      const md = await import('/SyncPad/src/markdown.js');
+      const ui = await import('/JotRelay/src/ui.js');
+      const md = await import('/JotRelay/src/markdown.js');
       document.getElementById('note-preview').classList.remove('hidden');
       ui.setFileImageResolver(async () => { throw new Error('file gone'); });
       ui.refreshPreview(() => md.renderMarkdown('![photo](syncpad-file:room1/gone.png)'));

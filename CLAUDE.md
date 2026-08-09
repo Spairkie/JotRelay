@@ -16,7 +16,7 @@ JotRelay is a vanilla-JavaScript realtime shared notepad built on Supabase. It h
 ```
 npm run serve
 ```
-Then open `http://localhost:5555/SyncPad/`. `index.html` hardcodes `window.SYNCPAD_CONFIG.basePath = '/SyncPad'` and every static asset reference (`<link>`/`<script>` src) as an absolute `/SyncPad/...` path, matching where GitHub Pages actually hosts the site — so `npm run serve` runs `tests/spa-server.js` directly (not `npx serve .`) rather than trying to reproduce that with a generic static-file server. It strips the `/SyncPad` prefix before resolving a file on disk and only falls back to `index.html` when no real file matches, so both real assets (`/SyncPad/styles/base.css` → `styles/base.css`) and in-app routes (`/SyncPad/<room-id>`, `/SyncPad/admin`, etc.) resolve correctly. (A generic static server pointed at the repo root — `npx serve .` without this prefix-stripping — will 404 or silently return `index.html` for every real asset, since `styles/base.css` only exists at that path, not at `SyncPad/styles/base.css`.)
+Then open `http://localhost:5555/JotRelay/`. `index.html` hardcodes `window.SYNCPAD_CONFIG.basePath = '/JotRelay'` and every static asset reference (`<link>`/`<script>` src) as an absolute `/JotRelay/...` path, matching where GitHub Pages actually hosts the site — so `npm run serve` runs `tests/spa-server.js` directly (not `npx serve .`) rather than trying to reproduce that with a generic static-file server. It strips the `/JotRelay` prefix before resolving a file on disk and only falls back to `index.html` when no real file matches, so both real assets (`/JotRelay/styles/base.css` → `styles/base.css`) and in-app routes (`/JotRelay/<room-id>`, `/JotRelay/admin`, etc.) resolve correctly. (A generic static server pointed at the repo root — `npx serve .` without this prefix-stripping — will 404 or silently return `index.html` for every real asset, since `styles/base.css` only exists at that path, not at `JotRelay/styles/base.css`.)
 
 **Install Playwright browsers (first time only):**
 ```
@@ -70,7 +70,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 
 See [`docs/architecture.md`](docs/architecture.md) for narrative module-by-module responsibility writeups and data-flow diagrams covering the top-level modules in the table above. The `src/app/*.js`, `src/ui/*.js`, and `src/admin/*.js` per-file splits are documented in each barrel file's own header comment (`src/app.js`, `src/ui.js`, `src/admin.js`), not in `docs/architecture.md`.
 
-The app root (`/SyncPad/`) is the product's marketing landing page — `#landing-screen` in `index.html`, styled by `styles/landing.css`, wired up by `src/app/landing.js`. The actual create/join room screen lives at `/SyncPad/app/` (`#app-landing-screen`, route type `'app-landing'` in `src/app/routing.js`) — every "Create a Room"/"Join a room" control on the marketing page is a plain link there, not an inline form. A press kit lives in `presskit/` (logos, screenshots, fact sheet). See [`docs/marketing-site.md`](docs/marketing-site.md) for the full route/section map, the asset-generation scripts in `scripts/`, and how to swap in real screenshots/video later.
+The app root (`/JotRelay/`) is the product's marketing landing page — `#landing-screen` in `index.html`, styled by `styles/landing.css`, wired up by `src/app/landing.js`. The actual create/join room screen lives at `/JotRelay/app/` (`#app-landing-screen`, route type `'app-landing'` in `src/app/routing.js`) — every "Create a Room"/"Join a room" control on the marketing page is a plain link there, not an inline form. A press kit lives in `presskit/` (logos, screenshots, fact sheet). See [`docs/marketing-site.md`](docs/marketing-site.md) for the full route/section map, the asset-generation scripts in `scripts/`, and how to swap in real screenshots/video later.
 
 ### Data Flow
 
@@ -115,7 +115,7 @@ if (!ok) return;
 There is no bundler. Use standard ES module `import`/`export` syntax. Paths must be relative (e.g., `'./utils.js'`). Do not use bare specifiers.
 
 ### BASE Path
-The app is served under `/SyncPad`. This constant is defined in `src/app/state.js` (`BASE`) and `service-worker.js`. Any new route or asset reference must respect this prefix.
+The app is served under `/JotRelay`. This constant is defined in `src/app/state.js` (`BASE`) and `service-worker.js`. Any new route or asset reference must respect this prefix.
 
 ### Supabase Credentials
 Credentials are read from `window.SYNCPAD_CONFIG` which is injected inline in `index.html`. Do not hard-code keys anywhere else.
@@ -207,7 +207,7 @@ For logic in ES modules that uses browser APIs (Web Crypto, `localStorage`, etc.
 
 ```js
 const result = await page.evaluate(async () => {
-  const { someFunction } = await import('/SyncPad/src/utils.js');
+  const { someFunction } = await import('/JotRelay/src/utils.js');
   return someFunction('input');
 });
 ```
@@ -230,7 +230,7 @@ This project has no build step — nothing renders HTML/JSON from a template —
 - Postgres identifiers in `supabase/**` (`syncpad_*` tables/columns/functions/triggers) and the `syncpad-cleanup` edge function. Renaming live production schema is a real zero-downtime migration project, not a text swap, and no end user ever sees these identifiers.
 - `localStorage` key string literals (`syncpad_theme`, `syncpad_recent_rooms`, etc.) — renaming the string would orphan every existing visitor's saved preferences/drafts.
 - The `syncpad-file:` pseudo-scheme, `data-syncpad-file` attribute, `.syncpad-file-link` class — embedded in every already-saved room's content; renaming breaks file/image references in existing rooms.
-- The `BASE` path constant (`src/app/state.js`), `service-worker.js`'s cache name/scope, and every `/SyncPad`-style URL path segment (`href`/`src` attributes, `manifest.json`'s `start_url`/`scope`, `sitemap.xml`, `robots.txt`, `og:url`/`og:image`). This one **is** meant to change eventually, but only in lockstep with whatever the app is actually deployed under (a GitHub Pages project-site path matching the repo name, or `''` for a root-domain host like Netlify) — changing it any other time serves 404s to real visitors mid-transition. See the SyncPad → JotRelay rebrand PRs for the exact sequencing this required.
+- The `BASE` path constant (`src/app/state.js`), `service-worker.js`'s cache name/scope, and every `/JotRelay`-style URL path segment (`href`/`src` attributes, `manifest.json`'s `start_url`/`scope`, `sitemap.xml`, `robots.txt`, `og:url`/`og:image`). This one **is** meant to change eventually, but only in lockstep with whatever the app is actually deployed under (a GitHub Pages project-site path matching the repo name, or `''` for a root-domain host like Netlify) — changing it any other time serves 404s to real visitors mid-transition. See the SyncPad → JotRelay rebrand PRs for the exact sequencing this required.
 
 ---
 

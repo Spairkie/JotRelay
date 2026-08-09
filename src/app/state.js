@@ -126,7 +126,7 @@ function _normalizeBasePath(basePath) {
   return `/${raw.replace(/^\/+|\/+$/g, '')}`;
 }
 
-export const BASE = _normalizeBasePath(window.SYNCPAD_CONFIG?.basePath ?? '/SyncPad');
+export const BASE = _normalizeBasePath(window.SYNCPAD_CONFIG?.basePath ?? '/JotRelay');
 export const EXPIRATION_TIMER_MAX_DELAY_MS = 2147483647;
 
 export function _stripBasePath(pathname) {

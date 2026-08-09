@@ -19,10 +19,10 @@ const fixture = (name) => path.join(__dirname, 'fixtures', name);
 
 test.describe('AES-GCM buffer encryption (no Supabase required)', () => {
   test('encryptBuffer/decryptBuffer round-trips binary data and produces ciphertext that differs from the plaintext', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
 
     const result = await page.evaluate(async () => {
-      const { encryptBuffer, decryptBuffer, deriveKey } = await import('/SyncPad/src/encryption.js');
+      const { encryptBuffer, decryptBuffer, deriveKey } = await import('/JotRelay/src/encryption.js');
       const key = await deriveKey('a-test-passphrase', '00'.repeat(32));
 
       const plainBytes = crypto.getRandomValues(new Uint8Array(2048)); // simulate binary file content
@@ -86,7 +86,7 @@ test.describe('File uploads in an encrypted room', () => {
     // text.
     const roomId = new URL(page.url()).pathname.split('/').filter(Boolean).pop();
     const rawFetchResult = await page.evaluate(async (roomId) => {
-      const { listFiles, getDownloadUrl } = await import('/SyncPad/src/files.js');
+      const { listFiles, getDownloadUrl } = await import('/JotRelay/src/files.js');
       const files = await listFiles(roomId);
       const row = files.find((f) => f.filename === 'sample-a.txt');
       if (!row) return { found: false };
@@ -134,7 +134,7 @@ test.describe('File uploads in an encrypted room', () => {
 
     const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
     const roomId = new URL(page.url()).pathname.split('/').filter(Boolean).pop();
-    expect(clipboardText).toBe(`${new URL(page.url()).origin}/SyncPad/${roomId}?file=1`);
+    expect(clipboardText).toBe(`${new URL(page.url()).origin}/JotRelay/${roomId}?file=1`);
 
     // Opening the link cold (fresh context, no encKey in memory) must hit
     // the room's normal encryption gate — the link carries no secret.

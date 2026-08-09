@@ -20,7 +20,7 @@ async function withPreview(page, markdown) {
   await ensureWriteMode(page);
   await page.locator('#note-editor').fill(markdown);
   await page.evaluate(async (md) => {
-    const { renderMarkdown } = await import('/SyncPad/src/markdown.js');
+    const { renderMarkdown } = await import('/JotRelay/src/markdown.js');
     const pane = document.getElementById('note-preview');
     pane.innerHTML = renderMarkdown(md);
     pane.classList.remove('hidden');
@@ -82,7 +82,7 @@ test.describe('Markdown preview', () => {
     // helper it delegates to, so this exercises the real click-handling
     // logic rather than re-implementing it in the test.
     await page.evaluate(async () => {
-      const { wireCodeBlockCopyButtons } = await import('/SyncPad/src/utils.js');
+      const { wireCodeBlockCopyButtons } = await import('/JotRelay/src/utils.js');
       wireCodeBlockCopyButtons(document.getElementById('note-preview'));
     });
 
@@ -292,7 +292,7 @@ test.describe('Markdown preview', () => {
         if (!(cb instanceof HTMLInputElement) || cb.type !== 'checkbox') return;
         const idx = Number(cb.dataset.cbIndex);
         if (!Number.isFinite(idx)) return;
-        const { toggleChecklistItem } = await import('/SyncPad/src/markdown.js');
+        const { toggleChecklistItem } = await import('/JotRelay/src/markdown.js');
         const editor = document.getElementById('note-editor');
         editor.value = toggleChecklistItem(editor.value, idx, cb.checked);
         editor.dispatchEvent(new Event('input', { bubbles: true }));
