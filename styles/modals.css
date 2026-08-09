@@ -839,3 +839,37 @@ kbd {
   body:has(.comment-floating-composer-dock) #btn-add-comment-fab { display: none; }
   body:has(.comment-floating-composer-dock) .remote-notice { bottom: 64px; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   KEYBOARD OPEN — MOBILE: reclaim the bottom action bar's
+   footprint the moment ANY text surface is focused — typing in
+   the note itself, not just a specific panel/composer — instead
+   of merely repositioning the bar above the keyboard. The bar's
+   own Files/Tools/Devices/Settings actions aren't useful mid-typing
+   anyway (same reasoning as hiding it for Find & Replace above),
+   and every note-taking app worth comparing to (Notion, Google
+   Docs, Apple Notes) reclaims this same chrome while the keyboard
+   is up rather than leaving a nav bar sandwiched between the
+   content and the keyboard.
+
+   Driven by body.keyboard-open (see keyboard-viewport.js), NOT
+   --kb-inset directly: --kb-inset is 0px whenever the platform's
+   own interactive-widget=resizes-content viewport hint already
+   shrinks the layout viewport for the keyboard (Android Chrome and
+   friends) — correct for POSITIONING (nothing needs to be pushed up
+   there), but that leaves no geometric signal at all to detect
+   "the keyboard is open" on exactly those platforms. Focus entering
+   a text surface is a reliable proxy on every platform this matters
+   on, independent of which viewport-resize mechanism is in play.
+
+   No .remote-notice override needed here (unlike the search-panel/
+   composer sections above): those also place a large floating
+   element ON TOP of the reclaimed space, but this rule doesn't —
+   #app-screen's shrunk padding-bottom alone lets .editor-area (and
+   .remote-notice's bottom:12px position within it) grow into the
+   freed space on its own. */
+@media (max-width: 639px) {
+  body.keyboard-open .mobile-action-bar { display: none; }
+  body.keyboard-open #app-screen { padding-bottom: calc(8px + var(--kb-inset, 0px)); }
+  body.keyboard-open #toast-container { bottom: calc(20px + var(--kb-inset, 0px)); }
+}

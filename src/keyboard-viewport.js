@@ -4,8 +4,11 @@
 // caret — above the on-screen keyboard on platforms where index.html's
 // `interactive-widget=resizes-content` viewport hint has no effect —
 // notably iOS Safari, which has no equivalent of it and never shrinks
-// window.innerHeight for the keyboard. Import for its side effects only —
-// nothing here is exported.
+// window.innerHeight for the keyboard. Also toggles body.keyboard-open
+// (see the bottom of this file) so the bottom action bar can be hidden
+// outright — not just repositioned — while any text surface is focused on
+// mobile, reclaiming its footprint for the editor. Import for its side
+// effects only — nothing here is exported.
 //
 // window.innerHeight stays fixed at the full (keyboard-including) screen
 // height on those platforms, while window.visualViewport.height shrinks to
@@ -90,3 +93,43 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('scroll', () => { _updateKeyboardInset(); _scheduleReflowCaretIntoView(); });
   _updateKeyboardInset();
 }
+
+// ── body.keyboard-open — reclaim the bottom action bar's footprint ─────────
+// A separate signal from --kb-inset above, on purpose: --kb-inset is
+// legitimately 0px whenever the platform's own interactive-widget=
+// resizes-content viewport hint already shrinks the layout viewport for the
+// keyboard (Android Chrome and friends) — correct for POSITIONING (nothing
+// needs pushing up there), but that leaves no geometric gap to detect "the
+// keyboard is open" on exactly those platforms. Focus entering a text
+// surface is a reliable proxy on every mobile platform that matters here,
+// regardless of which viewport-resize mechanism is in play — see
+// modals.css's "KEYBOARD OPEN — MOBILE" rules for what this class does.
+const MOBILE_BREAKPOINT_QUERY = '(max-width: 639px)';
+
+function _isTextEditingElement(el) {
+  if (!el) return false;
+  if (el.tagName === 'TEXTAREA') return true;
+  if (el.tagName === 'INPUT') {
+    const type = (el.type || 'text').toLowerCase();
+    return !['button', 'checkbox', 'radio', 'range', 'file', 'submit', 'reset', 'color', 'image'].includes(type);
+  }
+  return !!el.isContentEditable;
+}
+
+document.addEventListener('focusin', (e) => {
+  if (!_isTextEditingElement(e.target)) return;
+  if (!window.matchMedia?.(MOBILE_BREAKPOINT_QUERY)?.matches) return;
+  document.body.classList.add('keyboard-open');
+});
+document.addEventListener('focusout', (e) => {
+  if (!_isTextEditingElement(e.target)) return;
+  // Focus can move from one text surface straight to another (e.g. Tab
+  // between fields) without the keyboard ever actually closing in between —
+  // check on the next tick rather than removing the class immediately, so
+  // that hop doesn't flash the action bar back in and out.
+  setTimeout(() => {
+    if (!_isTextEditingElement(document.activeElement)) {
+      document.body.classList.remove('keyboard-open');
+    }
+  }, 50);
+});
