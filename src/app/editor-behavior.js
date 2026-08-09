@@ -15,7 +15,7 @@ import * as UI from '../ui.js';
 import { copyToClipboard } from '../utils.js';
 import { state, SLASH_MENU_ITEMS, _STRIP_PASTE_KEY, _SMART_PUNCT_KEY, _FOCUS_MODE_KEY, _TYPEWRITER_MODE_KEY, _HIDE_PRESENCE_KEY, _SYNC_SCROLL_KEY, _CODE_LINE_NUMBERS_KEY } from './state.js';
 import { _currentSelectionRange, _openFloatingCommentComposer, _refreshFloatingComments, _updateScrollSyncWiring } from './comments-preview.js';
-import { _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedRefreshFloatingComments } from './comments-preview.js';
+import { _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedRefreshFloatingComments, _debouncedPruneDeletedCommentAnchors } from './comments-preview.js';
 import { _uploadAndInsertImages } from './files-panel.js';
 import { _openTemplatesModalFresh } from './panels.js';
 
@@ -51,6 +51,7 @@ export function _wireEditorCore() {
     // Debounced so large documents don't re-render markdown on every keystroke.
     _debouncedRefreshPreview();
     _debouncedRefreshFloatingComments();
+    _debouncedPruneDeletedCommentAnchors();
     _updateSlashMenu();
   });
   editor?.addEventListener('blur', () => { onEditorBlur(); _closeSlashMenu(); });

@@ -2551,6 +2551,27 @@ create index if not exists idx_syncpad_rooms_created_at
 create index if not exists idx_syncpad_files_uploaded_at
   on public.syncpad_files(uploaded_at);
 
+-- ============================================================
+-- SOURCE: supabase/migrations/0013_comment_anchor_text.sql
+-- ============================================================
+-- Comment anchor-text snapshot — see that migration's own header for the
+-- full rationale (client-side auto-delete of a comment whose anchored text
+-- has been removed).
+
+alter table public.syncpad_room_comments
+  add column if not exists anchor_text text;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'syncpad_room_comments_anchor_text_len_check'
+  ) then
+    alter table public.syncpad_room_comments
+      add constraint syncpad_room_comments_anchor_text_len_check
+      check (anchor_text is null or length(anchor_text) <= 4000);
+  end if;
+end $$;
+
 -- ════════════════════════════════════════════════════════════════
 -- END OF MIGRATION
 -- ════════════════════════════════════════════════════════════════

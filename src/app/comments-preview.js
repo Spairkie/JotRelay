@@ -19,6 +19,13 @@ import { _uploadAndInsertImages } from './files-panel.js';
 
 // ── Comments ───────────────────────────────────────────────────────────────────
 
+// Matches syncpad_room_comments' anchor_text_len_check constraint
+// (0013_comment_anchor_text.sql). A selection longer than this just isn't
+// tracked for auto-delete (see _pruneDeletedCommentAnchors) — an edge case
+// (commenting on almost the whole document) not worth the fragility of
+// comparing/storing a huge snapshot.
+const ANCHOR_TEXT_MAX = 4000;
+
 /** The selection range a new comment would attach to, in whichever surface
  *  (plain textarea or CM6 live surface) is currently active. */
 export function _currentSelectionRange() {
@@ -57,7 +64,23 @@ export async function _submitComment(text, anchor) {
   if (!canEdit()) { UI.showToast(editBlockedReason() || 'Editing is disabled.', 'warning'); return; }
   try {
     const payloadText = state.encKey ? await encryptContent(text, state.encKey) : text;
-    await addComment(state.roomId, { anchorFrom: anchor.from, anchorTo: anchor.to, text: payloadText });
+    // Snapshot of the anchored text itself, so a later edit can be detected
+    // as "the commented text is gone" and the comment auto-deleted (see
+    // _pruneDeletedCommentAnchors). Point comments (no selection, just a
+    // cursor position) have nothing to snapshot.
+    let anchorText;
+    if (anchor.to > anchor.from) {
+      const raw = UI.getEditorValue().slice(anchor.from, anchor.to);
+      // Check the length of what actually gets stored, not the plaintext —
+      // AES-GCM's IV+tag overhead and base64 expansion mean an encrypted
+      // room's ciphertext can run well past the plaintext's own length, and
+      // the DB's anchor_text_len_check constraint applies to that stored
+      // value. Checking post-encryption avoids ever sending an insert that
+      // the constraint would reject.
+      const candidate = state.encKey ? await encryptContent(raw, state.encKey) : raw;
+      if (candidate.length <= ANCHOR_TEXT_MAX) anchorText = candidate;
+    }
+    await addComment(state.roomId, { anchorFrom: anchor.from, anchorTo: anchor.to, text: payloadText, anchorText });
     await _refreshComments();
     UI.showToast('Comment added.', 'success');
   } catch {
@@ -109,6 +132,19 @@ function _toggleCommentBubble(id) {
   _refreshFloatingComments();
 }
 
+/** Tap on a `.cm-comment-anchor` span (touch devices only — see
+ *  live-editor.js's _isCoarsePointer gate) resolved to a document position;
+ *  find the comment whose range covers it and open its floating bubble.
+ *  This is the mobile substitute for the hover-sized margin dots, which
+ *  CSS hides on touch. */
+function _onCommentAnchorTap(pos) {
+  const c = state.lastComments.find((x) =>
+    Number.isFinite(x.anchor_from) && Number.isFinite(x.anchor_to) &&
+    pos >= x.anchor_from && pos < x.anchor_to
+  );
+  if (c) _toggleCommentBubble(c.id);
+}
+
 /** Cycle the expanded comment forward/back through the note's comments in
  *  anchor order — used by both the floating bubble's and the side panel's
  *  Prev/Next controls, so "navigate the comments" works the same from
@@ -145,7 +181,23 @@ export async function _refreshComments() {
       const anchorPreview = Number.isFinite(c.anchor_from) && Number.isFinite(c.anchor_to) && c.anchor_to > c.anchor_from
         ? currentText.slice(c.anchor_from, c.anchor_to)
         : null;
-      return { ...c, _preview: preview, _anchorPreview: anchorPreview };
+      // Decrypted creation-time snapshot of the anchored text, for
+      // _pruneDeletedCommentAnchors' "has this text since been deleted?"
+      // comparison — distinct from anchorPreview above, which is a fresh
+      // slice of the CURRENT text at the same (static) offsets. Gated on
+      // the room's actual encryption state rather than looksEncrypted()'s
+      // content-shape heuristic: anchor_text is always ciphertext in an
+      // encrypted room and always plaintext otherwise, so using the
+      // heuristic here risks misreading ordinary plaintext that happens to
+      // resemble ciphertext (e.g. a hex/base64-shaped snippet) as
+      // encrypted, nulling out a snapshot that never needed decrypting and
+      // permanently disabling auto-delete for that one comment.
+      let anchorSnapshot = c.anchor_text || null;
+      if (anchorSnapshot != null && state.encKey) {
+        try { anchorSnapshot = await decryptContent(anchorSnapshot, state.encKey); }
+        catch { anchorSnapshot = null; }
+      }
+      return { ...c, _preview: preview, _anchorPreview: anchorPreview, _anchorSnapshot: anchorSnapshot };
     }));
     UI.renderCommentsList(withPreviews, {
       onDelete: _deleteCommentClick,
@@ -154,6 +206,7 @@ export async function _refreshComments() {
       canDelete: canEdit(),
     });
     state.lastComments = withPreviews;
+    UI.setCommentCountBadge(withPreviews.length);
     // The active bubble's comment may have just been deleted (by this
     // device or another) — nothing left to keep expanded.
     if (state.activeCommentId && !withPreviews.some((c) => c.id === state.activeCommentId)) {
@@ -256,6 +309,7 @@ export function _applyMarkdownMode(mode) {
             onChange: _onLiveEditorChange,
             onCursorActivity: _onLiveCursorActivity,
             onImageFiles: (files) => { if (canEdit()) _uploadAndInsertImages(files); },
+            onCommentAnchorTap: _onCommentAnchorTap,
             readOnly: !canEdit(),
           });
           // CM6 persists across later mode switches (mount() is only called
@@ -353,6 +407,39 @@ export const _debouncedRefreshPreview = debounce(_refreshPreviewIfActive, 300);
 // margin dots need to be recomputed after edits too — debounced for the
 // same reason as preview refresh above.
 export const _debouncedRefreshFloatingComments = debounce(_refreshFloatingComments, 300);
+
+// "If the commented text is deleted, the comment is deleted too" — Google
+// Docs/Notion-style behavior. anchor_from/anchor_to are static DB offsets,
+// never re-mapped against edits made elsewhere in the document, so they
+// drift the moment anything before them is inserted or removed — comparing
+// the snapshot against a slice taken at those (now stale) offsets would
+// misfire on any unrelated edit, not just one that actually touches the
+// commented text. Checking whether the snapshot still occurs ANYWHERE in
+// the current document sidesteps that: an edit anywhere else leaves the
+// commented text intact and findable, so nothing is deleted; only actually
+// removing/changing that exact text makes it stop matching everywhere. The
+// tradeoff is a comment can survive if identical text happens to exist
+// elsewhere too — a false negative, and a much safer failure mode than
+// deleting a comment whose text was never touched. A comment with no
+// snapshot (point comment, selection too long to track, or created before
+// this feature existed) is left alone rather than guessed at.
+export async function _pruneDeletedCommentAnchors() {
+  if (!state.lastComments.length) return;
+  const currentText = UI.getEditorValue();
+  const stale = state.lastComments.filter((c) => {
+    if (c._anchorSnapshot == null) return false;
+    if (!Number.isFinite(c.anchor_from) || !Number.isFinite(c.anchor_to) || c.anchor_to <= c.anchor_from) return false;
+    return !currentText.includes(c._anchorSnapshot);
+  });
+  if (!stale.length) return;
+  await Promise.all(stale.map((c) => deleteComment(c.id).catch(() => {})));
+  await _refreshComments();
+}
+
+// Debounced so a comment isn't deleted mid-keystroke while its text is only
+// transiently different (e.g. typing inside the anchored range) — only a
+// settled edit triggers the delete.
+export const _debouncedPruneDeletedCommentAnchors = debounce(_pruneDeletedCommentAnchors, 600);
 
 function _wirePreviewClickOnce() {
   if (state.previewObserverWired) return;

@@ -55,6 +55,7 @@
 .tools-section-danger .tools-section-title { color: var(--red); opacity: 0.7; }
 .tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tool-btn {
+  position: relative;
   padding: 12px 10px; border-radius: var(--radius-md);
   background: var(--bg-elevated); border: 1px solid var(--border);
   color: var(--text-primary); font-size: 13px;
@@ -69,6 +70,14 @@
 .tool-btn.danger:hover { border-color: var(--red); }
 .tool-btn.danger:hover .tool-icon { color: var(--red); }
 .tool-btn.danger:hover .tool-label { color: var(--red); }
+/* How many comments exist in the note — visible without opening the panel,
+   same discoverability idea as the connected-device count in the header. */
+.tool-count-badge {
+  position: absolute; top: 6px; right: 6px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; background: var(--accent); color: var(--text-inverse);
+  font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
+}
 
 /* Files Panel */
 .files-upload-zone {
@@ -272,7 +281,22 @@
 }
 .comment-thread-reply-input:focus { border-color: var(--accent); }
 .comments-empty { font-size: 13px; color: var(--text-muted); text-align: center; padding: 24px 0; }
+
+@media (max-width: 639px) {
+  /* Composer/reply inputs: under 16px triggers iOS Safari's page-zoom-on-
+     focus (same fix already applied to Find/Replace's inputs). Jump/delete
+     buttons: 26px is under the ~44px touch-target guideline used elsewhere
+     in this pass. */
+  .comment-composer-input, .comment-thread-reply-input { font-size: 16px; }
+  .comment-jump-btn, .comment-delete-btn { width: 40px; height: 40px; }
+}
 .note-live .cm-comment-anchor { border-bottom: 2px dotted var(--accent); }
+/* On touch, this span is the ONLY way to open a comment (the margin dot is
+   hidden — see editor.css) — a faint fill makes it read as "tappable",
+   not just styled text, since there's no hover state to discover it by. */
+@media (hover: none), (pointer: coarse) {
+  .note-live .cm-comment-anchor { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 2px; }
+}
 
 /* Files panel — select mode */
 .panel-header-actions { display: flex; align-items: center; gap: 6px; }
@@ -369,7 +393,9 @@
   background: var(--bg-elevated); border: 1px solid var(--border); margin-bottom: 8px;
 }
 .device-item.me { border-color: rgba(245,166,35,0.25); }
-.device-dot  { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; margin-top: 2px; }
+/* background is set inline per device (colorForDevice()) — matches that
+   device's caret/selection colour in the Live editor surface. */
+.device-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
 .device-info { flex: 1; min-width: 0; }
 .device-name-text { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .device-meta { display: flex; align-items: center; gap: 4px; margin-top: 2px; flex-wrap: wrap; }
@@ -387,6 +413,13 @@
   color: var(--text-muted); border: 1px solid transparent;
 }
 .device-follow-btn:hover { color: var(--text-primary); background: var(--bg-base); }
+@media (max-width: 639px) {
+  /* Same fixes as Find/Replace and the Comments panel: under 16px triggers
+     iOS Safari's zoom-on-focus, and 26px is under the ~44px touch-target
+     guideline used elsewhere in this pass. */
+  .device-name-edit { font-size: 16px; }
+  .device-follow-btn { width: 40px; height: 40px; }
+}
 .device-follow-btn.is-active { color: var(--accent); background: var(--accent-dim); border-color: var(--accent); }
 .device-name-edit {
   width: 100%; padding: 4px 8px; border-radius: var(--radius-sm);

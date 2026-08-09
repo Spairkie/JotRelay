@@ -173,6 +173,15 @@ export function setCommentLoading(loading) {
   document.getElementById('comment-loading')?.classList.toggle('hidden', !loading);
 }
 
+/** Total comment count shown on the Comments tool button, so a room's
+ *  discussion is discoverable without opening the panel first. */
+export function setCommentCountBadge(count) {
+  const badge = document.getElementById('comment-count-badge');
+  if (!badge) return;
+  badge.textContent = count > 99 ? '99+' : String(count);
+  badge.classList.toggle('hidden', !count);
+}
+
 /**
  * `pendingAnchor` is the range the next comment will be attached to (or
  * null when there's no usable selection/caret to anchor to — e.g. the

@@ -1,6 +1,6 @@
 // SyncPad – ui/panels.js
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
-import { formatFileSize, fileEmoji, formatTimestamp, relativeTimeShort, escapeHtml } from '../utils.js';
+import { formatFileSize, fileEmoji, formatTimestamp, relativeTimeShort, escapeHtml, colorForDevice } from '../utils.js';
 import { getIcon } from '../icons.js';
 
 /** Return a human-readable "in X" string for an ISO expiry date. */
@@ -183,6 +183,16 @@ function _announcePresenceChanges(devices, myDeviceId) {
 export function renderDevicesList(devices, myDeviceId, onNameChange, { followedDeviceId = null, onToggleFollow = null } = {}) {
   const list = document.getElementById('devices-list');
   if (!list) return;
+  // This re-renders on every presence 'sync' — which fires for ANY
+  // connected device's typing/cursor activity, not just changes relevant to
+  // this list — so a full rebuild while the rename input is mid-edit would
+  // yank focus and the caret out from under whatever the user is currently
+  // typing. Skip the rebuild entirely until they blur/submit; the 'change'
+  // handler below re-tracks presence itself, which triggers a fresh render
+  // reflecting anything that was missed in the meantime.
+  if (list.contains(document.activeElement) && document.activeElement?.classList.contains('device-name-edit')) {
+    return;
+  }
   _announcePresenceChanges(devices, myDeviceId);
   list.setAttribute('role', 'list');
   list.innerHTML = '';
@@ -238,8 +248,13 @@ export function renderDevicesList(devices, myDeviceId, onNameChange, { followedD
       ? `<button type="button" class="device-follow-btn${isFollowed ? ' is-active' : ''}" aria-pressed="${isFollowed}" title="${isFollowed ? 'Stop following this device' : 'Follow this device — jump your view to where they are'}" aria-label="${isFollowed ? 'Stop following' : 'Follow'} ${escapeHtml(device.device_name || 'this device')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>`
       : '';
 
+    // Same colour this device's caret/selection renders in inside the Live
+    // editor surface (see live-editor.js's colorForDevice()) — lets you
+    // match "who's editing near line 12 in that colour" to a name here.
+    const dotColor = escapeHtml(colorForDevice(device.device_id));
+
     item.innerHTML = `
-      <div class="device-dot"></div>
+      <div class="device-dot" style="background:${dotColor}"></div>
       <div class="device-info">
         ${isMe
           ? `<input class="device-name device-name-edit" value="${escapeHtml(device.device_name || '')}" maxlength="32" title="Tap to rename your device" aria-label="Your device name" />`

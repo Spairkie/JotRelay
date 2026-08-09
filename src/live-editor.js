@@ -21,18 +21,19 @@ import {
   StateField, StateEffect,
   javascript, python, json, html, css, shell,
 } from '../vendor/codemirror.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, colorForDevice } from './utils.js';
 import { highlightExtension } from './markdown-highlight-extension.js';
 import { parseTableAlignments } from './markdown-table-utils.js';
 import { EMOJI_MAP } from './markdown-emoji-map.js';
 import { renderMarkdown } from './markdown.js';
 import { toggleFootnotePopover } from './footnote-popover.js';
 
-let _view             = null;
-let _onChange         = null;
-let _onCursorActivity = null;
-let _onImageFiles     = null;
-let _scrollSync       = null; // { editorEl, scrollEl, onEditorScroll, onSelfScroll }
+let _view                = null;
+let _onChange            = null;
+let _onCursorActivity    = null;
+let _onImageFiles        = null;
+let _onCommentAnchorTap  = null;
+let _scrollSync          = null; // { editorEl, scrollEl, onEditorScroll, onSelfScroll }
 const _readOnly = new Compartment();
 
 // Marks transactions applied from outside (textarea → CM6) so the update
@@ -877,13 +878,10 @@ const _tableField = StateField.define({
   provide: (f) => EditorView.decorations.from(f),
 });
 
-/** Stable per-device caret colour derived from its id. */
-export function colorForDevice(deviceId) {
-  let hash = 0;
-  const s = String(deviceId || '');
-  for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
-  return `hsl(${((hash % 360) + 360) % 360}, 65%, 48%)`;
-}
+// colorForDevice() moved to utils.js — shared with the Devices panel's
+// presence dot (ui/panels.js), so a collaborator's colour matches between
+// their in-editor caret and their row in that list.
+export { colorForDevice };
 
 /**
  * Render carets (and selection ranges, when a collaborator has one) for
@@ -980,6 +978,21 @@ export function setCommentAnchors(comments) {
     annotations: External.of(true),
   });
 }
+
+// True on touch/coarse-pointer devices — same test the CSS minimap rule
+// uses (inverted) to decide it should hide itself there. Used only as a
+// fallback below, when no real pointerdown has told us what kind of
+// pointer is actually being used.
+function _isCoarsePointer() {
+  return !!window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+}
+
+// Set from the pointerdown handler below, just ahead of mousedown for the
+// same physical interaction. A device-level media query can't tell touch
+// from mouse on a hybrid touchscreen laptop (primary pointer stays "fine"
+// even while a specific tap came from the touchscreen) — the event's own
+// pointerType is the actual source of truth for that one interaction.
+let _lastPointerType = null;
 
 // Extract a Link node's destination for ctrl/cmd+click opening — either a
 // real http(s) URL to open directly, or an uploaded file's storage path
@@ -1297,7 +1310,7 @@ export function estimateViewportY(pos) {
  * already mounted). `onChange(text)` fires only for edits made in this
  * surface, never for syncFromText() applications.
  */
-export function mount(container, initialValue, { onChange, onCursorActivity, onImageFiles, readOnly = false } = {}) {
+export function mount(container, initialValue, { onChange, onCursorActivity, onImageFiles, onCommentAnchorTap, readOnly = false } = {}) {
   destroy();
   // _liveTocOpen is module-global so a manual expand survives this file's
   // own re-renders (widget reuse via eq() — see its declaration above), but
@@ -1313,6 +1326,7 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
   _onChange = onChange || null;
   _onCursorActivity = onCursorActivity || null;
   _onImageFiles = onImageFiles || null;
+  _onCommentAnchorTap = onCommentAnchorTap || null;
   _view = new EditorView({
     state: EditorState.create({
       doc: initialValue || '',
@@ -1338,8 +1352,29 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
         // meaningful to do with an image-only clipboard item (no text
         // representation to insert) and would otherwise silently no-op.
         EditorView.domEventHandlers({
+          pointerdown: (e) => { _lastPointerType = e.pointerType || null; return false; },
           mousedown: (e, view) => {
-            if (!(e.ctrlKey || e.metaKey)) return false;
+            if (!(e.ctrlKey || e.metaKey)) {
+              // Tap-to-view a comment's anchored text on touch devices — the
+              // margin dot/bubble system is hidden there (no room for it),
+              // so the dotted-underline span itself is the only affordance.
+              // Desktop leaves plain clicks alone (still just places the
+              // cursor) since the hover-sized margin dots already cover it.
+              // Prefer the actual pointerdown's pointerType (correct even
+              // on a hybrid touchscreen laptop); fall back to the device-
+              // level media query only if no pointerdown was observed.
+              const isTouchLike = _lastPointerType === 'touch' || _lastPointerType === 'pen'
+                || (_lastPointerType == null && _isCoarsePointer());
+              if (_onCommentAnchorTap && isTouchLike && e.target.closest?.('.cm-comment-anchor')) {
+                const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+                if (pos != null) {
+                  e.preventDefault();
+                  _onCommentAnchorTap(pos);
+                  return true;
+                }
+              }
+              return false;
+            }
             const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
             if (pos == null) return false;
             const target = _linkUrlAt(view.state, pos);
@@ -1430,6 +1465,7 @@ export function destroy() {
   _onChange = null;
   _onCursorActivity = null;
   _onImageFiles = null;
+  _onCommentAnchorTap = null;
 }
 
 /**

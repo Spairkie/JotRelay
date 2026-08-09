@@ -757,8 +757,20 @@ body.lock-mode .md-toolbar { opacity: 0.4; pointer-events: none; }
   transition: transform var(--transition), background var(--transition);
 }
 .comment-dot:hover, .comment-dot.active { transform: translateY(-50%) scale(1.35); }
-@media (max-width: 639px) {
-  .comment-margin-layer { display: none; } /* no margin space on narrow viewports */
+/* Hover-driven and mouse-precision-sized (9px) — same rationale as the
+   minimap's dots (see .cm-minimap above): hidden on touch/coarse-pointer
+   devices rather than shipping a barely-tappable target there. Unlike the
+   minimap, this isn't a dead end on touch — .cm-comment-anchor spans
+   (the dotted-underline text itself) are tap targets there instead (see
+   live-editor.js's _isCoarsePointer-gated mousedown handler), so the
+   bubble below still needs to render on touch; only the dot disappears.
+   Scoped to .live-preview (the CM6 Live/Split surface is actually
+   mounted): Write mode's plain textarea has no .cm-comment-anchor spans
+   to tap, so the dot stays as the only affordance there — an ordinary
+   tap already activates a <button>'s click handler, no special touch
+   handling needed. */
+@media (hover: none), (pointer: coarse) {
+  .editor-wrap.live-preview .comment-dot { display: none; }
 }
 
 .comment-floating-bubble {
@@ -810,6 +822,21 @@ body.lock-mode .md-toolbar { opacity: 0.4; pointer-events: none; }
   transition: background var(--transition), color var(--transition);
 }
 .comment-floating-bubble .comment-delete-btn:hover { background: var(--bg-surface); color: var(--red); }
+
+@media (max-width: 639px) {
+  /* No margin-dot gutter to hug on mobile (the dot itself is hidden above),
+     so the bubble opens from a tapped .cm-comment-anchor span instead —
+     give it more breathing room and larger touch targets than the
+     mouse-sized desktop version. */
+  .comment-floating-bubble {
+    right: 10px; width: calc(100vw - 20px);
+    font-size: 13.5px; padding: 10px 12px;
+  }
+  .comment-floating-bubble-meta { font-size: 11.5px; }
+  .comment-nav-btn, .comment-floating-bubble .comment-delete-btn {
+    width: 30px; height: 30px; font-size: 16px;
+  }
+}
 
 /* Typing Indicator */
 .typing-indicator {

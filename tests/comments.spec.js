@@ -233,6 +233,96 @@ test.describe('Comment navigation', () => {
   });
 });
 
+test.describe('Comment count badge', () => {
+  test('the Comments tool button shows a count badge, hidden when there are no comments', async ({ page }) => {
+    await createRoom(page);
+    const badge = page.locator('#comment-count-badge');
+    await expect(badge).toBeHidden();
+
+    await typeInEditor(page, 'Some text to comment on, right here.');
+    await addCommentViaPanel(page, 5, 9, 'first'); // "text"
+    await expect(badge).toBeVisible();
+    await expect(badge).toHaveText('1');
+
+    await addCommentViaPanel(page, 15, 19, 'second'); // "on,"
+    await expect(badge).toHaveText('2');
+  });
+
+  test('deleting a comment decrements the badge back to hidden', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, 'Some text to comment on.');
+    await addCommentViaPanel(page, 5, 9, 'only comment');
+    await expect(page.locator('#comment-count-badge')).toHaveText('1');
+
+    await page.locator('.comment-dot').first().click();
+    await page.locator('.comment-floating-bubble .comment-delete-btn').click();
+    await page.locator('#sp-confirm-ok').click();
+    await expect(page.locator('#comment-count-badge')).toBeHidden({ timeout: 3000 });
+  });
+});
+
+test.describe('Auto-delete on anchored text removal', () => {
+  // Google Docs/Notion-style behavior: a comment has no meaning once the
+  // text it's attached to is gone. See comments-preview.js's
+  // _pruneDeletedCommentAnchors(), debounced 600ms off the same 'input'
+  // listener that drives preview/margin-dot refresh.
+  test('deleting the exact text a comment is anchored to removes the comment', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, 'Some text to comment on, right here.');
+    await addCommentViaPanel(page, 5, 9, 'delete me'); // "text"
+    await expect(page.locator('.comment-dot')).toHaveCount(1);
+
+    await page.locator('#note-editor').evaluate((el) => {
+      el.focus();
+      const v = el.value;
+      el.value = v.slice(0, 5) + v.slice(9); // remove "text"
+      el.setSelectionRange(5, 5);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await expect(page.locator('.comment-dot')).toHaveCount(0, { timeout: 3000 });
+  });
+
+  test('editing text elsewhere in the document does not delete an unrelated comment', async ({ page }) => {
+    await createRoom(page);
+    await typeInEditor(page, 'Some text to comment on, right here.');
+    await addCommentViaPanel(page, 5, 9, 'keep me'); // "text"
+    await expect(page.locator('.comment-dot')).toHaveCount(1);
+
+    await page.locator('#note-editor').evaluate((el) => {
+      el.focus();
+      el.value += ' Appended, unrelated.';
+      el.setSelectionRange(el.value.length, el.value.length);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.waitForTimeout(1000); // past the 600ms prune debounce
+    await expect(page.locator('.comment-dot')).toHaveCount(1);
+  });
+
+  test('inserting text BEFORE the anchor (shifting its offsets) does not delete the comment', async ({ page }) => {
+    // Regression test: anchor_from/anchor_to are static DB offsets. An
+    // earlier implementation re-sliced the CURRENT text at those same
+    // stale offsets and compared that slice to the snapshot — any edit
+    // before the anchor shifts what actually sits at those offsets, so
+    // that comparison misfired and deleted comments whose text was never
+    // touched. The fix checks whether the snapshot text still occurs
+    // anywhere in the document instead.
+    await createRoom(page);
+    await typeInEditor(page, 'Some text to comment on, right here.');
+    await addCommentViaPanel(page, 5, 9, 'keep me too'); // "text"
+    await expect(page.locator('.comment-dot')).toHaveCount(1);
+
+    await page.locator('#note-editor').evaluate((el) => {
+      el.focus();
+      el.value = 'X' + el.value; // insert one character at the very start
+      el.setSelectionRange(1, 1);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.waitForTimeout(1000); // past the 600ms prune debounce
+    await expect(page.locator('.comment-dot')).toHaveCount(1);
+  });
+});
+
 test.describe('Comment threads (renderCommentsList grouping)', () => {
   // renderCommentsList() only touches static DOM (#comments-list lives in
   // #app-screen, present in the page regardless of route) and takes plain

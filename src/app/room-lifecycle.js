@@ -48,7 +48,7 @@ import {
   _suppressNextResume,
 } from './routing.js';
 import { refreshFiles } from './files-panel.js';
-import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview } from './comments-preview.js';
+import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedPruneDeletedCommentAnchors, _pruneDeletedCommentAnchors } from './comments-preview.js';
 import { _closeSlashMenu, _focusActiveEditorSurface } from './editor-behavior.js';
 import { _selectExpirationPreset } from './panels.js';
 import { wireEvents } from './wiring.js';
@@ -566,6 +566,7 @@ async function startApp(isNewRoom = false) {
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
+      _pruneDeletedCommentAnchors();
       UI.showToast('Note was cleared by another device.', 'warning');
     },
     onRemoteViewOnce: async () => {
@@ -576,6 +577,7 @@ async function startApp(isNewRoom = false) {
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
+      _pruneDeletedCommentAnchors();
       UI.showToast('This note was view-once and has been cleared from the server.', 'warning', 6000);
     },
   });
@@ -590,7 +592,12 @@ async function startApp(isNewRoom = false) {
     }
     UI.renderDevicesList(devices, deviceId, (name) => {
       setDeviceName(name);
-      updatePresenceDeviceName(getDeviceName());
+      // setDeviceName() trims/falls back to a fresh generated name for a
+      // blank input, so read back the name that actually got applied
+      // rather than trusting the raw input the rename came from.
+      const applied = getDeviceName();
+      updatePresenceDeviceName(applied);
+      UI.showToast(`Renamed to "${applied}" — visible to everyone in this room.`, 'success');
     }, {
       followedDeviceId: state.followedDeviceId,
       onToggleFollow: (id) => {
@@ -830,6 +837,7 @@ async function _handleRoomStateTransition(prev, newRoom) {
     UI.updateWordCount('');
     UI.hideExpirationBar();
     _refreshPreviewIfActive();
+    _pruneDeletedCommentAnchors();
     UI.showToast('This note expired and was cleared.', 'warning', 5000);
   }
 
@@ -847,6 +855,7 @@ async function _handleRoomStateTransition(prev, newRoom) {
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
+      _pruneDeletedCommentAnchors();
       UI.showToast('This note was view-once and has been cleared from the server.', 'warning', 6000);
     }
   }
@@ -865,6 +874,7 @@ async function _handleRoomStateTransition(prev, newRoom) {
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
+      _pruneDeletedCommentAnchors();
       UI.showToast('This room reached its device limit and has been cleared from the server.', 'warning', 6000);
     }
   }
@@ -908,6 +918,7 @@ function _updateViewOnceConsumedUI() {
         setContentNoSave('');
         UI.updateWordCount('');
         _refreshPreviewIfActive();
+        _pruneDeletedCommentAnchors();
         _updatePermissionContext();
         _renderRoomHeader();
         UI.renderSettingsPanel(state.room);
@@ -941,6 +952,7 @@ export function setupExpirationTimer() {
           UI.updateWordCount('');
           UI.hideExpirationBar();
           _refreshPreviewIfActive();
+          _pruneDeletedCommentAnchors();
           UI.showToast('This note expired and was cleared.', 'warning', 5000);
           broadcastSettingsChange();
         }
@@ -1021,7 +1033,11 @@ export function teardownRealtimeSession() {
   state.followedDeviceId = null;
   state.lastComments = [];
   state.activeCommentId = null;
+  // A queued prune from the previous room's typing must not delete comments
+  // in whatever room is joined next.
+  _debouncedPruneDeletedCommentAnchors.cancel?.();
   UI.renderFloatingComments([]);
+  UI.setCommentCountBadge(0);
   _closeSlashMenu();
   // Remove the keydown handler so wireEvents() can install fresh callbacks
   // on the next room join. DOM element listeners (editor, buttons, etc.) are
@@ -1115,6 +1131,7 @@ export async function doClearNote() {
     setContentNoSave('');
     UI.updateWordCount('');
     _refreshPreviewIfActive();
+    _pruneDeletedCommentAnchors();
     broadcastClear('manual');
     UI.showToast('Note cleared.', 'success');
     state.room = await loadRoom(state.roomId);
