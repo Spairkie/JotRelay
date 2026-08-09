@@ -309,4 +309,35 @@ test.describe('body.keyboard-open — bottom action bar reclaim', () => {
       document.getElementById('app-screen').classList.add('hidden');
     });
   });
+
+  test('closing the floating comment composer (which removes its still-focused input directly) does not leave keyboard-open stuck', async ({ page }) => {
+    // Regression test: closeFloatingCommentComposer() (ui/collab.js) removes
+    // its <input> from the DOM while it's still focused, rather than
+    // blurring first — removal alone isn't guaranteed to fire blur/focusout
+    // on every browser (notably mobile Safari), which is the ONLY cleanup
+    // path for body.keyboard-open. Without the explicit blur() the fix
+    // added, this class — and the hidden action bar/reclaimed padding that
+    // comes with it — would stay stuck after the keyboard actually closes.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await goToLanding(page);
+
+    const result = await page.evaluate(async () => {
+      const UI = await import('/SyncPad/src/ui.js');
+      UI.openFloatingCommentComposer({ x: 100, y: 400 }, () => {});
+      await new Promise((r) => setTimeout(r, 20));
+      const hadClass = document.body.classList.contains('keyboard-open');
+
+      // Escape closes the composer via closeFloatingCommentComposer(),
+      // which removes the still-focused input directly.
+      document.querySelector('.comment-floating-composer input')
+        ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 100));
+
+      return { hadClass, stillHasClass: document.body.classList.contains('keyboard-open'), composerGone: !document.querySelector('.comment-floating-composer') };
+    });
+
+    expect(result.hadClass).toBe(true);
+    expect(result.composerGone).toBe(true);
+    expect(result.stillHasClass).toBe(false);
+  });
 });
