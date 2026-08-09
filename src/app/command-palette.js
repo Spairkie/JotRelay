@@ -8,6 +8,7 @@
 import { filterCommands } from '../utils.js';
 import { THEMES, applyTheme } from '../theme.js';
 import { canEdit } from '../permissions.js';
+import { BRAND_NAME } from '../brand.js';
 import * as UI from '../ui.js';
 import { state } from './state.js';
 import { _applyMarkdownMode } from './comments-preview.js';
@@ -58,7 +59,7 @@ function _paletteCommands() {
       run: () => applyTheme(t.id),
     })),
 
-    { id: 'about',      label: 'About JotRelay',       group: 'Help', run: _clickById('btn-about') },
+    { id: 'about',      label: `About ${BRAND_NAME}`,  group: 'Help', run: _clickById('btn-about') },
     { id: 'shortcuts',  label: 'Keyboard shortcuts',  group: 'Help', shortcut: 'Ctrl /', run: _clickById('btn-shortcuts') },
     // #btn-replay-tour's own handler already guards on canEdit() (a
     // read-only viewer's tour would describe editing/autosave and a

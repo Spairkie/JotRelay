@@ -216,7 +216,25 @@ This avoids the need for a separate Node-compatible build and keeps tests honest
 
 ---
 
-## 8. Git Workflow
+## 8. Rebranding Checklist
+
+This project has no build step — nothing renders HTML/JSON from a template — so the product name can't be fully centralized. `src/brand.js` exports `BRAND_NAME`, imported by the handful of JS modules that render the name at runtime (exported-file `<title>`, native share-sheet title, command-palette label, admin "Back to…" buttons, console log prefixes). Change it there and those follow automatically. Everything below still needs a manual find/replace on a future rename:
+
+- **`index.html`** — `<title>`, all `<meta>` tags (description/OG/Twitter), the wordmark markup (currently `Jot<span>Relay</span>` in 5 places — nav logo, footer logo, landing logo × 2, header logo), and every other visible copy string.
+- **`manifest.json`** — `name`, `short_name`.
+- **`package.json`** — `name`, `description`.
+- **Docs & presskit** — `README.md`, `CHANGELOG.md`, this file's own prose, `DEPLOYMENT.md`, `RELEASE_CHECKLIST.md`, `docs/**`, `presskit/**` text files.
+- **`sitemap.xml`, `robots.txt`, `404.html`** — if they reference the name as text (not as a path segment — see below).
+
+**Deliberately excluded from any rename pass, permanently** (not an oversight to revisit — renaming these has real cost or breaks live state):
+- Postgres identifiers in `supabase/**` (`syncpad_*` tables/columns/functions/triggers) and the `syncpad-cleanup` edge function. Renaming live production schema is a real zero-downtime migration project, not a text swap, and no end user ever sees these identifiers.
+- `localStorage` key string literals (`syncpad_theme`, `syncpad_recent_rooms`, etc.) — renaming the string would orphan every existing visitor's saved preferences/drafts.
+- The `syncpad-file:` pseudo-scheme, `data-syncpad-file` attribute, `.syncpad-file-link` class — embedded in every already-saved room's content; renaming breaks file/image references in existing rooms.
+- The `BASE` path constant (`src/app/state.js`), `service-worker.js`'s cache name/scope, and every `/SyncPad`-style URL path segment (`href`/`src` attributes, `manifest.json`'s `start_url`/`scope`, `sitemap.xml`, `robots.txt`, `og:url`/`og:image`). This one **is** meant to change eventually, but only in lockstep with whatever the app is actually deployed under (a GitHub Pages project-site path matching the repo name, or `''` for a root-domain host like Netlify) — changing it any other time serves 404s to real visitors mid-transition. See the SyncPad → JotRelay rebrand PRs for the exact sequencing this required.
+
+---
+
+## 9. Git Workflow
 
 ### Branch Naming
 Use the format `claude/<phase>-<description>`, e.g.:

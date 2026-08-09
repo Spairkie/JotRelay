@@ -9,6 +9,7 @@ import {
   sanitizeRoomId, copyToClipboard, isMobile, isOnline, onOnlineChange,
   getUrlMode,
 } from '../utils.js';
+import { BRAND_NAME } from '../brand.js';
 import {
   loadRoom, createRoom, clearRoomContent, subscribeToRoom,
   resolveReadOnlyShareLink, resolveRoomCode, recordRoomDeviceView,
@@ -315,7 +316,7 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
     }
   } catch (err) {
     // Log the raw error so RLS / network failures are diagnosable in DevTools.
-    console.error('[JotRelay] joinRoom failed for', roomId, err);
+    console.error(`[${BRAND_NAME}] joinRoom failed for`, roomId, err);
     UI.showLoadingError(
       err?.code === 'RATE_LIMITED' ? err.message : 'Could not load room — check your connection and try again.',
       () => joinRoom(roomId, { isNewRoom }),  // retry callback
