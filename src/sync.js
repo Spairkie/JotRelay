@@ -52,6 +52,14 @@ let _lastSnapshotAt            = 0;
 // (app/pwa.js's beforeunload warning) can query it without the UI layer
 // needing to expose its own displayed text back out.
 let _saveStatus                = 'saved';
+// Bumped by every onLocalInput() call. _debouncedSave's debounce() wrapper
+// only guards the TIMER — if a save already escaped its timer and is
+// awaiting the network when a newer edit schedules another one, both can
+// genuinely run concurrently. Comparing this against the value captured at
+// the start of a completing save lets a stale (older) completion detect
+// it's been superseded and skip overwriting _saveStatus back to 'saved' or
+// clearing the draft a newer, not-yet-saved edit still needs.
+let _saveGeneration            = 0;
 
 // ── Init / Destroy ────────────────────────────────────────────────────────────
 
@@ -72,6 +80,7 @@ export function initSync(opts) {
   _seqNum                    = 0;
   _lastSnapshotAt            = 0;
   _saveStatus                = 'saved';
+  _saveGeneration            = 0;
 }
 
 export function setEncryption(encryptFn, decryptFn) {
@@ -111,6 +120,17 @@ export async function onLocalInput() {
   // Set the typing timestamp synchronously so conflict detection is accurate
   _localLastEditAt = Date.now();
 
+  // Mark unsaved (and bump the generation counter _debouncedSave below
+  // compares itself against) BEFORE the first await. saveDraft() below
+  // awaits async encryption in an encrypted room; onLocalInput() itself is
+  // called fire-and-forget from the textarea's 'input' listener, so a tab
+  // closed while that encryption is still pending must already read as
+  // unsaved — setting this after the await would leave a real in-flight
+  // edit unprotected by hasUnsavedChanges()'s beforeunload warning.
+  _onStatusChange('saving');
+  _saveStatus = 'saving';
+  _saveGeneration++;
+
   const plaintext = _getEditorVal();
 
   // Save draft immediately. Encrypted rooms store encrypted local drafts only;
@@ -118,8 +138,6 @@ export async function onLocalInput() {
   await saveDraft(_roomId, plaintext, { encryptFn: _encryptFn });
 
   // Kick off debounced DB save
-  _onStatusChange('saving');
-  _saveStatus = 'saving';
   _debouncedSave();
 
   // Broadcast metadata-only typing activity (no note text/ciphertext payload).
@@ -146,6 +164,14 @@ export function cancelPendingSave() { _debouncedSave.cancel?.(); }
 const _debouncedSave = debounce(async () => {
   if (!_roomId) return;
 
+  // The generation current when THIS save started. debounce() only guards
+  // the timer, not an already-running async body — if this save is still
+  // awaiting the network when a newer edit bumps _saveGeneration and starts
+  // its own save, this save's eventual completion must not report 'saved'
+  // (a newer, not-yet-durable edit exists) or clear the draft that edit
+  // still needs (see _saveGeneration's own comment above).
+  const myGeneration = _saveGeneration;
+
   // Re-check permissions at execution time, not only when input occurred.
   // A save may have been queued before another device locked the room, switched
   // this client to read-only, or enabled encryption without this client having
@@ -160,13 +186,17 @@ const _debouncedSave = debounce(async () => {
     let content = _getEditorVal();
     if (_encryptFn) content = await _encryptFn(content);
     await saveContent(_roomId, content);
-    clearDraft(_roomId);
-    _onStatusChange('saved');
-    _saveStatus = 'saved';
+    if (_saveGeneration === myGeneration) {
+      clearDraft(_roomId);
+      _onStatusChange('saved');
+      _saveStatus = 'saved';
+    }
     _maybeSnapshot(content);
   } catch {
-    _onStatusChange('error');
-    _saveStatus = 'error';
+    if (_saveGeneration === myGeneration) {
+      _onStatusChange('error');
+      _saveStatus = 'error';
+    }
   }
 }, SAVE_DEBOUNCE_MS);
 
