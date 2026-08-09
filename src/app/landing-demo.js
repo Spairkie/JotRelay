@@ -384,7 +384,7 @@ export function initLandingDemo() {
   });
 
   els.copyBtn?.addEventListener('click', async () => {
-    try { await navigator.clipboard?.writeText('jotrelay.app/product-launch-plan'); } catch { /* clipboard permission denied — still show feedback */ }
+    try { await navigator.clipboard?.writeText('https://jotrelay.netlify.app/'); } catch { /* clipboard permission denied — still show feedback */ }
     els.copyBtn.textContent = 'Copied!';
     els.copyBtn.classList.add('copied');
     setTimeout(() => {

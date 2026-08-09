@@ -60,7 +60,7 @@ const targets = [
 // *underneath* that tile, so the corners the rounded rect doesn't cover
 // are seamlessly the same fill rather than transparent, with no visible
 // seam at the rounded edge.
-const BG_GRADIENT_CSS = 'linear-gradient(135deg, #1c1c22, #0a0a0c)';
+const BG_GRADIENT_CSS = 'linear-gradient(135deg, #1a1f35, #0c0e1a)';
 
 const svgMarkup = readFileSync(path.join(iconDir, SOURCE_SVG), 'utf8');
 const browser = await chromium.launch();
