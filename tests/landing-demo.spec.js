@@ -18,7 +18,10 @@ test.describe('Coded hero demo (/)', () => {
 
   test('CTA still links to /JotRelay/app/', async ({ page }) => {
     await goToLanding(page);
-    await expect(page.locator('.lp-btn-primary').first()).toHaveAttribute('href', '/JotRelay/app/');
+    // .href (resolved property) — the markup uses a <base>-relative "app/"
+    // href (see index.html's header comment), resolved to an absolute URL.
+    const href = await page.locator('.lp-btn-primary').first().evaluate((el) => el.href);
+    expect(href).toBe(new URL('/JotRelay/app/', page.url()).href);
   });
 
   test('scene tabs switch the active scene', async ({ page }) => {

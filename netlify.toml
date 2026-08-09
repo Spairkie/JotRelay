@@ -1,0 +1,14 @@
+# Netlify hosts this repo at the root of its own domain (jotrelay.netlify.app,
+# and eventually a custom domain) — unlike GitHub Pages, which auto-prefixes
+# project-site URLs with the repo name. index.html's <base> tag and
+# window.SYNCPAD_CONFIG.basePath already detect and handle that difference at
+# runtime (see index.html's header comment), so no path rewriting is needed
+# here. The one thing Netlify does need that GitHub Pages gets for free from
+# its own project-page routing: a catch-all SPA fallback, so an in-app route
+# reached by a direct/refreshed visit (a room id, /admin, /contact, etc. —
+# none of which are real files) serves index.html instead of Netlify's
+# default 404, exactly like 404.html's redirect script does on GitHub Pages.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

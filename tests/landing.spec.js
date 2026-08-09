@@ -12,7 +12,10 @@ test.describe('Marketing landing page (/)', () => {
     await expect(page.locator('.lp-h1')).toBeVisible();
     await expect(page.locator('.lp-sub')).toBeVisible();
     await expect(page.locator('.lp-btn-primary').first()).toBeVisible();
-    await expect(page.locator('.lp-btn-primary').first()).toHaveAttribute('href', '/JotRelay/app/');
+    // .href (resolved property) — the markup uses a <base>-relative "app/"
+    // href (see index.html's header comment), resolved to an absolute URL.
+    const href = await page.locator('.lp-btn-primary').first().evaluate((el) => el.href);
+    expect(href).toBe(new URL('/JotRelay/app/', page.url()).href);
   });
 
   test('marketing sections and footer render', async ({ page }) => {
