@@ -1,4 +1,4 @@
-// SyncPad – ui/panels.js
+// JotRelay – ui/panels.js
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { formatFileSize, fileEmoji, formatTimestamp, relativeTimeShort, escapeHtml, colorForDevice } from '../utils.js';
 import { getIcon } from '../icons.js';

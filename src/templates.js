@@ -1,4 +1,4 @@
-// SyncPad – templates.js
+// JotRelay – templates.js
 // Static built-in templates + localStorage-backed custom templates.
 
 // ── Constants ─────────────────────────────────────────────────────────────────

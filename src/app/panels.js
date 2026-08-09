@@ -1,4 +1,4 @@
-// SyncPad – app/panels.js
+// JotRelay – app/panels.js
 // Side-panel content that doesn't warrant its own module: Version History,
 // Templates, Save-as-template, Find & Replace, and the Settings panel
 // (passcode/encryption/expiration/view-once/device-limit/lock).
@@ -162,7 +162,7 @@ export function _openTemplatesModalFresh() {
         const json = exportCustomTemplates();
         const blob = new Blob([json], { type: 'application/json' });
         const a    = Object.assign(document.createElement('a'), {
-          href: URL.createObjectURL(blob), download: 'syncpad-templates.json',
+          href: URL.createObjectURL(blob), download: 'jotrelay-templates.json',
         });
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         URL.revokeObjectURL(a.href);

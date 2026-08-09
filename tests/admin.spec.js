@@ -85,7 +85,7 @@ test.describe('Admin route', () => {
     expect(hasError || btnEnabled).toBe(true);
   });
 
-  test('Back to SyncPad button navigates to landing', async ({ page }) => {
+  test('Back to JotRelay button navigates to landing', async ({ page }) => {
     await page.goto('/SyncPad/admin');
     await page.waitForTimeout(2000);
     if (!(await supabaseAvailable(page))) {
@@ -93,7 +93,7 @@ test.describe('Admin route', () => {
       return;
     }
     await page.waitForSelector('#admin-login-btn', { timeout: ADMIN_TIMEOUT });
-    const backBtn = page.locator('button', { hasText: 'Back to SyncPad' });
+    const backBtn = page.locator('button', { hasText: 'Back to JotRelay' });
     if (await backBtn.count() > 0) {
       await backBtn.click();
       await page.waitForSelector('#landing-screen:not(.hidden)', { timeout: 8000 });
@@ -141,7 +141,7 @@ function fakeSupabaseClient() {
   ));
   const client = {
     auth: {
-      async getSession() { return { data: { session: { user: { email: 'admin@syncpad.dev' } } } }; },
+      async getSession() { return { data: { session: { user: { email: 'admin@jotrelay.dev' } } } }; },
       onAuthStateChange() { return { data: { subscription: { unsubscribe() {} } } }; },
     },
     from(table) {
@@ -228,7 +228,7 @@ function fakeSupabaseClientWithData({ roomCount = 0, fileCount = 0 } = {}) {
 
   const client = {
     auth: {
-      async getSession() { return { data: { session: { user: { email: 'admin@syncpad.dev' } } } }; },
+      async getSession() { return { data: { session: { user: { email: 'admin@jotrelay.dev' } } } }; },
       onAuthStateChange() { return { data: { subscription: { unsubscribe() {} } } }; },
     },
     from(table) {

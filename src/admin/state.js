@@ -1,4 +1,4 @@
-// SyncPad – admin/state.js
+// JotRelay – admin/state.js
 // Shared mutable dashboard state, as a single object rather than scattered
 // module-level `let`s. Every admin/*.js module imports and reads/writes
 // properties on the same `state` object — the binding itself never changes,

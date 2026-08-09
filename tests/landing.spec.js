@@ -35,7 +35,7 @@ test.describe('Marketing landing page (/)', () => {
     await goToLanding(page);
     const intro = page.locator('#lp-intro');
     await expect(intro).toBeVisible();
-    await expect(intro.locator('.lp-intro-wordmark')).toHaveText('SyncPad');
+    await expect(intro.locator('.lp-intro-wordmark')).toHaveText('JotRelay');
 
     // Document order: intro, then nav, then the existing hero — nothing
     // removed or reshuffled, just a new opener ahead of it all.
@@ -210,7 +210,7 @@ test.describe('App landing screen (/app)', () => {
     await expect(page.locator('.landing-join-btn')).toBeVisible();
   });
 
-  test('"Back to SyncPad" link returns to the marketing page', async ({ page }) => {
+  test('"Back to JotRelay" link returns to the marketing page', async ({ page }) => {
     await goToAppLanding(page);
     await page.locator('.app-landing-back').click();
     // A real page navigation, not client-side routing — give it the same

@@ -1,6 +1,6 @@
-# SyncPad Playwright Test Guide
+# JotRelay Playwright Test Guide
 
-This document covers everything you need to run, understand, and extend the SyncPad Playwright test suite.
+This document covers everything you need to run, understand, and extend the JotRelay Playwright test suite.
 
 ---
 
@@ -130,7 +130,7 @@ Shared helpers live in `tests/helpers.js` and are imported by all spec files. Us
 | `waitForModal` | `(page, id, timeout?) => Promise<void>` | Waits for `#<id>.visible` to appear. |
 | `closeModal` | `(page, id) => Promise<void>` | Closes a modal by clicking its visible close/cancel button, trying several common selector patterns. |
 | `closePanels` | `(page) => Promise<void>` | Clicks `#panel-backdrop` to dismiss any open panel, but only if the backdrop is currently visible. |
-| `roomIdFromUrl` | `(url: string) => string` | Pure function. Parses a SyncPad URL and returns the room ID segment, or an empty string if the URL does not match. |
+| `roomIdFromUrl` | `(url: string) => string` | Pure function. Parses a JotRelay URL and returns the room ID segment, or an empty string if the URL does not match. |
 | `fillPromptDialog` | `(page, value) => Promise<void>` | Fills and confirms the app's custom `UI.showPrompt()` modal (`#sp-prompt-modal` / `#sp-prompt-input` / `#sp-prompt-ok`). **The app never uses the browser's native `window.prompt()`** — `page.once('dialog', ...)` will never fire for it. Use this instead. |
 | `getShareUrl` | `(page, type?) => Promise<string>` | Opens the Share modal, reads the `'editable'` (default) or `'readonly'` link, closes the modal, and returns the URL. |
 
@@ -140,7 +140,7 @@ Shared helpers live in `tests/helpers.js` and are imported by all spec files. Us
 
 ### What it does
 
-`inBrowser()` is a local helper defined in `utils.spec.js` that lets you import a SyncPad ESM module inside the browser context and call one of its exported functions, with the result serialised back to Node.js.
+`inBrowser()` is a local helper defined in `utils.spec.js` that lets you import a JotRelay ESM module inside the browser context and call one of its exported functions, with the result serialised back to Node.js.
 
 ```js
 async function inBrowser(page, modulePath, fn) {
@@ -157,7 +157,7 @@ async function inBrowser(page, modulePath, fn) {
 
 ### When to use it
 
-Use `inBrowser()` when you want to unit-test a pure utility function that lives in an ESM module. Because SyncPad's source files use `import`/`export`, they cannot be required directly in Node.js without a bundler. Running the function inside `page.evaluate` lets the browser's native ES module loader handle the import.
+Use `inBrowser()` when you want to unit-test a pure utility function that lives in an ESM module. Because JotRelay's source files use `import`/`export`, they cannot be required directly in Node.js without a bundler. Running the function inside `page.evaluate` lets the browser's native ES module loader handle the import.
 
 Do not use `inBrowser()` for tests that involve DOM interaction or real user flows — use the standard Playwright locator API for those.
 
@@ -179,7 +179,7 @@ async function inBrowser(page, modulePath, fn) {
 }
 
 test('escapeHtml escapes angle brackets', async ({ page }) => {
-  // createRoom navigates to a SyncPad page so that /SyncPad/src/utils.js
+  // createRoom navigates to a JotRelay page so that /SyncPad/src/utils.js
   // is on the same origin and can be imported.
   await createRoom(page);
 

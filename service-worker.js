@@ -1,4 +1,4 @@
-// SyncPad – service-worker.js
+// JotRelay – service-worker.js
 //
 // Bumps cache version any time a precached asset changes. Every fetch handler
 // path either returns a real Response (via event.respondWith) or passes

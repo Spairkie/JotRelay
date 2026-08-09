@@ -1,4 +1,4 @@
-// SyncPad – ui/collab.js
+// JotRelay – ui/collab.js
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { countWords, formatTimestamp, escapeHtml, relativeTimeShort } from '../utils.js';
 

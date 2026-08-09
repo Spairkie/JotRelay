@@ -1,4 +1,4 @@
-# SyncPad
+# JotRelay
 
 > **A temporary shared notepad for fast handoff between devices.**  
 > Create a room, share an editable or read-only link, and sync notes and files in real time — no account needed.
@@ -8,10 +8,10 @@
 ---
 
 > ⚠️ **Personal / demo project.**  
-> SyncPad is a personal project built for learning and portfolio purposes.  
+> JotRelay is a personal project built for learning and portfolio purposes.  
 > **Room links are frontend-restricted, not backend-secret.** Anyone who knows or guesses a room's URL can view **and edit** it — `?mode=read` and `/share/:token` read-only links are a UI convention, not a hard boundary (see `docs/security.md`). Use the room lock feature for an actual, server-enforced "nobody can edit this" guarantee.  
 > View-once is a convenience feature, not a secure destruction guarantee. A viewer may copy, screenshot, save, or otherwise preserve content before it clears.  
-> **Do not use SyncPad for passwords, HIPAA/PII, classified information, or any sensitive data.**
+> **Do not use JotRelay for passwords, HIPAA/PII, classified information, or any sensitive data.**
 
 ---
 
@@ -225,8 +225,8 @@ ORDER  BY room_id, uploaded_at;
 
 - The Web3Forms access key in `index.html` is a **public frontend key**; do not treat it like a private service-role secret.
 - In Web3Forms dashboard, set **Allowed domain** to `spairkie.github.io`.
-- Recommended **subject**: `New SyncPad Contact Form Submission`.
-- Recommended **from_name**: `SyncPad Contact Form`.
+- Recommended **subject**: `New JotRelay Contact Form Submission`.
+- Recommended **from_name**: `JotRelay Contact Form`.
 - Keep **hCaptcha disabled** unless/until a frontend hCaptcha widget is implemented.
 - Keep Web3Forms `botcheck` honeypot enabled.
 - Room-report abuse controls are DB-enforced via reason allowlist + details max length checks and insert-only anon RLS.
@@ -235,7 +235,7 @@ ORDER  BY room_id, uploaded_at;
 
 | Limitation | Notes |
 |---|---|
-| No user accounts or authentication | Normal users do not log in; SyncPad is anonymous and link-based — "ownership" of a room means knowing its URL, not an identity |
+| No user accounts or authentication | Normal users do not log in; JotRelay is anonymous and link-based — "ownership" of a room means knowing its URL, not an identity |
 | Read-only links are frontend-only | `?mode=read` and `/share/:token` restrict the app's own UI but are not a server-enforced boundary — `room_id` alone is sufficient to write (see `docs/security.md`). Use room lock for an actual guarantee |
 | Room lock IS backend-enforced | A database trigger, not just frontend JS — this is the one real, server-enforced "nobody can edit this" control |
 | Admin access requires Supabase Auth | The `/admin` route is protected by `signInWithPassword` + `is_syncpad_admin()` RLS — not for end users |
@@ -367,7 +367,7 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 
 ### Takeover roadmap completed
 
-- [x] Keep SyncPad as a transparent demo project and document frontend-only permission boundaries
+- [x] Keep JotRelay as a transparent demo project and document frontend-only permission boundaries
 - [x] Encrypt file attachment content client-side for encrypted rooms and document Storage behavior
 - [x] Allow read-only viewers to unlock passcode/encrypted rooms when they separately have the secret
 - [x] Keep GitHub Pages `/SyncPad` as the permanent target while centralizing runtime base-path handling

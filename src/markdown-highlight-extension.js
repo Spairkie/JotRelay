@@ -1,4 +1,4 @@
-// SyncPad – markdown-highlight-extension.js
+// JotRelay – markdown-highlight-extension.js
 // The ==highlight== Lezer grammar extension, shared between live-editor.js
 // (CM6 decorations) and markdown.js (static HTML renderer) — both
 // need the exact same parse tree, so both must feed the exact same

@@ -1,4 +1,4 @@
-// SyncPad – admin/reports-tab.js
+// JotRelay – admin/reports-tab.js
 // The Reports tab: filter chips, pagination, review/dismiss/delete-room actions.
 
 import { state } from './state.js';

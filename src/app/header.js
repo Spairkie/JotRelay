@@ -1,4 +1,4 @@
-// SyncPad – app/header.js
+// JotRelay – app/header.js
 // The app header: toolbar buttons, the "More" dropdown, room title
 // inline-edit, room link copy, the mobile action bar, footer quick buttons
 // (timestamp insert, floating-comment FAB, footer clock), and the segmented

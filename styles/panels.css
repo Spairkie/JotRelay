@@ -360,7 +360,7 @@
 .file-item--selectable:hover { border-color: var(--accent); }
 .file-select-cb { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; accent-color: var(--accent); }
 
-/* Prism.js syntax highlighting — SyncPad-theme-aware */
+/* Prism.js syntax highlighting — JotRelay-theme-aware */
 .note-preview pre[class*="language-"],
 .note-preview code[class*="language-"] { background: var(--bg-base); color: var(--text-primary); }
 .note-preview .token.comment,

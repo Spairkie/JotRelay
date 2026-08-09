@@ -1,4 +1,4 @@
-// SyncPad – admin/rooms-tab.js
+// JotRelay – admin/rooms-tab.js
 // The Rooms tab: filter/search/sort, pagination, CSV export, bulk actions,
 // and per-row actions (clear/copy/detail/delete).
 
@@ -166,7 +166,7 @@ async function _exportRoomsCsv() {
     ...state.hasQuarantine ? [r.quarantined_at ? 'yes' : 'no'] : [],
   ]);
 
-  _downloadCsv(`syncpad-rooms-${new Date().toISOString().slice(0, 10)}.csv`, header, csvRows);
+  _downloadCsv(`jotrelay-rooms-${new Date().toISOString().slice(0, 10)}.csv`, header, csvRows);
   await _logAdminAction('export_rooms_csv', { metadata: { count: rows.length } });
   _showToast(`Exported ${rows.length} room${rows.length !== 1 ? 's' : ''}.`, 'success');
 }

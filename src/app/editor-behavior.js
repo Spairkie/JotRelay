@@ -1,4 +1,4 @@
-// SyncPad – app/editor-behavior.js
+// JotRelay – app/editor-behavior.js
 // Everything about typing/formatting/keyboard behavior in the editor
 // surfaces: the plain-textarea input pipeline, toolbar formatting, the
 // selection right-click context menu, the slash quick-insert menu, paste
@@ -309,7 +309,7 @@ export function _wireEditorToolbarAndLifecycle() {
     // while still uploading any *other*, non-image files from the same
     // mixed drop (e.g. an image dropped together with a PDF) — deliberately
     // not stopPropagation()'d, which would've silently discarded those too.
-    e._syncpadHandledFiles = new Set(imageFiles);
+    e._jotrelayHandledFiles = new Set(imageFiles);
     _uploadAndInsertImages(imageFiles);
   });
 

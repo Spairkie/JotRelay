@@ -1,4 +1,4 @@
-// SyncPad – admin.js
+// JotRelay – admin.js
 // Admin dashboard: auth gate, room management, reports, files, audit, cleanup.
 // All data access is gated by Supabase RLS (is_syncpad_admin() function).
 //
@@ -65,7 +65,7 @@ function _renderUnavailable() {
         <h2>Admin unavailable</h2>
         <p>Could not connect to Supabase. Check your network connection and try again.</p>
         <button onclick="window.location.reload()" class="auth-btn" style="margin-top:14px">Retry</button>
-        <button id="admin-unavailable-home" class="auth-btn admin-secondary-btn">Back to SyncPad</button>
+        <button id="admin-unavailable-home" class="auth-btn admin-secondary-btn">Back to JotRelay</button>
       </div>
     </div>`;
   document.getElementById('admin-unavailable-home')?.addEventListener('click', () => {
@@ -87,7 +87,7 @@ function _renderLogin(sb) {
         <input id="admin-password" class="auth-input" type="password" placeholder="Password" autocomplete="current-password" style="margin-top:10px" />
         <div id="admin-login-error" class="admin-login-error"></div>
         <button id="admin-login-btn"  class="auth-btn" style="margin-top:14px">Sign in</button>
-        <button id="admin-login-home" class="auth-btn admin-secondary-btn">Back to SyncPad</button>
+        <button id="admin-login-home" class="auth-btn admin-secondary-btn">Back to JotRelay</button>
       </div>
     </div>`;
 

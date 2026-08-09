@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Minimal SPA static server for Playwright tests.
-// Serves the SyncPad project at /SyncPad/ with SPA fallback to index.html.
+// Serves the JotRelay project at /SyncPad/ with SPA fallback to index.html.
 // Usage: node tests/spa-server.js (reads PORT from the environment, defaults to 5555)
 import http from 'node:http';
 import fs from 'node:fs';

@@ -1,4 +1,4 @@
-// SyncPad – ui/editor.js
+// JotRelay – ui/editor.js
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { escapeHtml } from '../utils.js';
 import { toggleFootnotePopover } from '../footnote-popover.js';
@@ -360,7 +360,7 @@ export function setFileHandlers(onFilesSelected) {
       // bubbled here — exclude those so a mixed image+non-image drop
       // doesn't upload the images a second time, while still picking up
       // whatever else was dropped alongside them.
-      const handled = e._syncpadHandledFiles;
+      const handled = e._jotrelayHandledFiles;
       const files = Array.from(e.dataTransfer?.files || []).filter((f) => !handled || !handled.has(f));
       if (files.length) onFilesSelected(files);
     });

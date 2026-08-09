@@ -1,4 +1,4 @@
-// SyncPad – live-broadcast.js
+// JotRelay – live-broadcast.js
 // Ephemeral Supabase Broadcast channel for live typing and event signalling.
 import { getSupabaseClient } from './supabase.js';
 import { getDeviceId, getDeviceName, throttle } from './utils.js';

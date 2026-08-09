@@ -1,4 +1,4 @@
-// SyncPad – ui/core.js
+// JotRelay – ui/core.js
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { countWords, countChars, estimateReadingTime } from '../utils.js';
 

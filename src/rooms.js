@@ -1,4 +1,4 @@
-// SyncPad – rooms.js
+// JotRelay – rooms.js
 import { getSupabaseClient } from './supabase.js';
 import { logSupabaseError, getDeviceId } from './utils.js';
 

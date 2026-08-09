@@ -1,4 +1,4 @@
-// SyncPad – file-preview.js
+// JotRelay – file-preview.js
 // Inline file preview modal: images, PDF, text, Markdown, CSV, unsupported.
 //
 // Security notes:
@@ -122,10 +122,10 @@ function _renderSvgLink(file, url) {
   // An unencrypted SVG's `url` is a cross-origin Supabase signed URL —
   // opening it in a new tab is safe even though SVG can legally embed
   // <script>: a script in that document runs in Supabase Storage's origin,
-  // with no access to SyncPad's own localStorage/sessionStorage/drafts.
+  // with no access to JotRelay's own localStorage/sessionStorage/drafts.
   // An encrypted SVG's `url` is a same-origin blob: URL (the decrypted
   // bytes, built in files.js), which does NOT have that isolation — a
-  // script embedded in a malicious upload would run as SyncPad itself.
+  // script embedded in a malicious upload would run as JotRelay itself.
   // Route it through a forced download instead of a navigation so the
   // browser saves the bytes rather than rendering them as a document.
   const linkAttrs = file.encrypted

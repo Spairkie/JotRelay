@@ -1,9 +1,9 @@
-# SyncPad — Deployment Guide
+# JotRelay — Deployment Guide
 
 > ⚠️ **Personal / demo project.**  
 > Room links are frontend-restricted, not backend-secret — anyone who knows or guesses a room's URL can view **and edit** it. `?mode=read` and `/share/:token` read-only links are a UI convention, not a hard server-side boundary (see [Security reminder](#security-reminder) below). The room lock feature is the one control that's actually server-enforced.  
 > View-once is still a convenience feature, not a secure destruction guarantee. A viewer may copy, screenshot, save, or otherwise preserve content before it clears.  
-> Do **not** deploy SyncPad for use with passwords, HIPAA/PII, classified data, or anything sensitive.
+> Do **not** deploy JotRelay for use with passwords, HIPAA/PII, classified data, or anything sensitive.
 
 ---
 
@@ -16,7 +16,7 @@
 
 ## Base path
 
-SyncPad is deployed at `/SyncPad` on GitHub Pages. The runtime base path is configured in `index.html`:
+JotRelay is deployed at `/SyncPad` on GitHub Pages. The runtime base path is configured in `index.html`:
 
 ```html
 window.SYNCPAD_CONFIG = {
@@ -47,17 +47,17 @@ window.SYNCPAD_CONFIG = {
 
 ### Brand-new project? Run one file.
 
-**[`supabase/baseline.sql`](supabase/baseline.sql)** covers every *core* table, function, trigger, RLS policy, and Storage bucket/policy SyncPad uses — concatenated from most of the numbered migrations below into one script, now including `0010` through `0014`. Paste it into the Supabase **SQL Editor** and run it once; the app works after that — skip straight to [Step 3](#step-3--configure-credentials). One caveat worth knowing about before you rely on it: `0010`'s anonymous rate-limiting trigger depends on Supabase's edge network setting the `x-forwarded-for` header the way it assumes — see [Optional feature migrations](#optional-feature-migrations) below for the detail. If that assumption doesn't hold, effective abuse protection is much weaker than the advertised limits suggest, not just "somewhat reduced" — the remaining per-device limit is keyed on a plain client-supplied value with no server-side identity behind it, so a scripted caller can send a fresh one on every request and never trip it.
+**[`supabase/baseline.sql`](supabase/baseline.sql)** covers every *core* table, function, trigger, RLS policy, and Storage bucket/policy JotRelay uses — concatenated from most of the numbered migrations below into one script, now including `0010` through `0014`. Paste it into the Supabase **SQL Editor** and run it once; the app works after that — skip straight to [Step 3](#step-3--configure-credentials). One caveat worth knowing about before you rely on it: `0010`'s anonymous rate-limiting trigger depends on Supabase's edge network setting the `x-forwarded-for` header the way it assumes — see [Optional feature migrations](#optional-feature-migrations) below for the detail. If that assumption doesn't hold, effective abuse protection is much weaker than the advertised limits suggest, not just "somewhat reduced" — the remaining per-device limit is keyed on a plain client-supplied value with no server-side identity behind it, so a scripted caller can send a fresh one on every request and never trip it.
 
 It's verified end-to-end, not just assembled by hand: run twice in a row against a real Postgres 16 server (stubbed with minimal `auth`/`storage` schemas standing in for the Supabase-platform pieces the SQL assumes exist) with zero errors either time, confirming the whole file — not just each section individually — is genuinely idempotent and safe to rerun. `0010`'s rate limiting was also exercised under genuine concurrency (40 simultaneous room-creation attempts from one identifier — exactly 30 succeeded, 10 were rejected, matching the advertised cap under real concurrent load, not just sequentially) and its admin-reset delete path was verified as an admin vs. a non-admin authenticated user, not assumed from the policy definition alone.
 
-> **Important:** the Storage bucket it creates is private. SyncPad always accesses files via signed URLs. Do not make the bucket public.
+> **Important:** the Storage bucket it creates is private. JotRelay always accesses files via signed URLs. Do not make the bucket public.
 
 The optional Storage cleanup Edge Function lives at `supabase/functions/syncpad-cleanup` and is deployed separately with the Supabase CLI — it is not part of `baseline.sql` or any SQL script.
 
 ### Existing project? Use the numbered migrations.
 
-SyncPad's SQL also lives broken out in `supabase/migrations/`, one file per migration, numbered in the order they must be run — the standard layout for a project without a migration-tracking tool (and the same path the Supabase CLI would use, if this project ever adopts it). `baseline.sql` is generated from these; they stay the source of truth, each independently reviewable with its own git history. All of them are **idempotent** — safe to rerun on an existing project. Use these (not `baseline.sql`) to pick up something new on a database that's already running:
+JotRelay's SQL also lives broken out in `supabase/migrations/`, one file per migration, numbered in the order they must be run — the standard layout for a project without a migration-tracking tool (and the same path the Supabase CLI would use, if this project ever adopts it). `baseline.sql` is generated from these; they stay the source of truth, each independently reviewable with its own git history. All of them are **idempotent** — safe to rerun on an existing project. Use these (not `baseline.sql`) to pick up something new on a database that's already running:
 
 1. **[`supabase/migrations/0001_base_schema.sql`](supabase/migrations/0001_base_schema.sql)** — the base schema, and the only migration a brand-new project actually needs on its own. Creates:
    - `syncpad_rooms` and `syncpad_files` tables, indexes, Realtime publication entries
@@ -118,7 +118,7 @@ The `404.html` file handles SPA routing: unknown paths store the room ID in `ses
 
 ### Alternative hosting
 
-SyncPad deploys to any static host — Vercel, Netlify, Cloudflare Pages, or any CDN. No server-side logic is needed. Just set the publish directory to the repo root and configure the rewrite rule to serve `index.html` for all paths. Then update the configured base path and static asset prefixes as described above.
+JotRelay deploys to any static host — Vercel, Netlify, Cloudflare Pages, or any CDN. No server-side logic is needed. Just set the publish directory to the repo root and configure the rewrite rule to serve `index.html` for all paths. Then update the configured base path and static asset prefixes as described above.
 
 ---
 
@@ -215,13 +215,13 @@ Then compare those paths with Supabase Dashboard -> Storage -> `syncpad-files`. 
 
 ## Web3Forms operations (Contact page)
 
-SyncPad's contact form uses Web3Forms from frontend JavaScript. The Web3Forms access key is a **public frontend key**, not a server secret.
+JotRelay's contact form uses Web3Forms from frontend JavaScript. The Web3Forms access key is a **public frontend key**, not a server secret.
 
 Recommended Web3Forms dashboard settings:
 
 - **Allowed domain:** `spairkie.github.io`
-- **Subject:** `New SyncPad Contact Form Submission`
-- **from_name:** `SyncPad Contact Form`
+- **Subject:** `New JotRelay Contact Form Submission`
+- **from_name:** `JotRelay Contact Form`
 - **hCaptcha:** keep **off** unless the frontend adds an hCaptcha widget and verification flow
 
 Operational note: keep the botcheck honeypot enabled and verify report-table DB constraints (reason allowlist + details length) and RLS posture before each public release.
@@ -266,7 +266,7 @@ Check `service-worker.js` directly for the current value rather than trusting a 
 | Text encryption | In-browser (AES-256-GCM) |
 | File access | Signed URLs (1 h TTL) — no end-to-end encryption |
 
-Room links, passcode hashes, and file signed URLs are all controls a determined user with the anon key can get around on their own terms (see `docs/security.md`'s Known Limitations). Do not use SyncPad for sensitive data regardless — room lock is the only hard guarantee this app makes.
+Room links, passcode hashes, and file signed URLs are all controls a determined user with the anon key can get around on their own terms (see `docs/security.md`'s Known Limitations). Do not use JotRelay for sensitive data regardless — room lock is the only hard guarantee this app makes.
 
 ### Admin session and RLS roles
 

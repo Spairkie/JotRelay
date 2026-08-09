@@ -1,4 +1,4 @@
-// SyncPad – offline.js
+// JotRelay – offline.js
 // Local draft persistence. Online/offline helpers live in utils.js.
 //
 // Security note:
@@ -38,7 +38,7 @@ export async function saveDraft(roomId, content, options = {}) {
     // If the browser's storage quota is exceeded, signal it via a custom event
     // so the app can warn the user without changing saveDraft's return type.
     if (err?.name === 'QuotaExceededError') {
-      window.dispatchEvent(new CustomEvent('syncpad:draft-storage-full'));
+      window.dispatchEvent(new CustomEvent('jotrelay:draft-storage-full'));
     }
   }
 }

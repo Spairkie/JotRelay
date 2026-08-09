@@ -1,4 +1,4 @@
-// SyncPad – ui/dialogs.js
+// JotRelay – ui/dialogs.js
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 
 // ── Modals ────────────────────────────────────────────────────────────────────

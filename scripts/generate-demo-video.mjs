@@ -1,4 +1,4 @@
-// SyncPad — hero demo video generator.
+// JotRelay — hero demo video generator.
 //
 // Drives the app's *real* markup/CSS/transitions (same technique as
 // scripts/build-mockups.mjs) through a scripted ~26s sequence — typing,
@@ -70,7 +70,7 @@ const pageHtml = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>SyncPad demo capture</title>
+<title>JotRelay demo capture</title>
 ${STYLES}
 <style>
   body { overflow: visible !important; }
@@ -233,8 +233,8 @@ await hold(1100);
 logBeat('Share modal opens');
 await page.evaluate(() => {
   document.getElementById('share-modal-title').textContent = 'Share "Product Launch Checklist"';
-  document.getElementById('share-editable-text').setAttribute('value', 'syncpad.app/product-launch-checklist');
-  document.getElementById('share-readonly-text').setAttribute('value', 'syncpad.app/share/9c4f1e7b2a');
+  document.getElementById('share-editable-text').setAttribute('value', 'jotrelay.app/product-launch-checklist');
+  document.getElementById('share-readonly-text').setAttribute('value', 'jotrelay.app/share/9c4f1e7b2a');
   document.getElementById('share-code-text').setAttribute('value', '4KQXM9');
   document.getElementById('share-modal').classList.add('visible');
 });
@@ -289,7 +289,7 @@ await page.evaluate(() => {
   const card = document.createElement('div');
   card.className = 'demo-endcard';
   card.innerHTML = `<div class="demo-endcard-inner">
-    <div class="demo-endcard-logo">Sync<span>Pad</span></div>
+    <div class="demo-endcard-logo">Jot<span>Relay</span></div>
     <div class="demo-endcard-tag">Real-time sync. No account needed.</div>
   </div>`;
   document.body.appendChild(card);

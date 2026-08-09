@@ -1,4 +1,4 @@
-// SyncPad – admin/room-drawer.js
+// JotRelay – admin/room-drawer.js
 // The room detail drawer: fetch + render a single room's full detail, and
 // wire its inline actions (clear/lock/quarantine/delete).
 

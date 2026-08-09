@@ -1,4 +1,4 @@
-// SyncPad – permissions.js
+// JotRelay – permissions.js
 // Single source of truth for what the current client is allowed to do.
 //
 // Inputs are pulled from a small "context" object so this module stays pure

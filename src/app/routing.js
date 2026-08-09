@@ -1,4 +1,4 @@
-// SyncPad – app/routing.js
+// JotRelay – app/routing.js
 // URL route parsing, PWA "resume last room" support, and the recent-rooms
 // landing-page shortcut list. Also wires the two navigation-related
 // top-level listeners (suppress-resume on any link back to the app root,
@@ -58,7 +58,7 @@ export function _forgetRecentRoom(roomId) {
 }
 
 // Any control that deliberately navigates to the app root ("Back to
-// SyncPad" links, view-once "Go home" button, etc.) must call this first so
+// JotRelay" links, view-once "Go home" button, etc.) must call this first so
 // boot() shows the real landing screen instead of immediately resuming back
 // into this room. (The in-room header logo does NOT navigate here — see
 // its own comment in index.html — so it isn't one of these.)
@@ -66,7 +66,7 @@ export function _suppressNextResume() {
   try { sessionStorage.setItem(RESUME_SUPPRESS_KEY, '1'); } catch {}
 }
 
-// A plain <a href="{BASE}/"> to the app root — every "Back to SyncPad" link
+// A plain <a href="{BASE}/"> to the app root — every "Back to JotRelay" link
 // on the contact/privacy/terms/info screens — is a real page navigation, so
 // it can't be caught by the room-scoped, one-time wireEvents() wiring (some
 // of those screens are reachable without ever joining a room in this

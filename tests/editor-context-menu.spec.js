@@ -227,7 +227,7 @@ test.describe('Editor context menu — read-only viewers', () => {
     // This is a real page reload (not a client-side route change), so
     // wireEvents() — including the contextmenu listener — runs fresh here
     // and must be waited for, same as createRoom() already does.
-    await page.waitForFunction(() => window.__syncpadEventsWired === true, null, { timeout: 5000 });
+    await page.waitForFunction(() => window.__jotrelayEventsWired === true, null, { timeout: 5000 });
     await ensureWriteMode(page);
     await rightClickSelection(page, 0, 4);
     await expect(page.locator('#editor-context-menu')).toHaveClass(/visible/);

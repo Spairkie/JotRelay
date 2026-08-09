@@ -1,4 +1,4 @@
-// SyncPad – app/command-palette.js
+// JotRelay – app/command-palette.js
 // A searchable index of app-wide actions, opened with Ctrl/Cmd+K outside the
 // editor (see shortcuts.js) or the More menu's "Command Palette" item.
 // Actions that already have a guarded, wired button elsewhere (permission
@@ -58,7 +58,7 @@ function _paletteCommands() {
       run: () => applyTheme(t.id),
     })),
 
-    { id: 'about',      label: 'About SyncPad',       group: 'Help', run: _clickById('btn-about') },
+    { id: 'about',      label: 'About JotRelay',       group: 'Help', run: _clickById('btn-about') },
     { id: 'shortcuts',  label: 'Keyboard shortcuts',  group: 'Help', shortcut: 'Ctrl /', run: _clickById('btn-shortcuts') },
     // #btn-replay-tour's own handler already guards on canEdit() (a
     // read-only viewer's tour would describe editing/autosave and a

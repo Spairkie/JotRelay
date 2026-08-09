@@ -1,4 +1,4 @@
-// SyncPad – presence.js
+// JotRelay – presence.js
 // Supabase Presence: tracks connected devices, typing state, and cursor activity.
 import { getSupabaseClient } from './supabase.js';
 import { getDeviceId, getDeviceName, throttle } from './utils.js';

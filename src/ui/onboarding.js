@@ -1,4 +1,4 @@
-// SyncPad – ui/onboarding.js
+// JotRelay – ui/onboarding.js
 // First-time product tour: a small coachmark sequence spotlighting the
 // editor, mode toggle, command palette, share button, and more-menu, shown
 // the first time anyone ever creates a room in this browser. Auto-triggered

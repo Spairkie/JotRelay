@@ -1,4 +1,4 @@
-// SyncPad – app/landing.js
+// JotRelay – app/landing.js
 // The landing screen (create/join room, recent rooms) and the static
 // contact-form page.
 
@@ -202,7 +202,7 @@ let _marketingPageWired = false;
 // ── Brand-intro typewriter ─────────────────────────────────────────────────
 // Small local implementation (no library) for the opener's tagline — types
 // each line out, pauses, erases it, and moves to the next, looping forever;
-// a blinking caret (CSS animation) stays in place throughout. "SyncPad"
+// a blinking caret (CSS animation) stays in place throughout. "JotRelay"
 // itself is plain static markup and never touches this; only the tagline
 // text node is mutated.
 const INTRO_TAGLINES = [

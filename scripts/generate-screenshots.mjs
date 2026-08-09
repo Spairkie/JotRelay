@@ -1,4 +1,4 @@
-// SyncPad — presskit screenshot generator.
+// JotRelay — presskit screenshot generator.
 // Serves the repo with tests/spa-server.js (no network/Supabase calls
 // involved) and rasterizes scripts/mockups/*.html into presskit/screenshot/.
 //

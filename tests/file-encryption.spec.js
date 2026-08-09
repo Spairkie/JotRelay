@@ -97,12 +97,12 @@ test.describe('File uploads in an encrypted room', () => {
     }, roomId);
     expect(rawFetchResult.found).toBe(true);
     expect(rawFetchResult.encrypted).toBe(true);
-    expect(rawFetchResult.rawText).not.toContain('First fixture file for SyncPad file-upload tests.');
+    expect(rawFetchResult.rawText).not.toContain('First fixture file for JotRelay file-upload tests.');
 
     // Preview must show the decrypted, original plaintext.
     await fileItem.locator('.file-action-btn.preview').click();
     await waitForModal(page, 'file-preview-modal');
-    await expect(page.locator('#file-preview-body')).toContainText('First fixture file for SyncPad file-upload tests.');
+    await expect(page.locator('#file-preview-body')).toContainText('First fixture file for JotRelay file-upload tests.');
 
     // Download must save the decrypted plaintext, not ciphertext — verify by
     // triggering the download and checking the saved file's contents.
@@ -146,7 +146,7 @@ test.describe('File uploads in an encrypted room', () => {
     // Past the gate, the linked file's preview opens automatically with the
     // correctly decrypted content.
     await waitForModal(page, 'file-preview-modal');
-    await expect(page.locator('#file-preview-body')).toContainText('First fixture file for SyncPad file-upload tests.');
+    await expect(page.locator('#file-preview-body')).toContainText('First fixture file for JotRelay file-upload tests.');
   });
 
   test('a room can enable encryption and keep uploading files afterward (no longer blocked)', async ({ page }) => {

@@ -1,4 +1,4 @@
-// SyncPad — icon PNG exporter.
+// JotRelay — icon PNG exporter.
 //
 // Renders the single source SVG (presskit/icon/icon.svg) to every PNG size
 // the project actually ships, using a headless Chromium page as the

@@ -1,4 +1,4 @@
-// SyncPad – admin/stats.js
+// JotRelay – admin/stats.js
 // Dashboard stat cards + the "rooms created per day" activity chart.
 
 import { state } from './state.js';

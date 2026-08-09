@@ -1,4 +1,4 @@
-// SyncPad – ui/feature-modals.js
+// JotRelay – ui/feature-modals.js
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { escapeHtml, copyToClipboard } from '../utils.js';
 import { TEMPLATE_CATEGORY_ORDER } from '../templates.js';
@@ -72,8 +72,8 @@ export function populateShareModal({
   _wireShareRow({ fieldId: 'share-readonly-text', copyBtnId: 'share-readonly-copy', openId: 'share-readonly-open', nativeBtnId: 'share-readonly-native-btn', errorId: 'share-readonly-error', url: readOnlyUrl, displayValue: readOnlyDisplay });
   _renderQr('share-readonly-qr', readOnlyUrl);
   _wireQrToggle('share-readonly-qr-toggle', 'share-readonly-qr-wrap', !!readOnlyUrl);
-  _wireQrDownload('share-editable-qr-download', 'share-editable-qr', 'syncpad-editable-qr.png');
-  _wireQrDownload('share-readonly-qr-download', 'share-readonly-qr', 'syncpad-readonly-qr.png', !readOnlyUrl);
+  _wireQrDownload('share-editable-qr-download', 'share-editable-qr', 'jotrelay-editable-qr.png');
+  _wireQrDownload('share-readonly-qr-download', 'share-readonly-qr', 'jotrelay-readonly-qr.png', !readOnlyUrl);
 
   // A read-only viewer session has no room-owning identity to generate a
   // code from (same reason it gets an empty editableUrl above) — the
@@ -211,7 +211,7 @@ function _wireQrDownload(btnId, qrContainerId, filename, disabled = false) {
     if (!src) { showToast('QR code is not ready yet.', 'warning'); return; }
     const a = document.createElement('a');
     a.href = src;
-    a.download = filename || 'syncpad-qr.png';
+    a.download = filename || 'jotrelay-qr.png';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 }
@@ -227,7 +227,7 @@ function _wireNativeShare(btnId, url, label) {
   btn.title = hasNativeShare ? '' : 'Native share is not available on this device.';
   btn.onclick = () => {
     if (!canShare) return;
-    navigator.share({ title: 'SyncPad', text: label, url }).catch(() => {});
+    navigator.share({ title: 'JotRelay', text: label, url }).catch(() => {});
   };
 }
 

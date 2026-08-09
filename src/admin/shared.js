@@ -1,4 +1,4 @@
-// SyncPad – admin/shared.js
+// JotRelay – admin/shared.js
 // Constants, path/schema helpers, storage/audit helpers, and small render/dialog
 // utilities shared across every admin/*.js tab module.
 

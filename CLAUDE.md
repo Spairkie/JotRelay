@@ -1,12 +1,12 @@
-# CLAUDE.md — SyncPad Development Guide
+# CLAUDE.md — JotRelay Development Guide
 
-This file is a reference for AI coding assistants (Claude Code) working on the SyncPad codebase.
+This file is a reference for AI coding assistants (Claude Code) working on the JotRelay codebase.
 
 ---
 
 ## 1. Project Overview
 
-SyncPad is a vanilla-JavaScript realtime shared notepad built on Supabase. It has no build step, no bundler, and no framework — ES modules load directly in the browser. Features include live collaborative editing (Supabase Broadcast), durable saves to Postgres, per-room encryption (AES-256-GCM), file uploads with signed-URL caching, Markdown preview, 17 built-in templates plus user-defined custom templates, 10 visual themes, presence tracking (devices/cursors/typing indicators), room settings (passcode, expiry, lock), and an admin dashboard backed by Supabase Auth and RLS.
+JotRelay is a vanilla-JavaScript realtime shared notepad built on Supabase. It has no build step, no bundler, and no framework — ES modules load directly in the browser. Features include live collaborative editing (Supabase Broadcast), durable saves to Postgres, per-room encryption (AES-256-GCM), file uploads with signed-URL caching, Markdown preview, 17 built-in templates plus user-defined custom templates, 10 visual themes, presence tracking (devices/cursors/typing indicators), room settings (passcode, expiry, lock), and an admin dashboard backed by Supabase Auth and RLS.
 
 ---
 
@@ -177,7 +177,7 @@ Tests live in `tests/` and run with `npm test`. `playwright.config.js` defines f
 | Helper | Purpose |
 |---|---|
 | `createRoom(page)` | Navigate to landing and create a new room; returns the room ID |
-| `goToLanding(page)` | Navigate to the SyncPad landing page |
+| `goToLanding(page)` | Navigate to the JotRelay landing page |
 | `supabaseAvailable(page)` | Detect a CDN-blocked environment so a test can skip cleanly instead of timing out |
 | `ensureWriteMode(page)` | Switch to Write mode if `#note-editor` is currently hidden (rooms default to Live/Preview — see §5) |
 | `typeInEditor(page, text)` | Type text into the main editor (calls `ensureWriteMode` first) |
@@ -190,7 +190,7 @@ Tests live in `tests/` and run with `npm test`. `playwright.config.js` defines f
 | `waitForModal(page, id)` | Wait for a modal with the given id to become visible |
 | `closeModal(page, id)` | Close a modal by clicking its visible close/cancel button |
 | `closePanels(page)` | Close all open side panels |
-| `roomIdFromUrl(url)` | Extract the room ID from a SyncPad URL |
+| `roomIdFromUrl(url)` | Extract the room ID from a JotRelay URL |
 | `fillPromptDialog(page, value)` | Fill and confirm the app's custom `showPrompt()` modal (`#sp-prompt-modal`) — the app never uses the browser's native `window.prompt()`, so `page.once('dialog', ...)` will never fire for it |
 | `getShareUrl(page, type)` | Open the Share modal, read the editable or read-only link, and close it |
 

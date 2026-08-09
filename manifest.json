@@ -1,6 +1,6 @@
 {
-  "name": "SyncPad",
-  "short_name": "SyncPad",
+  "name": "JotRelay",
+  "short_name": "JotRelay",
   "description": "Live shared notepad — real-time sync across all your devices.",
   "start_url": "/SyncPad/",
   "scope": "/SyncPad/",

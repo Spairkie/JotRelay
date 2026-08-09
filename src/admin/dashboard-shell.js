@@ -1,4 +1,4 @@
-// SyncPad – admin/dashboard-shell.js
+// JotRelay – admin/dashboard-shell.js
 // The dashboard frame: header, stat cards, activity chart, tab bar, drawer
 // mount points, keyboard shortcuts, and tab-switch dispatch. Owns the
 // module-level dashboard state's lifecycle (init on render, teardown on
@@ -33,7 +33,7 @@ export async function _renderDashboard(sb, session, { onLogout } = {}) {
     <div class="admin-shell">
 
       <div class="admin-header">
-        <div class="admin-header-brand">${getIcon('admin', 18)} SyncPad Admin</div>
+        <div class="admin-header-brand">${getIcon('admin', 18)} JotRelay Admin</div>
         <div class="admin-header-actions">
           <span class="admin-user-email">${escapeHtml(session?.user?.email ?? '')}</span>
           <span class="admin-refreshed-label" id="admin-refreshed-label" title="Last data refresh"></span>

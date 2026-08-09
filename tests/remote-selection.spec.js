@@ -63,7 +63,7 @@ test.describe('Follow mode', () => {
 
     await page.evaluate(async () => {
       const UI = await import('/SyncPad/src/ui.js');
-      window.__syncpadFollowed = null;
+      window.__jotrelayFollowed = null;
       UI.renderDevicesList(
         [
           { device_id: 'me', device_name: 'Me', isMe: true, read_only: false, typing: false, cursor_line: null },
@@ -71,7 +71,7 @@ test.describe('Follow mode', () => {
         ],
         'me',
         () => {},
-        { followedDeviceId: null, onToggleFollow: (id) => { window.__syncpadFollowed = id; } },
+        { followedDeviceId: null, onToggleFollow: (id) => { window.__jotrelayFollowed = id; } },
       );
     });
 
@@ -80,7 +80,7 @@ test.describe('Follow mode', () => {
     await expect(followBtn).toHaveAttribute('aria-pressed', 'false');
 
     await followBtn.click();
-    const followedId = await page.evaluate(() => window.__syncpadFollowed);
+    const followedId = await page.evaluate(() => window.__jotrelayFollowed);
     expect(followedId).toBe('dev-a');
   });
 });

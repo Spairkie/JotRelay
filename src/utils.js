@@ -1,4 +1,4 @@
-// SyncPad – utils.js
+// JotRelay – utils.js
 
 // ── Device identity ──────────────────────────────────────────────────────────
 
@@ -347,7 +347,7 @@ export function logSupabaseError(context, error, extra = {}) {
   if (!isDebugEnabled()) return;
   const safe = { ...extra };
   delete safe.content; delete safe.passcode; delete safe.passcode_hash; delete safe.encryption_key;
-  console.error('[SyncPad]', context, {
+  console.error('[JotRelay]', context, {
     message: error?.message, code: error?.code,
     details: error?.details, hint: error?.hint, ...safe
   });

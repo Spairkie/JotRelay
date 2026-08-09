@@ -1,4 +1,4 @@
-// SyncPad – settings.js
+// JotRelay – settings.js
 // Passcode, encryption, expiration, and view-once management.
 import { updateRoomSettings, updateRoom, consumeViewOnceAtomic } from './rooms.js';
 import { generateSalt, deriveKey, encryptContent, decryptContent, looksEncrypted } from './encryption.js';

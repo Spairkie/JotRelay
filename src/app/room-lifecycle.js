@@ -1,4 +1,4 @@
-// SyncPad – app/room-lifecycle.js
+// JotRelay – app/room-lifecycle.js
 // The core room lifecycle: route-driven boot, the join flow (create/load/
 // passcode/encryption gates), startApp() (the single "make a loaded room
 // interactive" entry point), realtime room-state transitions, the
@@ -74,12 +74,12 @@ const LEGAL_BACK_PATH_KEY = 'syncpad_legal_back_path';
 
 // Contact/privacy/terms link to each other with plain <a href> tags — a
 // real navigation/full page reload each time, not an in-app route swap —
-// so their own "Back to SyncPad" link can't rely on in-memory state to know
+// so their own "Back to JotRelay" link can't rely on in-memory state to know
 // where the user actually came from. Reads what boot() stored in
 // sessionStorage the last time a non-legal route loaded, and points every
 // currently-visible legal screen's .legal-back-link at it (falling back to
 // the marketing root if nothing was ever stored — e.g. a legal page
-// reached directly, with no prior SyncPad visit this session).
+// reached directly, with no prior JotRelay visit this session).
 function _wireLegalBackLink() {
   let backPath = `${BASE}/`;
   try { backPath = sessionStorage.getItem(LEGAL_BACK_PATH_KEY) || backPath; } catch {}
@@ -89,7 +89,7 @@ function _wireLegalBackLink() {
 }
 
 /**
- * Record `path` (defaults to the current location) as the "Back to SyncPad"
+ * Record `path` (defaults to the current location) as the "Back to JotRelay"
  * target for the legal screens. boot() calls this on every real page load
  * (see below), but that only covers full navigations — creating/joining a
  * room from /app, clicking a recent room, and the standalone-PWA resume
@@ -97,7 +97,7 @@ function _wireLegalBackLink() {
  * call joinRoom() directly without going through boot() again, so without
  * this being called from those sites too, the stored path would still say
  * "/app" (or "/") after the user is actually sitting in a room, and "Back to
- * SyncPad" from a legal page reached from that room's footer would send them
+ * JotRelay" from a legal page reached from that room's footer would send them
  * to the wrong place.
  */
 export function recordLegalBackPath(path) {
@@ -127,7 +127,7 @@ export async function boot() {
   const route = _parseRoute();
 
   // Remember the last non-legal path visited so the legal screens' own
-  // "Back to SyncPad" links (see _wireLegalBackLink() below) can return the
+  // "Back to JotRelay" links (see _wireLegalBackLink() below) can return the
   // user to wherever they actually came from — the marketing landing page,
   // /app, a room, admin, etc. — instead of always going to the marketing
   // root. Only updated on a non-legal route, so chaining between Contact/
@@ -315,7 +315,7 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
     }
   } catch (err) {
     // Log the raw error so RLS / network failures are diagnosable in DevTools.
-    console.error('[SyncPad] joinRoom failed for', roomId, err);
+    console.error('[JotRelay] joinRoom failed for', roomId, err);
     UI.showLoadingError(
       err?.code === 'RATE_LIMITED' ? err.message : 'Could not load room — check your connection and try again.',
       () => joinRoom(roomId, { isNewRoom }),  // retry callback

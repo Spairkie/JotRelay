@@ -1,4 +1,4 @@
-// SyncPad – encryption.js
+// JotRelay – encryption.js
 // AES-GCM-256 with PBKDF2 key derivation.
 // All functions that encrypt/decrypt take a CryptoKey (not raw passphrase).
 // deriveKey() converts passphrase + salt → CryptoKey.

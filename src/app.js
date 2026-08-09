@@ -1,4 +1,4 @@
-// SyncPad – app.js
+// JotRelay – app.js
 // Thin entry point: wires the file-image resolver and the passcode/
 // encryption auth-gate forms (the only top-level DOM listeners that exist
 // before a room is ever joined), pulls in the PWA/service-worker wiring and

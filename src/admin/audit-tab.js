@@ -1,4 +1,4 @@
-// SyncPad – admin/audit-tab.js
+// JotRelay – admin/audit-tab.js
 // The Audit Log tab: paginated admin-action history, or an empty-state
 // pointing at the migration when the audit table doesn't exist yet.
 
@@ -19,7 +19,7 @@ export async function _renderAuditTab(contentEl) {
             Run the migration to enable audit logging for all admin actions.
           </div>
           <div class="admin-audit-empty-actions">
-            <a class="admin-action-btn admin-action-primary" href="https://github.com/Spairkie/SyncPad/blob/main/supabase/migrations/0006_admin_dashboard_improvements.sql" target="_blank" rel="noopener">View migration SQL</a>
+            <a class="admin-action-btn admin-action-primary" href="https://github.com/Spairkie/JotRelay/blob/main/supabase/migrations/0006_admin_dashboard_improvements.sql" target="_blank" rel="noopener">View migration SQL</a>
           </div>
         </div>
       </div>`;

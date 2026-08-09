@@ -140,7 +140,7 @@ test.describe('Markdown preview', () => {
   });
 
   test('renders safe links (https only)', async ({ page }) => {
-    const preview = await withPreview(page, '[SyncPad](https://example.com)');
+    const preview = await withPreview(page, '[JotRelay](https://example.com)');
     const link = preview.locator('a');
     await expect(link).toHaveAttribute('href', 'https://example.com');
     await expect(link).toHaveAttribute('rel', /noopener/);

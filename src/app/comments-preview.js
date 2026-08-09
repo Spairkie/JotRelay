@@ -1,4 +1,4 @@
-// SyncPad – app/comments-preview.js
+// JotRelay – app/comments-preview.js
 // Comments (side panel + floating margin dots/bubble/composer) and the
 // Write/Preview/Split markdown-mode switch. These two areas are tightly
 // coupled in the original design — switching modes must re-apply comment

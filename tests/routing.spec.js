@@ -63,13 +63,13 @@ test.describe('URL routing', () => {
     await expect(page.locator('#privacy-screen .legal-back-link')).toHaveAttribute('href', '/SyncPad/');
   });
 
-  test('"Back to SyncPad" returns to /app, not the marketing root, after visiting from there', async ({ page }) => {
+  test('"Back to JotRelay" returns to /app, not the marketing root, after visiting from there', async ({ page }) => {
     await page.goto('/SyncPad/app/');
     await page.goto('/SyncPad/privacy');
     await expect(page.locator('#privacy-screen .legal-back-link')).toHaveAttribute('href', '/SyncPad/app/');
   });
 
-  test('"Back to SyncPad" is unaffected by chaining through other legal pages', async ({ page }) => {
+  test('"Back to JotRelay" is unaffected by chaining through other legal pages', async ({ page }) => {
     // Three real sequential navigations, each independently slow in this
     // environment (blocked external CDN fetches add real seconds per
     // page.goto — see other single-navigation tests in this file already
