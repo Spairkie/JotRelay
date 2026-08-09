@@ -160,6 +160,24 @@ test.describe('Settings panel', () => {
     expect(raced).toBe(reference);
   });
 
+  test('switching themes also re-tints apple-touch-icon (future "Add to Home Screen" installs)', async ({ page }) => {
+    // apple-touch-icon isn't a room-scoped route element — it's static
+    // index.html markup present regardless of route — so this doesn't need
+    // a real room/Supabase to verify, unlike the SVG/PNG favicon tests
+    // above (which exercise it through the Settings panel's theme picker).
+    await page.goto('/SyncPad/');
+    const result = await page.evaluate(async () => {
+      const { applyTheme } = await import('/SyncPad/src/theme.js');
+      const link = document.querySelector('link[rel="apple-touch-icon"]');
+      const before = link.href;
+      applyTheme('forest-green');
+      await new Promise((r) => setTimeout(r, 300));
+      return { before, after: link.href };
+    });
+    expect(result.after).not.toBe(result.before);
+    expect(result.after).toContain('data:image/png');
+  });
+
   test('theme picker does not overflow the settings panel horizontally', async ({ page }) => {
     // Regression test: .theme-picker's grid-template-columns: 1fr 1fr tracks
     // defaulted to their content's min-content width (the longest theme

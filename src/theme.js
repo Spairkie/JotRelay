@@ -106,6 +106,21 @@ function _updateFaviconForTheme(id) {
         if (gen === _faviconGen) link.href = dataUrl;
       }).catch(() => {});
     });
+
+    // apple-touch-icon: what iOS Safari's "Add to Home Screen" snapshots at
+    // the moment the user taps it — recoloring this too means a fresh
+    // install captures whichever theme was active, not always the static
+    // amber default. This does NOT reach an already-installed icon (iOS
+    // bakes the bitmap in at install time with no live-update API — same
+    // platform limitation the manifest.json icons below run into), only
+    // future installs from this point on.
+    const appleLink = document.querySelector('link[rel="apple-touch-icon"]');
+    if (appleLink) {
+      const size = Number(appleLink.sizes?.value?.split('x')[0]) || 180;
+      _rasterizeFaviconPng(svg, size).then((dataUrl) => {
+        if (gen === _faviconGen) appleLink.href = dataUrl;
+      }).catch(() => {});
+    }
   } catch {}
 }
 
