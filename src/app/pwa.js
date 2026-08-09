@@ -5,6 +5,7 @@
 
 import * as UI from '../ui.js';
 import { BASE } from './state.js';
+import { hasUnsavedChanges } from '../sync.js';
 
 // ── PWA / Service Worker ──────────────────────────────────────────────────────
 //
@@ -75,3 +76,24 @@ window.addEventListener('syncpad:draft-storage-full', () => {
     8000,
   );
 }, { once: true });
+
+// ── Warn before closing with an unsaved/unsynced edit ─────────────────────────
+// Local drafts (offline.js) already persist every keystroke to localStorage,
+// so nothing typed is ever truly lost — this specifically warns about the
+// durable Postgres save not having confirmed yet (sync.js's hasUnsavedChanges()),
+// which matters for OTHER connected devices missing this edit, and for this
+// device's own durability if localStorage is ever cleared before the write
+// lands. Only fires while something is genuinely pending/failed — not on
+// every close, which would be pure nag for the overwhelmingly common case of
+// nothing outstanding.
+//
+// Reliable for closing a browser tab/window (including a desktop-installed
+// PWA's own window) — NOT reliable for a mobile home-screen PWA swiped away
+// from the app switcher, which mobile browsers don't consistently fire
+// beforeunload for at all. There's no cross-platform fix for that gap; the
+// local draft above is what actually protects data in that case.
+window.addEventListener('beforeunload', (e) => {
+  if (!hasUnsavedChanges()) return;
+  e.preventDefault();
+  e.returnValue = ''; // required to trigger the native prompt in most browsers; the string itself is ignored/replaced with a generic browser message
+});

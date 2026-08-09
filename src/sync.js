@@ -47,6 +47,11 @@ let _pendingRemoteTimestamp    = null;
 let _applyingRemote            = false;
 let _seqNum                    = 0;
 let _lastSnapshotAt            = 0;
+// Mirrors the 'saving'/'saved'/'error' values already passed to
+// _onStatusChange (UI.setStatus) — tracked here too so hasUnsavedChanges()
+// (app/pwa.js's beforeunload warning) can query it without the UI layer
+// needing to expose its own displayed text back out.
+let _saveStatus                = 'saved';
 
 // ── Init / Destroy ────────────────────────────────────────────────────────────
 
@@ -66,6 +71,7 @@ export function initSync(opts) {
   _applyingRemote            = false;
   _seqNum                    = 0;
   _lastSnapshotAt            = 0;
+  _saveStatus                = 'saved';
 }
 
 export function setEncryption(encryptFn, decryptFn) {
@@ -73,11 +79,23 @@ export function setEncryption(encryptFn, decryptFn) {
   _decryptFn = decryptFn;
 }
 
+/** True while there's a durable-save write queued or in flight (debounced,
+ *  not yet confirmed written) or the last attempt failed outright — used by
+ *  app/pwa.js's beforeunload warning. Local drafts (offline.js) already
+ *  save synchronously on every keystroke, so nothing typed is ever actually
+ *  lost from this device; what's genuinely at risk here is the OTHER
+ *  connected devices missing this edit, or (rarer) this device's own
+ *  localStorage being cleared before the durable write lands. */
+export function hasUnsavedChanges() {
+  return _saveStatus !== 'saved';
+}
+
 export function destroySync() {
   _debouncedSave.cancel?.();
   _roomId    = null;
   _encryptFn = null;
   _decryptFn = null;
+  _saveStatus = 'saved'; // cancelled, not failed — nothing left to warn about
 }
 
 // ── Local input handler ───────────────────────────────────────────────────────
@@ -101,6 +119,7 @@ export async function onLocalInput() {
 
   // Kick off debounced DB save
   _onStatusChange('saving');
+  _saveStatus = 'saving';
   _debouncedSave();
 
   // Broadcast metadata-only typing activity (no note text/ciphertext payload).
@@ -133,6 +152,7 @@ const _debouncedSave = debounce(async () => {
   // the key. In those cases the queued save must not write stale/plaintext data.
   if (!canEdit()) {
     _onStatusChange('saved');
+    _saveStatus = 'saved';
     return;
   }
 
@@ -142,9 +162,11 @@ const _debouncedSave = debounce(async () => {
     await saveContent(_roomId, content);
     clearDraft(_roomId);
     _onStatusChange('saved');
+    _saveStatus = 'saved';
     _maybeSnapshot(content);
   } catch {
     _onStatusChange('error');
+    _saveStatus = 'error';
   }
 }, SAVE_DEBOUNCE_MS);
 
