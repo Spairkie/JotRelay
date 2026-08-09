@@ -26,7 +26,7 @@ test.describe('Room load retry button', () => {
 
 test.describe('Read-only share link handling', () => {
   test('invalid share token shows info screen', async ({ page }) => {
-    await page.goto('/SyncPad/share/definitely-not-a-real-token-xyz123');
+    await page.goto('/JotRelay/share/definitely-not-a-real-token-xyz123');
     // Wait for resolution
     await page.waitForTimeout(4000);
     // Should show info screen (not the app screen or loading forever)
@@ -40,12 +40,12 @@ test.describe('Read-only share link handling', () => {
     }
   });
 
-  test('navigating to /SyncPad/share with no token redirects gracefully', async ({ page }) => {
-    await page.goto('/SyncPad/share/');
+  test('navigating to /JotRelay/share with no token redirects gracefully', async ({ page }) => {
+    await page.goto('/JotRelay/share/');
     await page.waitForTimeout(3000);
     // Should be on some screen (not stuck on loading forever)
     const url = page.url();
-    expect(url).toContain('/SyncPad/');
+    expect(url).toContain('/JotRelay/');
   });
 });
 
@@ -72,7 +72,7 @@ test.describe('Room creation and navigation', () => {
     // Navigate away
     await goToLanding(page);
     // Navigate back to the same room
-    await page.goto(`/SyncPad/${roomId}`);
+    await page.goto(`/JotRelay/${roomId}`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
     expect(page.url()).toContain(roomId);
   });
@@ -83,7 +83,7 @@ test.describe('Room creation and navigation', () => {
       return;
     }
     // Navigate directly to a room — loading screen should appear then resolve
-    await page.goto('/SyncPad/test-load-transition');
+    await page.goto('/JotRelay/test-load-transition');
     // May briefly see loading screen
     const loadMsg = page.locator('#loading-message');
     // Eventually app screen appears
@@ -121,7 +121,7 @@ test.describe('Multi-room navigation', () => {
     expect(roomB).not.toBe(roomA);
 
     // Navigate back to room A
-    await page.goto(`/SyncPad/${roomA}`);
+    await page.goto(`/JotRelay/${roomA}`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
     expect(page.url()).toContain(roomA);
   });
@@ -167,7 +167,7 @@ test.describe('Reconnect reconciliation (SP-AUDIT-0016)', () => {
     await expect(page.locator('#remote-notice')).toBeHidden();
 
     await page.evaluate(async (rid) => {
-      const { reconcileAfterReconnect } = await import('/SyncPad/src/sync.js');
+      const { reconcileAfterReconnect } = await import('/JotRelay/src/sync.js');
       // Simulate the room row fetched fresh right after reconnect, carrying
       // an edit from a different device that was made — and never
       // broadcast to us — while we were offline.
@@ -191,7 +191,7 @@ test.describe('Reconnect reconciliation (SP-AUDIT-0016)', () => {
     await page.waitForTimeout(1500);
 
     await page.evaluate(async (rid) => {
-      const { reconcileAfterReconnect } = await import('/SyncPad/src/sync.js');
+      const { reconcileAfterReconnect } = await import('/JotRelay/src/sync.js');
       await reconcileAfterReconnect({
         room_id: rid,
         content: 'same everywhere',
@@ -209,8 +209,8 @@ test.describe('Reconnect reconciliation (SP-AUDIT-0016)', () => {
     await page.waitForTimeout(1500);
 
     await page.evaluate(async (rid) => {
-      const { reconcileAfterReconnect } = await import('/SyncPad/src/sync.js');
-      const { getDeviceId } = await import('/SyncPad/src/utils.js');
+      const { reconcileAfterReconnect } = await import('/JotRelay/src/sync.js');
+      const { getDeviceId } = await import('/JotRelay/src/utils.js');
       await reconcileAfterReconnect({
         room_id: rid,
         content: 'stale content from before our own last save',

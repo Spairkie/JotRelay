@@ -38,7 +38,7 @@ set email = excluded.email;
 
 ## 4. Verify Access
 
-1. Open `/SyncPad/admin`.
+1. Open `/JotRelay/admin`.
 2. Sign in with the Auth user's email/password.
 3. Confirm the Rooms, Reports, Files, Audit Log, and Cleanup tabs load. (Audit Log requires the optional `0006_admin_dashboard_improvements.sql` migration above — without it, that tab shows a "not configured" message instead of an error, which is expected.)
 

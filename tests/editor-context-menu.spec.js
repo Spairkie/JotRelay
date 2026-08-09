@@ -216,13 +216,13 @@ test.describe('Editor context menu — read-only viewers', () => {
     // a brand-new room) instead of 'read only content here'.
     await expect(page.locator('#status-text')).toHaveText('Saved', { timeout: 5000 });
     const shareUrl = await page.evaluate(async () => {
-      const { getOrCreateReadOnlyShareLink } = await import('/SyncPad/src/rooms.js');
+      const { getOrCreateReadOnlyShareLink } = await import('/JotRelay/src/rooms.js');
       const roomIdFromUrl = location.pathname.split('/').filter(Boolean).pop();
       const link = await getOrCreateReadOnlyShareLink(roomIdFromUrl);
       return link?.token;
     });
     test.skip(!shareUrl, 'read-only share links require the optional share-link migration');
-    await page.goto(`/SyncPad/share/${shareUrl}`);
+    await page.goto(`/JotRelay/share/${shareUrl}`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
     // This is a real page reload (not a client-side route change), so
     // wireEvents() — including the contextmenu listener — runs fresh here

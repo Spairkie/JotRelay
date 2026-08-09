@@ -29,7 +29,7 @@ async function stubVisualViewportAndImport(page) {
     // Cache-bust so this always re-executes the module's top-level side
     // effect against the freshly-stubbed visualViewport, rather than
     // reusing the already-evaluated real import from the page's own boot.
-    await import(`/SyncPad/src/keyboard-viewport.js?test=${Date.now()}`);
+    await import(`/JotRelay/src/keyboard-viewport.js?test=${Date.now()}`);
   });
 }
 
@@ -201,14 +201,14 @@ test.describe('Keyboard resize re-scrolls the caret into view', () => {
     // focused-and-mounted path through keyboard-viewport.js's real debounced
     // resize → scrollCaretIntoView() integration.
     const unmountedResult = await page.evaluate(async () => {
-      const LiveEditor = await import('/SyncPad/src/live-editor.js');
+      const LiveEditor = await import('/JotRelay/src/live-editor.js');
       LiveEditor.scrollCaretIntoView(); // nothing mounted yet
       return 'ok';
     });
     expect(unmountedResult).toBe('ok');
 
     const mountedResult = await page.evaluate(async () => {
-      const LiveEditor = await import('/SyncPad/src/live-editor.js');
+      const LiveEditor = await import('/JotRelay/src/live-editor.js');
       const container = document.createElement('div');
       document.body.appendChild(container);
       LiveEditor.mount(container, 'a\nb\nc\nd\ne\nf\ng\nh', {});
@@ -322,7 +322,7 @@ test.describe('body.keyboard-open — bottom action bar reclaim', () => {
     await goToLanding(page);
 
     const result = await page.evaluate(async () => {
-      const UI = await import('/SyncPad/src/ui.js');
+      const UI = await import('/JotRelay/src/ui.js');
       UI.openFloatingCommentComposer({ x: 100, y: 400 }, () => {});
       await new Promise((r) => setTimeout(r, 20));
       const hadClass = document.body.classList.contains('keyboard-open');

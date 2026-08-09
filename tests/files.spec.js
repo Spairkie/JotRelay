@@ -90,7 +90,7 @@ test.describe('File list copy-link action', () => {
   test('renders a copy-link button per file that invokes onCopyLink', async ({ page }) => {
     await goToLanding(page);
     const result = await page.evaluate(async () => {
-      const ui = await import('/SyncPad/src/ui.js');
+      const ui = await import('/JotRelay/src/ui.js');
       document.getElementById('files-panel').classList.add('open');
       let copied = null;
       ui.renderFilesList(
@@ -109,7 +109,7 @@ test.describe('File list copy-link action', () => {
   test('omits the copy-link button when downloads are disabled', async ({ page }) => {
     await goToLanding(page);
     const hasCopyLinkBtn = await page.evaluate(async () => {
-      const ui = await import('/SyncPad/src/ui.js');
+      const ui = await import('/JotRelay/src/ui.js');
       document.getElementById('files-panel').classList.add('open');
       ui.renderFilesList(
         [{ id: 1, filename: 'report.pdf', mime_type: 'application/pdf', file_size: 1024, uploaded_at: new Date().toISOString() }],

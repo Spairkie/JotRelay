@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Minimal SPA static server for Playwright tests.
-// Serves the JotRelay project at /SyncPad/ with SPA fallback to index.html.
+// Serves the JotRelay project at /JotRelay/ with SPA fallback to index.html.
 // Usage: node tests/spa-server.js (reads PORT from the environment, defaults to 5555)
 import http from 'node:http';
 import fs from 'node:fs';
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 5555;
 const APP_ROOT = path.resolve(__dirname, '..');
-const BASE = '/SyncPad';
+const BASE = '/JotRelay';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -89,7 +89,7 @@ http.createServer((req, res) => {
   // Try exact file, then index.html in dir, then SPA fallback
   if (!tryServe(filePath)) {
     if (!tryServe(path.join(filePath, 'index.html'))) {
-      // SPA fallback: serve /SyncPad/index.html for all /SyncPad/* routes
+      // SPA fallback: serve /JotRelay/index.html for all /JotRelay/* routes
       if (urlPath.startsWith(`${BASE}/`) || urlPath === BASE) {
         tryServe(SPA_INDEX) || (res.writeHead(404), res.end('404'));
       } else {

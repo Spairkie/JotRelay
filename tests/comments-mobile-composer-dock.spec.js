@@ -13,10 +13,10 @@ import { test, expect } from '@playwright/test';
 
 test('mobile floating comment composer docks above the keyboard instead of at stale caret coords', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 700 });
-  await page.goto('/SyncPad/');
+  await page.goto('/JotRelay/');
 
   const result = await page.evaluate(async () => {
-    const UI = await import('/SyncPad/src/ui.js');
+    const UI = await import('/JotRelay/src/ui.js');
     // Caret near the bottom of the (pre-keyboard) viewport — the exact
     // scenario from the bug report.
     UI.openFloatingCommentComposer({ x: 100, y: 600 }, () => {});

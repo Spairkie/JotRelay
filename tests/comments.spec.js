@@ -330,9 +330,9 @@ test.describe('Comment threads (renderCommentsList grouping)', () => {
   // module import, with no room or Supabase involved, so they run even
   // when the CDN is blocked (unlike everything else in this file).
   async function render(page, comments, opts = {}) {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     await page.evaluate(async ([items, options]) => {
-      const { renderCommentsList } = await import('/SyncPad/src/ui/collab.js');
+      const { renderCommentsList } = await import('/JotRelay/src/ui/collab.js');
       renderCommentsList(items, options);
     }, [comments, opts]);
   }
@@ -365,9 +365,9 @@ test.describe('Comment threads (renderCommentsList grouping)', () => {
   test('a thread reply calls onReply with the thread\'s anchor, not a fresh selection', async ({ page }) => {
     // onReply can't cross the page.evaluate() boundary as a live function
     // reference — stash the call args on window instead and assert on those.
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     await page.evaluate(async () => {
-      const { renderCommentsList } = await import('/SyncPad/src/ui/collab.js');
+      const { renderCommentsList } = await import('/JotRelay/src/ui/collab.js');
       window.__replyCalls = [];
       renderCommentsList([{
         id: 'c1', created_at: new Date().toISOString(), device_name: 'Alice',
@@ -386,9 +386,9 @@ test.describe('Comment threads (renderCommentsList grouping)', () => {
   });
 
   test('blurring the reply input saves it, and a following Enter/click does not double-submit', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     await page.evaluate(async () => {
-      const { renderCommentsList } = await import('/SyncPad/src/ui/collab.js');
+      const { renderCommentsList } = await import('/JotRelay/src/ui/collab.js');
       window.__replyCalls = [];
       renderCommentsList([{
         id: 'c1', created_at: new Date().toISOString(), device_name: 'Alice',
@@ -410,9 +410,9 @@ test.describe('Comment threads (renderCommentsList grouping)', () => {
   });
 
   test('Escape in the reply input discards instead of saving', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     await page.evaluate(async () => {
-      const { renderCommentsList } = await import('/SyncPad/src/ui/collab.js');
+      const { renderCommentsList } = await import('/JotRelay/src/ui/collab.js');
       window.__replyCalls = [];
       renderCommentsList([{
         id: 'c1', created_at: new Date().toISOString(), device_name: 'Alice',

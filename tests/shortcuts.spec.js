@@ -15,7 +15,7 @@ import { createRoom, typeInEditor, setEditorMode, getEditorContent, ensureWriteM
 test.describe('Keyboard Shortcuts modal', () => {
   // Static markup, present regardless of route — no room/Supabase needed.
   test('notes that every listed shortcut also has a touch-accessible button', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     await page.evaluate(() => document.getElementById('shortcuts-modal')?.classList.add('visible'));
     await expect(page.locator('#shortcuts-modal')).toContainText('No physical keyboard?');
   });

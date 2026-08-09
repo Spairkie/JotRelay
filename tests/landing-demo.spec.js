@@ -16,9 +16,9 @@ test.describe('Coded hero demo (/)', () => {
     expect(await page.locator('video[autoplay]').count()).toBe(0);
   });
 
-  test('CTA still links to /SyncPad/app/', async ({ page }) => {
+  test('CTA still links to /JotRelay/app/', async ({ page }) => {
     await goToLanding(page);
-    await expect(page.locator('.lp-btn-primary').first()).toHaveAttribute('href', '/SyncPad/app/');
+    await expect(page.locator('.lp-btn-primary').first()).toHaveAttribute('href', '/JotRelay/app/');
   });
 
   test('scene tabs switch the active scene', async ({ page }) => {

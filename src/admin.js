@@ -34,7 +34,7 @@ function _loadAdminStylesheet() {
   const link = document.createElement('link');
   link.id = 'admin-stylesheet';
   link.rel = 'stylesheet';
-  link.href = '/SyncPad/styles/admin.css';
+  link.href = '/JotRelay/styles/admin.css';
   document.head.appendChild(link);
 }
 

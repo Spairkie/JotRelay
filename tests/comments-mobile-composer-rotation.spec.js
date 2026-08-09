@@ -18,7 +18,7 @@
 import { test, expect } from '@playwright/test';
 
 test('rotating past the mobile breakpoint while the composer is open re-docks it instead of leaving it unstyled', async ({ page }) => {
-  await page.goto('/SyncPad/');
+  await page.goto('/JotRelay/');
 
   const result = await page.evaluate(async () => {
     const listeners = [];
@@ -33,7 +33,7 @@ test('rotating past the mobile breakpoint while the composer is open re-docks it
     const realMatchMedia = window.matchMedia;
     window.matchMedia = (q) => (q === '(max-width: 639px)' ? fakeMq : realMatchMedia(q));
 
-    const UI = await import('/SyncPad/src/ui.js');
+    const UI = await import('/JotRelay/src/ui.js');
     UI.openFloatingCommentComposer({ x: 120, y: 300 }, () => {});
 
     const wrap = document.querySelector('.comment-floating-composer');

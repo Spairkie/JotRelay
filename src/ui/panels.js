@@ -546,7 +546,7 @@ export function setViewOnceConsumedPanel({
   startBtn.onclick = readOnly ? null : onStartNew;
   homeBtn.onclick = () => {
     onGoHome?.();
-    const raw = String(window.SYNCPAD_CONFIG?.basePath ?? '/SyncPad').trim();
+    const raw = String(window.SYNCPAD_CONFIG?.basePath ?? '/JotRelay').trim();
     const base = (!raw || raw === '/') ? '' : `/${raw.replace(/^\/+|\/+$/g, '')}`;
     window.location.href = `${base}/`;
   };

@@ -10,7 +10,7 @@ Use this checklist before publishing a new version or sharing the demo link.
 
 ## 1. Local / Core Tests
 
-- [ ] Landing screen loads at root URL (`/SyncPad/`)
+- [ ] Landing screen loads at root URL (`/JotRelay/`)
 - [ ] **Create room** — lands on `/<roomId>`, editor is ready
 - [ ] **Edit note** — text syncs live in a second tab
 - [ ] **Refresh room** — content reloads from Supabase correctly
@@ -18,8 +18,8 @@ Use this checklist before publishing a new version or sharing the demo link.
 - [ ] **Join room** by pasting a link into the landing screen join input
 - [ ] **Join room** by pasting a bare room ID
 - [ ] **Editable link** — opens editor, typing is allowed
-- [ ] **Read-only share link** (`/SyncPad/share/:token`) — editor is `readonly`, no upload/delete controls visible
-- [ ] **Invalid/missing room** — read-only share link (`/SyncPad/share/:token`) to a nonexistent room shows a clear message, does not crash
+- [ ] **Read-only share link** (`/JotRelay/share/:token`) — editor is `readonly`, no upload/delete controls visible
+- [ ] **Invalid/missing room** — read-only share link (`/JotRelay/share/:token`) to a nonexistent room shows a clear message, does not crash
 - [ ] **Lock editing** — all devices see the edit-blocked banner; typing is disabled
 - [ ] **Unlock editing** — banner clears; typing resumes
 
@@ -123,7 +123,7 @@ Preview mode.
 
 ## 7. Admin dashboard
 
-- [ ] `/SyncPad/admin` shows a login form (email + password)
+- [ ] `/JotRelay/admin` shows a login form (email + password)
 - [ ] Invalid credentials show an error message; valid credentials load the dashboard
 - [ ] **Rooms tab** — lists/paginates rooms; filter chips and search work; Clear/Delete (single and bulk) work; CSV export works
 - [ ] **Reports tab** — lists reports; status filter chips work; Dismiss/Review and Delete-room work
@@ -161,7 +161,7 @@ Preview mode.
 - [ ] **Share modal** opens full-width; links and QR codes are visible
 - [ ] **Files panel** is full-width; upload zone visible; file rows are tappable
 - [ ] **File preview modal** fills the viewport; scrollable
-- [ ] `/SyncPad/admin` dashboard renders correctly on mobile viewport
+- [ ] `/JotRelay/admin` dashboard renders correctly on mobile viewport
 - [ ] **Tap targets** are at least 44×44 px for all buttons
 - [ ] **Orientation change** — layout reflows correctly
 

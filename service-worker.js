@@ -168,7 +168,7 @@ self.addEventListener('fetch', (event) => {
   if (!url.startsWith(self.location.origin)) return;
 
   // SPA-route navigations (no file extension in the path — an in-app route
-  // like /SyncPad/<room-id> or /SyncPad/admin) map to the cached shell.
+  // like /JotRelay/<room-id> or /JotRelay/admin) map to the cached shell.
   // Navigations to an actual same-origin file — e.g. the landing page's
   // "Watch recorded demo" link opening presskit/video/demo.mp4 in a new
   // tab — are also `mode: 'navigate'` requests, but must serve their own

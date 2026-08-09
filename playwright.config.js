@@ -71,12 +71,12 @@ export default defineConfig({
   ],
 
   /* Start a SPA-aware static server before tests.
-   * tests/spa-server.js serves the repo root at /SyncPad/ (matching the
-   * GitHub Pages deployment path) with SPA fallback so all /SyncPad/*
+   * tests/spa-server.js serves the repo root at /JotRelay/ (matching the
+   * GitHub Pages deployment path) with SPA fallback so all /JotRelay/*
    * routes serve index.html rather than returning 404. */
   webServer: {
     command: 'node tests/spa-server.js',
-    url: 'http://localhost:5555/SyncPad/',
+    url: 'http://localhost:5555/JotRelay/',
     reuseExistingServer: !process.env.CI,
     timeout: 10_000,
   },

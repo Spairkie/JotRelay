@@ -26,7 +26,7 @@ npx playwright install
 npm test
 ```
 
-You don't need to manually start a server first — `npm test` does it for you. If you want a server running yourself (e.g. to poke around in the app between test runs), `npm run serve` and `node tests/spa-server.js` are the same command (the former just runs the latter) — `reuseExistingServer` is enabled locally, so Playwright will attach to whichever is already running on port 5555 instead of spawning its own. Both give `/SyncPad/*` routes SPA fallback to `index.html`, and — unlike a generic static-file server — correctly strip the `/SyncPad` prefix before resolving real assets too (`index.html` references everything as an absolute `/SyncPad/...` path, matching where GitHub Pages hosts the site, so a plain file server pointed at the repo root can't serve them as-is).
+You don't need to manually start a server first — `npm test` does it for you. If you want a server running yourself (e.g. to poke around in the app between test runs), `npm run serve` and `node tests/spa-server.js` are the same command (the former just runs the latter) — `reuseExistingServer` is enabled locally, so Playwright will attach to whichever is already running on port 5555 instead of spawning its own. Both give `/JotRelay/*` routes SPA fallback to `index.html`, and — unlike a generic static-file server — correctly strip the `/JotRelay` prefix before resolving real assets too (`index.html` references everything as an absolute `/JotRelay/...` path, matching where GitHub Pages hosts the site, so a plain file server pointed at the repo root can't serve them as-is).
 
 ---
 
@@ -116,7 +116,7 @@ Shared helpers live in `tests/helpers.js` and are imported by all spec files. Us
 
 | Function | Signature | Description |
 |---|---|---|
-| `goToLanding` | `(page) => Promise<void>` | Navigates to `/SyncPad/` and waits for `#landing-screen` to be visible. |
+| `goToLanding` | `(page) => Promise<void>` | Navigates to `/JotRelay/` and waits for `#landing-screen` to be visible. |
 | `supabaseAvailable` | `(page) => Promise<boolean>` | Detects whether the Supabase JS CDN loaded (`window.supabase`). Use to skip a test cleanly in a network-blocked environment instead of timing out. |
 | `createRoom` | `(page) => Promise<string>` | Calls `goToLanding`, skips the test if Supabase isn't reachable, clicks `.landing-create-btn`, waits for `#app-screen`, and returns the room ID extracted from the URL. |
 | `ensureWriteMode` | `(page) => Promise<void>` | Switches to Source/Write mode if `#note-editor` is currently hidden. Fresh rooms default to Live/Preview mode (see `_resolveInitialEditorMode()` in `src/app/state.js`), where the plain textarea is hidden and Playwright's actionability checks (`.click()`, `.fill()`) will hang until timeout without this. No-ops if Write mode is already active. |
@@ -179,11 +179,11 @@ async function inBrowser(page, modulePath, fn) {
 }
 
 test('escapeHtml escapes angle brackets', async ({ page }) => {
-  // createRoom navigates to a JotRelay page so that /SyncPad/src/utils.js
+  // createRoom navigates to a JotRelay page so that /JotRelay/src/utils.js
   // is on the same origin and can be imported.
   await createRoom(page);
 
-  const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+  const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
     mod.escapeHtml('<b>hello</b>')
   );
 
@@ -312,13 +312,13 @@ The `webServer` block tells Playwright to start the SPA-aware static server befo
 ```js
 webServer: {
   command: 'node tests/spa-server.js',
-  url: 'http://localhost:5555/SyncPad/',
+  url: 'http://localhost:5555/JotRelay/',
   reuseExistingServer: !process.env.CI,
   timeout: 10_000,
 }
 ```
 
-`tests/spa-server.js` serves the repo at `/SyncPad/` (matching the GitHub Pages deployment path `index.html` hardcodes as `window.SYNCPAD_CONFIG.basePath`) with SPA fallback to `index.html`, so every in-app route resolves the same way it does in production — `npm run serve` runs this exact script rather than a generic static-file server, since one that doesn't strip the `/SyncPad` prefix before resolving files would 404 or silently return `index.html` for every real asset. In CI, `reuseExistingServer` is `false`, so Playwright always spawns a fresh server and tears it down after the run, preventing port conflicts from a previous failed run.
+`tests/spa-server.js` serves the repo at `/JotRelay/` (matching the GitHub Pages deployment path `index.html` hardcodes as `window.SYNCPAD_CONFIG.basePath`) with SPA fallback to `index.html`, so every in-app route resolves the same way it does in production — `npm run serve` runs this exact script rather than a generic static-file server, since one that doesn't strip the `/JotRelay` prefix before resolving files would 404 or silently return `index.html` for every real asset. In CI, `reuseExistingServer` is `false`, so Playwright always spawns a fresh server and tears it down after the run, preventing port conflicts from a previous failed run.
 
 **Artifacts:** On failure, Playwright saves screenshots and videos to `test-results/` and writes a full HTML report to `playwright-report/`. Configure your CI pipeline to upload these directories as job artifacts so you can inspect failures without re-running the suite.
 

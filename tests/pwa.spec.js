@@ -46,7 +46,7 @@ test.describe('PWA installability', () => {
   test('manifest.json is valid with no Chrome-reported errors', async ({ page }) => {
     const client = await page.context().newCDPSession(page);
     await client.send('Page.enable');
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     await waitForServiceWorkerReady(page);
     // getAppManifest().errors only covers manifest retrieval/parsing (a
     // missing field, invalid JSON) — a manifest that parses fine but whose
@@ -54,7 +54,7 @@ test.describe('PWA installability', () => {
     // while never actually being installable. getInstallabilityErrors()
     // is Chrome's real beforeinstallprompt verdict, so assert both.
     const manifest = await client.send('Page.getAppManifest');
-    expect(manifest.url).toContain('/SyncPad/manifest.json');
+    expect(manifest.url).toContain('/JotRelay/manifest.json');
     expect(manifest.errors).toEqual([]);
 
     const installability = await client.send('Page.getInstallabilityErrors');
@@ -62,9 +62,9 @@ test.describe('PWA installability', () => {
   });
 
   test('service worker registers, activates, and takes control of the page', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     const scope = await waitForServiceWorkerReady(page);
-    expect(scope).toContain('/SyncPad/');
+    expect(scope).toContain('/JotRelay/');
   });
 
   test('a direct navigation to a real same-origin file serves that file, not the app shell', async ({ page }) => {
@@ -73,10 +73,10 @@ test.describe('PWA installability', () => {
     // navigation to an actual file (the landing page's "Watch recorded
     // demo" link opens presskit/video/demo.mp4 in a new tab) must serve its
     // own real content instead, even once this worker is in control.
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     await waitForServiceWorkerReady(page);
 
-    const response = await page.goto('/SyncPad/presskit/video/demo.mp4', { waitUntil: 'domcontentloaded' });
+    const response = await page.goto('/JotRelay/presskit/video/demo.mp4', { waitUntil: 'domcontentloaded' });
     expect(response?.status()).toBe(200);
     expect(response?.headers()['content-type']).toContain('video/mp4');
   });
@@ -84,7 +84,7 @@ test.describe('PWA installability', () => {
 
 test.describe('Offline behavior', () => {
   test('the landing page reloads and renders while offline', async ({ page, context }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     await waitForServiceWorkerReady(page);
 
     await context.setOffline(true);
@@ -95,7 +95,7 @@ test.describe('Offline behavior', () => {
   });
 
   test('the app-landing and a room route both still render their shell while offline', async ({ page, context }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     await waitForServiceWorkerReady(page);
     // A same-origin navigation while still online, before going offline —
     // without this, the very first navigation issued after setOffline(true)
@@ -104,10 +104,10 @@ test.describe('Offline behavior', () => {
     // all, even though the handler's own SPA-fallback logic (service-worker.js)
     // doesn't care which route it's for. One real online navigation in this
     // browser context first avoids that race.
-    await page.goto('/SyncPad/app/');
+    await page.goto('/JotRelay/app/');
 
     await context.setOffline(true);
-    await page.goto('/SyncPad/app/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/JotRelay/app/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#app-landing-screen')).toBeVisible();
 
     // The priming navigation above leaves the browser's ordinary HTTP
@@ -119,7 +119,7 @@ test.describe('Offline behavior', () => {
     const client = await page.context().newCDPSession(page);
     await client.send('Network.clearBrowserCache');
 
-    const roomResponse = await page.goto('/SyncPad/offline-shell-check-room', { waitUntil: 'domcontentloaded' });
+    const roomResponse = await page.goto('/JotRelay/offline-shell-check-room', { waitUntil: 'domcontentloaded' });
     expect(roomResponse?.status()).toBe(200);
     // The room's own JS can't reach Supabase (cross-origin, un-cached, and
     // offline) and correctly surfaces the app's loading-error/retry UI

@@ -9,7 +9,7 @@
     // Store the room path from the 404 URL, then redirect to the SPA root,
     // preserving any query string so things like ?mode=read survive.
     (function () {
-      var base   = '/SyncPad';
+      var base   = '/JotRelay';
       var path   = window.location.pathname.replace(base, '').replace(/^\/+|\/+$/g, '');
       var search = window.location.search || '';
       if (path) {

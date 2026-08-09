@@ -16,21 +16,21 @@
 
 ## Base path
 
-JotRelay is deployed at `/SyncPad` on GitHub Pages. The runtime base path is configured in `index.html`:
+JotRelay is deployed at `/JotRelay` on GitHub Pages. The runtime base path is configured in `index.html`:
 
 ```html
 window.SYNCPAD_CONFIG = {
-  basePath: '/SyncPad',
+  basePath: '/JotRelay',
   ...
 };
 ```
 
-`src/app.js` reads this value and `service-worker.js` derives its base from the service worker registration scope. The static HTML links, `manifest.json`, and `404.html` still use `/SyncPad` because GitHub Pages is the permanent deployment target.
+`src/app.js` reads this value and `service-worker.js` derives its base from the service worker registration scope. The static HTML links, `manifest.json`, and `404.html` still use `/JotRelay` because GitHub Pages is the permanent deployment target.
 
 **To host at the root** (custom domain, Vercel, Netlify, etc.):
 1. Change `window.SYNCPAD_CONFIG.basePath` to `''`.
 2. Update `manifest.json`: `"start_url": "/"` and `"scope": "/"`.
-3. Replace `/SyncPad/` static prefixes in `index.html` with `/`.
+3. Replace `/JotRelay/` static prefixes in `index.html` with `/`.
 4. Update the `404.html` redirect script or use the host's SPA rewrite support.
 
 ---
@@ -112,7 +112,7 @@ The anon key is public-facing by design in Supabase. RLS policies (installed by 
 
 1. Push the repository to GitHub (the entire project root, no build needed)
 2. **Settings → Pages → Source:** Deploy from a branch → `main` → `/` (root)
-3. GitHub deploys to `https://YOUR-USERNAME.github.io/SyncPad/`
+3. GitHub deploys to `https://YOUR-USERNAME.github.io/JotRelay/`
 
 The `404.html` file handles SPA routing: unknown paths store the room ID in `sessionStorage`, then redirect to the app root so the correct room loads.
 
@@ -130,7 +130,7 @@ After deploying, confirm these work in a browser:
 - [ ] Creating a room redirects to `/<roomId>`
 - [ ] Joining a room by URL works
 - [ ] Hard-refreshing a room URL loads correctly (404.html redirect)
-- [ ] Read-only share link (`/SyncPad/share/:token`) opens in read-only mode
+- [ ] Read-only share link (`/JotRelay/share/:token`) opens in read-only mode
 - [ ] Uploading a file works
 - [ ] Downloading a file works
 - [ ] Two browser tabs show each other in the Devices panel
@@ -237,7 +237,7 @@ Operational note: keep the botcheck honeypot enabled and verify report-table DB 
 | Expired rooms not cleared | `pg_cron` not enabled | Enable `pg_cron` extension; re-run `supabase/migrations/0001_base_schema.sql` |
 | App serving old cached content | Stale service worker | Bump `CACHE_VERSION` in `service-worker.js`; redeploy |
 | Room URL 404 on hard refresh | `404.html` not present | Ensure `404.html` is in the repo root and deployed |
-| Mobile "Add to Home Screen" fails | Wrong manifest paths | Verify `/SyncPad/` prefix in `manifest.json` icons |
+| Mobile "Add to Home Screen" fails | Wrong manifest paths | Verify `/JotRelay/` prefix in `manifest.json` icons |
 | Room creation fails after visiting `/admin` | Missing authenticated RLS policies | Re-run `supabase/migrations/0001_base_schema.sql` — the authenticated baseline policies section fixes this |
 
 ---

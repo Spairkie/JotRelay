@@ -11,12 +11,12 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Comment anchor tap-to-view', () => {
   test('tapping a commented span on a coarse-pointer (touch) device reports the tapped position', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     const result = await page.evaluate(async () => {
       const origMatchMedia = window.matchMedia;
       window.matchMedia = (q) => ({ matches: true, media: q, addListener() {}, removeListener() {} });
 
-      const LiveEditor = await import('/SyncPad/src/live-editor.js');
+      const LiveEditor = await import('/JotRelay/src/live-editor.js');
       const container = document.createElement('div');
       document.body.appendChild(container);
 
@@ -50,11 +50,11 @@ test.describe('Comment anchor tap-to-view', () => {
   });
 
   test('tapping the same span on a fine-pointer (mouse) device does not intercept the click', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     const result = await page.evaluate(async () => {
       // No matchMedia override — desktop Chromium reports pointer:fine,
       // hover:hover by default, so _isCoarsePointer() should read false.
-      const LiveEditor = await import('/SyncPad/src/live-editor.js');
+      const LiveEditor = await import('/JotRelay/src/live-editor.js');
       const container = document.createElement('div');
       document.body.appendChild(container);
 
@@ -84,12 +84,12 @@ test.describe('Comment anchor tap-to-view', () => {
   });
 
   test('a real touch pointerdown is honored even when the device reports a fine primary pointer (hybrid touchscreen laptop)', async ({ page }) => {
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     const result = await page.evaluate(async () => {
       // No matchMedia override — simulates a hybrid device where (pointer:
       // fine) / (hover: hover) both hold (mouse is the primary pointer),
       // but THIS interaction is a genuine finger tap on the touchscreen.
-      const LiveEditor = await import('/SyncPad/src/live-editor.js');
+      const LiveEditor = await import('/JotRelay/src/live-editor.js');
       const container = document.createElement('div');
       document.body.appendChild(container);
 

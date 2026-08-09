@@ -8,7 +8,7 @@ async function getReadOnlyShareUrl(page) {
   await closePanels(page);
   await page.locator('#btn-share').click();
   const input = page.locator('#share-readonly-text');
-  await expect(input).toHaveValue(/\/SyncPad\/share\//, { timeout: 15_000 });
+  await expect(input).toHaveValue(/\/JotRelay\/share\//, { timeout: 15_000 });
   return input.inputValue();
 }
 
@@ -18,7 +18,7 @@ test.describe('Read-only links', () => {
     const roomId = await createRoom(page);
 
     // Navigate to the room with read-only mode
-    await page.goto(`/SyncPad/${roomId}?mode=read`);
+    await page.goto(`/JotRelay/${roomId}?mode=read`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
 
     // Editor should be disabled/read-only
@@ -37,7 +37,7 @@ test.describe('Read-only links', () => {
     await typeInEditor(page, 'original content');
 
     // Open in read-only mode
-    await page.goto(`/SyncPad/${roomId}?mode=read`);
+    await page.goto(`/JotRelay/${roomId}?mode=read`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
 
     await ensureWriteMode(page);
@@ -53,7 +53,7 @@ test.describe('Read-only links', () => {
 
   test('read-only viewer sees upload button disabled or absent', async ({ page }) => {
     const roomId = await createRoom(page);
-    await page.goto(`/SyncPad/${roomId}?mode=read`);
+    await page.goto(`/JotRelay/${roomId}?mode=read`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
 
     // The file upload zone (#files-upload-zone) has data-readonly-hide and
@@ -66,7 +66,7 @@ test.describe('Read-only links', () => {
 
   test('read-only banner or indicator is shown', async ({ page }) => {
     const roomId = await createRoom(page);
-    await page.goto(`/SyncPad/${roomId}?mode=read`);
+    await page.goto(`/JotRelay/${roomId}?mode=read`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
 
     // Some indicator that this is read-only
@@ -95,7 +95,7 @@ test.describe('Read-only links', () => {
   });
 
   test('invalid read-only share token shows info screen', async ({ page }) => {
-    await page.goto('/SyncPad/share/invalid-token-that-does-not-exist-12345');
+    await page.goto('/JotRelay/share/invalid-token-that-does-not-exist-12345');
     await page.waitForTimeout(5000);
     // Should show info screen or landing (not stuck on loading)
     const infoScreen = page.locator('#info-screen');
@@ -121,7 +121,7 @@ test.describe('Read-only links', () => {
     await fillPromptDialog(page, 'reader-secret');
     await waitForToast(page, 'Passcode set.');
 
-    await page.goto(`/SyncPad/${roomId}?mode=read`);
+    await page.goto(`/JotRelay/${roomId}?mode=read`);
     await page.waitForSelector('#passcode-screen:not(.hidden)', { timeout: 15_000 });
     await page.locator('#passcode-input').fill('reader-secret');
     await page.locator('#passcode-submit-btn').click();
@@ -157,7 +157,7 @@ test.describe('Read-only links', () => {
     await fillPromptDialog(page, 'reader-passphrase');
     await waitForToast(page, 'Encryption enabled.', { timeout: 15_000 });
 
-    await page.goto(`/SyncPad/${roomId}?mode=read`);
+    await page.goto(`/JotRelay/${roomId}?mode=read`);
     await page.waitForSelector('#encryption-screen:not(.hidden)', { timeout: 15_000 });
     await page.locator('#encryption-input').fill('reader-passphrase');
     await page.locator('#encryption-submit-btn').click();

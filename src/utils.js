@@ -384,7 +384,7 @@ export function onOnlineChange(callback) {
 
 /**
  * Build the canonical editable room URL for sharing.
- * @param {string} basePath  – e.g. '/SyncPad'
+ * @param {string} basePath  – e.g. '/JotRelay'
  * @param {string} roomId
  * @returns {string}
  */

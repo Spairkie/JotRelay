@@ -27,7 +27,7 @@ import { createFreshRoom, createRoom, openMoreMenu } from './helpers.js';
 
 async function openTourDirectly(page) {
   await page.evaluate(async () => {
-    const { startOnboardingTour } = await import('/SyncPad/src/ui/onboarding.js');
+    const { startOnboardingTour } = await import('/JotRelay/src/ui/onboarding.js');
     startOnboardingTour();
   });
 }

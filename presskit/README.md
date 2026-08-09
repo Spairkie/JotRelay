@@ -104,7 +104,7 @@ as a "secure" product in the compliance sense.
 |---|---|
 | **Name** | JotRelay |
 | **Category** | Real-time shared notepad / accountless collaboration tool |
-| **Live app** | [spairkie.github.io/SyncPad](https://spairkie.github.io/SyncPad/) |
+| **Live app** | [spairkie.github.io/JotRelay](https://spairkie.github.io/JotRelay/) |
 | **Platform** | Web (any modern browser); installable as a PWA on desktop and mobile |
 | **Account required** | No |
 | **Pricing** | Free |
@@ -215,7 +215,7 @@ These assets are provided as-is, without warranty, for editorial use.
 ## Contact
 
 For interview requests, questions, or anything not covered here, use the
-[contact form on the JotRelay site](https://spairkie.github.io/SyncPad/contact).
+[contact form on the JotRelay site](https://spairkie.github.io/JotRelay/contact).
 
 *(This section is a placeholder — swap in a direct press email once one
 exists. Until then, the contact form is the reliable route.)*

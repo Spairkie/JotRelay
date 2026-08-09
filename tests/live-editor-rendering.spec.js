@@ -204,9 +204,9 @@ test.describe('Live/Split surface rendering', () => {
     // that hasn't interacted with the editor. Exercised directly against the
     // real module (no Supabase needed) per this repo's convention for
     // browser-only module logic.
-    await page.goto('/SyncPad/');
+    await page.goto('/JotRelay/');
     await page.evaluate(async () => {
-      const { mount, syncFromText } = await import('/SyncPad/src/live-editor.js');
+      const { mount, syncFromText } = await import('/JotRelay/src/live-editor.js');
       const container = document.createElement('div');
       container.id = 'note-live-harness';
       document.body.appendChild(container);

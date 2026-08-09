@@ -22,7 +22,7 @@ async function inBrowser(page, modulePath, fn) {
 test.describe('escapeHtml()', () => {
   test('escapes < > & " characters', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
       mod.escapeHtml('<script>alert("xss")</script>&')
     );
     expect(result).toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;&amp;');
@@ -30,15 +30,15 @@ test.describe('escapeHtml()', () => {
 
   test('returns empty string for null/undefined', async ({ page }) => {
     await goToLanding(page);
-    const r1 = await inBrowser(page, '/SyncPad/src/utils.js', (mod) => mod.escapeHtml(null));
-    const r2 = await inBrowser(page, '/SyncPad/src/utils.js', (mod) => mod.escapeHtml(undefined));
+    const r1 = await inBrowser(page, '/JotRelay/src/utils.js', (mod) => mod.escapeHtml(null));
+    const r2 = await inBrowser(page, '/JotRelay/src/utils.js', (mod) => mod.escapeHtml(undefined));
     expect(r1).toBe('');
     expect(r2).toBe('');
   });
 
   test('leaves safe strings unchanged', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
       mod.escapeHtml('Hello World 123')
     );
     expect(result).toBe('Hello World 123');
@@ -48,7 +48,7 @@ test.describe('escapeHtml()', () => {
 test.describe('formatFileSize()', () => {
   test('formats bytes', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
       mod.formatFileSize(500)
     );
     expect(result).toContain('500');
@@ -56,7 +56,7 @@ test.describe('formatFileSize()', () => {
 
   test('formats kilobytes', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
       mod.formatFileSize(2048)
     );
     expect(result).toContain('KB');
@@ -64,7 +64,7 @@ test.describe('formatFileSize()', () => {
 
   test('formats megabytes', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
       mod.formatFileSize(5 * 1024 * 1024)
     );
     expect(result).toContain('MB');
@@ -74,7 +74,7 @@ test.describe('formatFileSize()', () => {
 test.describe('countWords()', () => {
   test('counts words correctly', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
       mod.countWords('hello world foo bar')
     );
     expect(result).toBe(4);
@@ -82,7 +82,7 @@ test.describe('countWords()', () => {
 
   test('returns 0 for empty string', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
       mod.countWords('')
     );
     expect(result).toBe(0);
@@ -90,7 +90,7 @@ test.describe('countWords()', () => {
 
   test('handles leading/trailing whitespace', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
       mod.countWords('   three words here   ')
     );
     expect(result).toBe(3);
@@ -100,7 +100,7 @@ test.describe('countWords()', () => {
 test.describe('estimateReadingTime()', () => {
   test('returns 0 for empty text', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
       mod.estimateReadingTime('')
     );
     expect(result).toBe(0);
@@ -108,7 +108,7 @@ test.describe('estimateReadingTime()', () => {
 
   test('rounds up to at least 1 minute for any non-empty text', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
       mod.estimateReadingTime('just a few words')
     );
     expect(result).toBe(1);
@@ -116,7 +116,7 @@ test.describe('estimateReadingTime()', () => {
 
   test('estimates ~200 words per minute', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/utils.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/utils.js', (mod) =>
       mod.estimateReadingTime(Array(450).fill('word').join(' '))
     );
     expect(result).toBe(2);
@@ -126,7 +126,7 @@ test.describe('estimateReadingTime()', () => {
 test.describe('Templates module', () => {
   test('TEMPLATES has at least 13 entries', async ({ page }) => {
     await goToLanding(page);
-    const count = await inBrowser(page, '/SyncPad/src/templates.js', (mod) =>
+    const count = await inBrowser(page, '/JotRelay/src/templates.js', (mod) =>
       Object.keys(mod.TEMPLATES).length
     );
     expect(count).toBeGreaterThanOrEqual(13);
@@ -134,13 +134,13 @@ test.describe('Templates module', () => {
 
   test('BODY_MAX is 50000', async ({ page }) => {
     await goToLanding(page);
-    const bodyMax = await inBrowser(page, '/SyncPad/src/templates.js', (mod) => mod.BODY_MAX);
+    const bodyMax = await inBrowser(page, '/JotRelay/src/templates.js', (mod) => mod.BODY_MAX);
     expect(bodyMax).toBe(50_000);
   });
 
   test('getTemplate returns built-in template body', async ({ page }) => {
     await goToLanding(page);
-    const body = await inBrowser(page, '/SyncPad/src/templates.js', (mod) =>
+    const body = await inBrowser(page, '/JotRelay/src/templates.js', (mod) =>
       mod.getTemplate('checklist')
     );
     expect(typeof body).toBe('string');
@@ -149,7 +149,7 @@ test.describe('Templates module', () => {
 
   test('importCustomTemplates returns -1 for invalid JSON', async ({ page }) => {
     await goToLanding(page);
-    const count = await inBrowser(page, '/SyncPad/src/templates.js', (mod) =>
+    const count = await inBrowser(page, '/JotRelay/src/templates.js', (mod) =>
       mod.importCustomTemplates('not valid json')
     );
     expect(count).toBe(-1);
@@ -157,7 +157,7 @@ test.describe('Templates module', () => {
 
   test('importCustomTemplates returns -1 for JSON array', async ({ page }) => {
     await goToLanding(page);
-    const count = await inBrowser(page, '/SyncPad/src/templates.js', (mod) =>
+    const count = await inBrowser(page, '/JotRelay/src/templates.js', (mod) =>
       mod.importCustomTemplates('[]')
     );
     expect(count).toBe(-1);
@@ -165,7 +165,7 @@ test.describe('Templates module', () => {
 
   test('exportCustomTemplates returns valid JSON string', async ({ page }) => {
     await goToLanding(page);
-    const json = await inBrowser(page, '/SyncPad/src/templates.js', (mod) =>
+    const json = await inBrowser(page, '/JotRelay/src/templates.js', (mod) =>
       mod.exportCustomTemplates()
     );
     expect(() => JSON.parse(json)).not.toThrow();
@@ -175,7 +175,7 @@ test.describe('Templates module', () => {
 test.describe('Markdown renderer', () => {
   test('renderMarkdown returns safe HTML', async ({ page }) => {
     await goToLanding(page);
-    const html = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) =>
+    const html = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) =>
       mod.renderMarkdown('**bold** and <script>xss</script>')
     );
     expect(html).toContain('<strong>bold</strong>');
@@ -185,7 +185,7 @@ test.describe('Markdown renderer', () => {
 
   test('toggleChecklistItem toggles checked state', async ({ page }) => {
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) =>
+    const result = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) =>
       mod.toggleChecklistItem('- [ ] Item one\n- [ ] Item two\n', 0, true)
     );
     expect(result).toContain('[x] Item one');
@@ -198,7 +198,7 @@ test.describe('Markdown renderer', () => {
     // source scan recognizes (it never counts blockquoted checklist lines),
     // or clicking the checkbox silently does nothing.
     await goToLanding(page);
-    const result = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) => {
+    const result = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) => {
       const src = '> - [ ] quoted\n\n- [ ] normal';
       const html = mod.renderMarkdown(src);
       const indices = [...html.matchAll(/data-cb-index="(\d+)"/g)].map((m) => Number(m[1]));
@@ -211,7 +211,7 @@ test.describe('Markdown renderer', () => {
 
   test('renderMarkdownWithToc derives labels from rendered text, not raw markdown syntax', async ({ page }) => {
     await goToLanding(page);
-    const headings = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) => {
+    const headings = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) => {
       const src = '# Intro\n\n## [API guide](https://example.com)\n\n### **Bold** and `code`';
       return mod.renderMarkdownWithToc(src).headings;
     });
@@ -223,7 +223,7 @@ test.describe('Markdown renderer', () => {
 
   test('syncpad-file: image references render with no src, awaiting async resolution', async ({ page }) => {
     await goToLanding(page);
-    const html = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) =>
+    const html = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) =>
       mod.renderMarkdown('![a photo](syncpad-file:room1/167_photo.png)')
     );
     expect(html).toContain('data-syncpad-file="room1/167_photo.png"');
@@ -233,7 +233,7 @@ test.describe('Markdown renderer', () => {
 
   test('unrecognized image schemes (javascript:, data:) are still rejected', async ({ page }) => {
     await goToLanding(page);
-    const html = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) =>
+    const html = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) =>
       mod.renderMarkdown('![bad](javascript:alert(1))![bad2](data:text/html,x)')
     );
     expect(html).not.toContain('<img');
@@ -241,7 +241,7 @@ test.describe('Markdown renderer', () => {
 
   test('table columns honor GFM alignment markers', async ({ page }) => {
     await goToLanding(page);
-    const html = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) =>
+    const html = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) =>
       mod.renderMarkdown('| L | C | R | N |\n|:---|:---:|---:|---|\n| a | b | c | d |')
     );
     expect(html).toContain('<th style="text-align:left">L</th>');
@@ -253,7 +253,7 @@ test.describe('Markdown renderer', () => {
 
   test('backslash-escaped punctuation suppresses markdown interpretation', async ({ page }) => {
     await goToLanding(page);
-    const html = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) =>
+    const html = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) =>
       mod.renderMarkdown('This is \\*\\*not bold\\*\\* and \\[not a link\\](nope).')
     );
     expect(html).toContain('**not bold**');
@@ -264,7 +264,7 @@ test.describe('Markdown renderer', () => {
 
   test('footnotes render a numbered reference and a references section', async ({ page }) => {
     await goToLanding(page);
-    const html = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) => {
+    const html = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) => {
       const src = 'A claim.[^1] A repeat.[^1]\n\n[^1]: The *footnote* text.';
       return mod.renderMarkdown(src);
     });
@@ -280,7 +280,7 @@ test.describe('Markdown renderer', () => {
 
   test('an undefined footnote reference is left as literal text', async ({ page }) => {
     await goToLanding(page);
-    const html = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) =>
+    const html = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) =>
       mod.renderMarkdown('This has no matching def.[^missing]')
     );
     expect(html).toContain('[^missing]');
@@ -290,7 +290,7 @@ test.describe('Markdown renderer', () => {
 
   test('GitHub-style alerts render as labeled callouts, not plain blockquotes', async ({ page }) => {
     await goToLanding(page);
-    const html = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) =>
+    const html = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) =>
       mod.renderMarkdown('> [!WARNING]\n> Be careful.')
     );
     expect(html).toContain('class="md-alert md-alert-warning"');
@@ -301,7 +301,7 @@ test.describe('Markdown renderer', () => {
 
   test('a plain blockquote (no alert marker) still renders as <blockquote>', async ({ page }) => {
     await goToLanding(page);
-    const html = await inBrowser(page, '/SyncPad/src/markdown.js', (mod) =>
+    const html = await inBrowser(page, '/JotRelay/src/markdown.js', (mod) =>
       mod.renderMarkdown('> Just a quote.')
     );
     expect(html).toContain('<blockquote>');
