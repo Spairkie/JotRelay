@@ -2,7 +2,7 @@
 
 # Markdown Feature Test — SyncPad
 
-Paste this whole note into SyncPad's editor (Source mode), then switch to **Live** or **Split** to check every feature below renders correctly. Each section is self-contained and labeled with what you should see.
+Paste this whole note into SyncPad's editor (Source/Write mode), then switch to **Live** or **Split** to check every feature below renders correctly. Each section is self-contained and labeled with what you should see. This document is the source of truth for `docs/markdown-feature-audit.md`'s verification claims — if you change what `src/markdown.js` or `src/live-editor.js` support, update both together, in the same commit, so they can't drift apart again (see the note on emoji shortcodes in §19 for exactly what silent drift looks like).
 
 ---
 
@@ -15,7 +15,7 @@ Paste this whole note into SyncPad's editor (Source mode), then switch to **Live
 ##### H5 Heading
 ###### H6 Heading
 
-Expect: 6 distinct heading sizes, each with an auto-generated id (hover/inspect for `#h1-heading` etc.) — used by the Table of Contents above and by anchor links like [jump to Tables](#13-tables).
+Expect: 6 distinct heading sizes, each with an auto-generated id (hover/inspect for `#h1-heading` etc.) — used by the Table of Contents above and by anchor links like [jump to Tables](#14-tables).
 
 ---
 
@@ -83,6 +83,13 @@ Expect (Live/Split): the code fence's background box sits fully *inside* the blo
 > [!CAUTION]
 > Advises about risks or negative outcomes.
 
+### An alert nested inside a plain blockquote
+
+> Some surrounding context first.
+>
+> > [!TIP]
+> > A nested alert should still get its own icon/color treatment, not just render as a second level of plain quote.
+
 ---
 
 ## 5. Lists
@@ -101,6 +108,18 @@ Expect (Live/Split): the code fence's background box sits fully *inside* the blo
 3. Third
    1. Nested first
    2. Nested second
+
+### Mixed nesting (ordered inside unordered, and back again)
+- Fruit
+  1. Apple
+  2. Banana
+- Vegetables
+  1. Carrot
+  2. Pea
+     - green
+     - split
+
+Expect: indentation and marker style (bullet vs number) both switch correctly at each nesting level, in both directions.
 
 ### Task lists (with live progress badge)
 - [x] Completed task
@@ -145,7 +164,7 @@ function greet(name) {
 console.log(greet("SyncPad"));
 ```
 
-A longer fenced code block, for testing the optional "Code line numbers" setting (Settings > Editor):
+A longer fenced code block, for testing the optional "Code line numbers" setting (Settings → Editor):
 
 ```js
 function fibonacci(n) {
@@ -169,6 +188,12 @@ Expect: with the setting off (default), no gutter. With it on, each real code li
 ```python
 def greet(name):
     return f"Hello, {name}!"
+```
+
+An unrecognized language tag should still render as a plain monospace block, just without color:
+
+```brainfuck
+++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.
 ```
 
 ---
@@ -203,8 +228,14 @@ Angle-bracket email autolink: <someone@example.com>
 
 Bare email inside backticks should NOT become a link: `someone@example.com`
 
+A `javascript:` URL should NOT become a clickable link at all — expect the literal bracketed text below, not a link the browser would ever navigate:
+
+[Should not be clickable](javascript:alert('xss'))
+
 [ref1]: https://example.com "Reference-style title"
 [Reference-style link, collapsed]: https://example.com
+
+Expect: every real link above opens in a **new tab** — this is a site-wide policy, not per-link syntax (see §30).
 
 ---
 
@@ -212,7 +243,7 @@ Bare email inside backticks should NOT become a link: `someone@example.com`
 
 ![Placeholder image](https://via.placeholder.com/150 "A 150x150 placeholder")
 
-Expect: an inline image (network permitting) with the given alt text and title tooltip. `syncpad-file:` scheme images (pasted attachments) render the same way but aren't testable by pasting this file — try dragging an image into the editor separately to confirm those too.
+Expect: an inline image (network permitting) with the given alt text and title tooltip. `syncpad-file:` scheme images (pasted/uploaded attachments) render the same way but aren't testable by pasting this file — try dragging an image into the editor, or uploading one via the Files panel and inserting it, to confirm that path too. If the room is encrypted, an uploaded image's *content* is encrypted at rest and decrypted locally before display — see `docs/security.md`.
 
 ---
 
@@ -222,6 +253,12 @@ Expect: an inline image (network permitting) with the given alt text and title t
 
 Literal backslash: \\
 
+Escaping inside a table cell: \| should not split the column.
+
+| Column |
+|---|
+| a \| b |
+
 ---
 
 ## 11. HTML (should NOT render — safety feature)
@@ -230,7 +267,9 @@ Literal backslash: \\
 
 <script>alert('should never execute')</script>
 
-Expect: both lines above appear as plain visible text (with `<`/`>` shown, e.g. `&lt;div&gt;`), never as real HTML elements, and the script must never execute.
+<img src=x onerror="alert('xss')">
+
+Expect: all three lines above appear as plain visible text (with `<`/`>` shown, e.g. `&lt;div&gt;`), never as real HTML elements — and neither the `<script>` nor the `onerror` handler ever executes.
 
 ---
 
@@ -245,7 +284,25 @@ Expect: nothing renders between this line and the next heading.
 
 ---
 
-## 13. Tables
+## 13. Emoji
+
+Genuine Unicode emoji render as plain text with no special handling needed: 😀 🚀 ✅ 🎉 💡
+
+**Shortcode form IS supported** — a curated ~150-entry table of the shortcodes people actually type from muscle memory (`markdown-emoji-map.js`, shared by both renderers):
+
+:smile: :rocket: :tada: :thumbsup: :heart: :fire: :eyes: :100:
+
+An *unrecognized* shortcode falls back to literal text, same as any other unresolved construct — this should NOT turn into an emoji:
+
+:this_is_not_a_real_shortcode:
+
+Symbol-only codes (`:+1:`, `:-1:`) are a known gap — the underlying grammar only recognizes `[a-zA-Z_0-9]+` between the colons, so these never reach the emoji table at all and stay literal text on purpose. Use the letter form instead:
+
+:+1: (stays literal) vs :thumbsup: (converts)
+
+---
+
+## 14. Tables
 
 | Left aligned | Center aligned | Right aligned |
 |:---|:---:|---:|
@@ -259,9 +316,17 @@ Plain table, no alignment:
 | Ada | Engineer |
 | Grace | Admiral |
 
+A wide table, to check horizontal scroll doesn't break the surrounding layout:
+
+| Col A | Col B | Col C | Col D | Col E | Col F | Col G | Col H |
+|---|---|---|---|---|---|---|---|
+| aaaaaaaaaa | bbbbbbbbbb | cccccccccc | dddddddddd | eeeeeeeeee | ffffffffff | gggggggggg | hhhhhhhhhh |
+
+Expect: the wide table scrolls horizontally within its own container — the page itself should never gain a horizontal scrollbar.
+
 ---
 
-## 14. Fenced Code Blocks (language variety)
+## 15. Fenced Code Blocks (language variety)
 
 ```html
 <p>Sample HTML inside a code fence — should render as visible text, not real HTML.</p>
@@ -277,7 +342,7 @@ echo "hello world"
 
 ---
 
-## 15. Footnotes
+## 16. Footnotes
 
 Here's a sentence with a footnote.[^1] Here's another with a named one.[^note]
 
@@ -291,13 +356,13 @@ Expect: superscript numbered markers in the text, linking down to a footnotes se
 
 ---
 
-## 16. Heading IDs (auto-generated)
+## 17. Heading IDs (auto-generated)
 
 Every heading in this document already has an auto-generated id — confirmed by the [TOC] block at the very top linking to each one. Click a few of those TOC links to verify they jump to the right heading — in the Live/Split surface, the "Contents" box's own entries should be real clickable links (not inert text), and the raw `[TOC]` marker line itself should stay hidden behind the box rather than showing underneath it.
 
 ---
 
-## 17. Definition Lists — NOT supported (by design)
+## 18. Definition Lists — NOT supported (by design)
 
 Not part of GFM; SyncPad doesn't render this Markdown Extra syntax. The lines below should just appear as plain paragraph text, not a styled definition list:
 
@@ -306,17 +371,13 @@ Term
 
 ---
 
-## 18. Emoji
+## 19. A note on this file's own accuracy
 
-Genuine Unicode emoji render as plain text with no special handling needed: 😀 🚀 ✅ 🎉 💡
-
-Shortcode form (`:smile:`) is **not** supported — expect the literal text `:smile:` below, not a converted emoji:
-
-:smile: :rocket:
+This section exists because it was necessary: an earlier version of this document claimed emoji shortcodes (§13) were **not** supported, months after `markdown-emoji-map.js` shipped and made that claim false — nobody updated this file when the feature landed, so it silently drifted from the actual renderer behavior it exists to describe. If you add or change a Markdown feature, update `src/markdown.js`'s own header-comment feature list, `docs/markdown-feature-audit.md`, and the relevant section of *this* file in the same change — a passing test suite doesn't catch a stale doc, only a person re-reading it against real output does.
 
 ---
 
-## 19. Subscript / Superscript — NOT supported (by design)
+## 20. Subscript / Superscript — NOT supported (by design)
 
 Pandoc/kramdown syntax, not GFM. Expect literal text below, not raised/lowered characters:
 
@@ -324,19 +385,19 @@ H~2~O and X^2^
 
 ---
 
-## 20. Automatic URL Linking
+## 21. Automatic URL Linking
 
 Bare URL: https://www.markdownguide.org should become a clickable link automatically.
 
 ---
 
-## 21. Disabling Automatic URL Linking
+## 22. Disabling Automatic URL Linking
 
 Wrapped in a code span, this URL should stay plain text, NOT become a link: `https://www.markdownguide.org`
 
 ---
 
-## 22. Underline — NOT supported (by design)
+## 23. Underline — NOT supported (by design)
 
 No clean non-HTML syntax exists (`__x__` is already bold in GFM). Expect literal underscores below:
 
@@ -344,33 +405,33 @@ __this stays bold, not underlined__
 
 ---
 
-## 23. Indent (Tab) — NOT supported as a code-block trigger
+## 24. Indent (Tab) — NOT supported as a code-block trigger
 
-CommonMark's 4-space-indent-equals-code-block rule is intentionally not implemented (conflicts with this renderer's list-nesting logic). Use a fenced code block instead (see section 6). A 4-space-indented line below should NOT turn into a code block:
+CommonMark's 4-space-indent-equals-code-block rule is intentionally not implemented (conflicts with this renderer's list-nesting logic). Use a fenced code block instead (see §6). A 4-space-indented line below should NOT turn into a code block:
 
     this line is indented 4 spaces and should stay a normal paragraph
 
 ---
 
-## 24. Center — NOT supported (by design, needs raw HTML)
+## 25. Center — NOT supported (by design, needs raw HTML)
 
 <center>This should show as literal escaped text, not centered content.</center>
 
 ---
 
-## 25. Color — NOT supported (by design, needs raw HTML/CSS)
+## 26. Color — NOT supported (by design, needs raw HTML/CSS)
 
 <span style="color:red">This should show as literal escaped text, not red text.</span>
 
 ---
 
-## 26. Admonitions
+## 27. Admonitions
 
-See section 4 above (GFM Alerts) — `> [!NOTE]` etc. are SyncPad's supported admonition syntax.
+See §4 above (GFM Alerts) — `> [!NOTE]` etc. are SyncPad's supported admonition syntax.
 
 ---
 
-## 27. Image Size — NOT supported (needs raw HTML or a non-GFM extension)
+## 28. Image Size — NOT supported (needs raw HTML or a non-GFM extension)
 
 `![alt](url){width=100px}`-style sizing isn't implemented. Expect the image below to render at its natural size, ignoring any sizing hint:
 
@@ -378,7 +439,7 @@ See section 4 above (GFM Alerts) — `> [!NOTE]` etc. are SyncPad's supported ad
 
 ---
 
-## 28. Image Captions — NOT supported (needs raw HTML `<figure>`)
+## 29. Image Captions — NOT supported (needs raw HTML `<figure>`)
 
 <figure>
   <img src="https://via.placeholder.com/150" alt="Placeholder">
@@ -387,13 +448,13 @@ See section 4 above (GFM Alerts) — `> [!NOTE]` etc. are SyncPad's supported ad
 
 ---
 
-## 29. Link Targets
+## 30. Link Targets
 
-SyncPad doesn't use per-link target syntax — instead, every external link opens in a new tab automatically as a site-wide policy. Click the link in section 8 above and confirm it opens in a new tab.
+SyncPad doesn't use per-link target syntax — instead, every external link opens in a new tab automatically as a site-wide policy. Click the link in §8 above and confirm it opens in a new tab.
 
 ---
 
-## 30. Symbols (typographic replacement) — handled at typing time, not render time
+## 31. Symbols (typographic replacement) — handled at typing time, not render time
 
 If you have Smart Punctuation enabled in Settings, typing `(c)`, `--`, `"quotes"` etc. converts them as you type. This renderer does NOT re-process already-typed text, so the raw symbols below should render exactly as typed:
 
@@ -401,19 +462,19 @@ If you have Smart Punctuation enabled in Settings, typing `(c)`, `--`, `"quotes"
 
 ---
 
-## 31. Table Formatting (column alignment)
+## 32. Table Formatting (column alignment)
 
-Already covered in section 13 — confirm the "Left aligned" / "Center aligned" / "Right aligned" columns above actually align differently.
+Already covered in §14 — confirm the "Left aligned" / "Center aligned" / "Right aligned" columns above actually align differently.
 
 ---
 
-## 32. Table of Contents
+## 33. Table of Contents
 
 The `[TOC]` marker at the very top of this document should have rendered as a clickable, nested contents list linking to every heading below it. This holds in every mode: the static preview (real `<a href="#id">`s), and the Live/Split surface (its own "Contents" box, keyboard-operable too — Tab to an entry, Enter/Space to jump).
 
 ---
 
-## 33. Symbols / Videos — NOT supported (needs raw HTML `<video>`)
+## 34. Videos — NOT supported (needs raw HTML `<video>`)
 
 <video src="/assets/video.mp4" controls></video>
 
@@ -421,9 +482,15 @@ Expect: literal escaped text, not a video player.
 
 ---
 
-## 34. Combined stress test
+## 35. Live vs. Split vs. Preview parity
 
-A paragraph mixing **bold**, *italic*, ~~strikethrough~~, ==highlight==, `inline code`, a [link](https://example.com), and a footnote.[^stress]
+SyncPad has two rendering surfaces (see `docs/markdown-feature-audit.md`'s "Both renderers" section for the full breakdown): the classic `markdown.js` renderer (read-only preview fallback, HTML/PDF export, copy-as-HTML) and the CodeMirror 6 Live surface (what Preview/Split actually show almost all the time). Switch this whole document between **Write**, **Preview**, **Live**, and **Split** now and confirm every section above looks the same across all of them — tables, alerts, footnotes, checklists, and the `[TOC]` box all have matching decorations in both surfaces as of this writing, but a future change to only one of them is exactly the kind of drift this section exists to catch.
+
+---
+
+## 36. Combined stress test
+
+A paragraph mixing **bold**, *italic*, ~~strikethrough~~, ==highlight==, `inline code`, a [link](https://example.com), an emoji shortcode :tada:, and a footnote.[^stress]
 
 > A blockquote containing a list:
 > - one
