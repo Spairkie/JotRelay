@@ -45,15 +45,23 @@
        the larger install/home-screen icons below (presskit/icon/icon.svg)
        — tested down to native 16px and still reads clearly, so there's no
        separate small-size variant to keep in sync. src/theme.js's
-       applyTheme() re-tints all three of these <link> hrefs to the active
-       theme's own colors at runtime (a data: URI replacing each static
-       file — instant for the SVG link, a rasterized PNG data: URI for the
-       other two); these static files are only what's visible before that
-       JS runs. -->
+       applyTheme() re-tints all four of these <link> hrefs (the three
+       favicons below AND apple-touch-icon) to the active theme's own
+       colors at runtime (a data: URI replacing each static file — instant
+       for the SVG link, a rasterized PNG data: URI for the other three);
+       these static files are only what's visible before that JS runs.
+       apple-touch-icon only affects a FUTURE "Add to Home Screen" (iOS
+       snapshots it at that moment) — an already-installed PWA's home-screen
+       icon is fixed by the OS at install time with no live-update API on
+       any platform, so switching themes never changes an icon already sitting
+       on a home screen or in an app drawer. manifest.json's own icons (used
+       for Android/desktop installs) have the same limitation and, unlike
+       these <link> tags, aren't practical to re-tint at runtime at all —
+       browsers fetch and cache that file well before any theme is known. -->
   <link rel="icon"             href="/SyncPad/assets/favicon.svg" type="image/svg+xml" />
   <link rel="icon"             href="/SyncPad/assets/favicon-32.png" type="image/png" sizes="32x32" />
   <link rel="icon"             href="/SyncPad/assets/favicon-16.png" type="image/png" sizes="16x16" />
-  <link rel="apple-touch-icon" href="/SyncPad/assets/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" href="/SyncPad/assets/apple-touch-icon.png" sizes="180x180" />
 
   <!-- Google Fonts as <link> tags (not base.css's old @import) so the browser's
        preloader discovers and starts fetching them immediately, in parallel
@@ -542,6 +550,7 @@
           <a href="https://github.com/Spairkie/SyncPad" target="_blank" rel="noopener noreferrer">GitHub repo</a>
           <a href="https://github.com/Spairkie/SyncPad/blob/main/presskit/README.md" target="_blank" rel="noopener noreferrer">Presskit</a>
           <a href="https://github.com/Spairkie/SyncPad/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+          <a href="https://buymeacoffee.com/spairkie" target="_blank" rel="noopener noreferrer">Buy me a coffee</a>
         </div>
         <div class="lp-footer-col">
           <h4>Legal</h4>
@@ -775,8 +784,11 @@
   <!-- ── Header ─────────────────────────────────────────────────── -->
   <header class="app-header" role="banner">
 
-    <!-- Left: Logo -->
-    <a class="header-logo" href="/SyncPad/" aria-label="Go to SyncPad home">Sync<span>Pad</span></a>
+    <!-- Left: Logo — links to the create/join screen (/SyncPad/app/), not
+         the marketing landing page, since this header only ever shows once
+         you're already inside a room: the useful "go back" destination
+         from here is "start or join another room," not the pitch page. -->
+    <a class="header-logo" href="/SyncPad/app/" aria-label="Go to SyncPad">Sync<span>Pad</span></a>
 
     <!-- Center: Room info -->
     <div class="header-room" aria-live="polite">

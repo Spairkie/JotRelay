@@ -63,10 +63,12 @@ The key is derived entirely in the browser from the user's passphrase and the ro
 
 - Room text content stored in the database
 - Real-time sync uses database-only content delivery when encryption is active — plaintext Broadcast channel snapshots are suppressed
+- File attachments uploaded to an encrypted room — their bytes are AES-256-GCM-encrypted client-side with the same room key before upload (see [File Access and Signed URLs](#file-access-and-signed-urls)). Any file uploaded before encryption was turned on for the room, or uploaded to a room that has never had encryption enabled, remains plaintext — encryption only applies going forward, from the moment it's switched on.
 
 ### What Is NOT Encrypted
 
-- File attachments — files are uploaded to Supabase Storage unencrypted (see [File Access and Signed URLs](#file-access-and-signed-urls))
+- A file's name and MIME type — kept in plaintext database columns (`syncpad_files.filename`, `.mime_type`) even for an encrypted room's files, so the app can list, sort, and route preview logic for a file without decrypting it first. Only the file's actual content is protected.
+- Files uploaded before the room's encryption was enabled (see above)
 - Room metadata (title, creation time, settings flags, encryption salt)
 - Share link records
 
@@ -122,7 +124,11 @@ Files are stored in a private Supabase Storage bucket named `syncpad-files`. The
 
 ### Encryption Note
 
-Files are uploaded and stored unencrypted. Signed URLs provide time-limited access control, but anyone who obtains a valid signed URL within its 1-hour window can download the file. Do not store sensitive files in SyncPad.
+Signed URLs provide time-limited access control regardless of encryption — anyone who obtains a valid signed URL within its 1-hour window can fetch whatever bytes sit at that Storage path.
+
+For an unencrypted room, those bytes are the plaintext file — do not store sensitive files in an unencrypted SyncPad room.
+
+For an encrypted room, `uploadFile()` (`src/files.js`) encrypts the file's bytes with the room's derived key (AES-256-GCM, IV prepended) before upload, and the Storage object's `Content-Type` is set to the opaque `application/octet-stream` rather than the file's real MIME type — so a signed URL by itself, without the room passphrase, yields only ciphertext. The client decrypts fetched bytes into a local, in-memory `Blob`/object URL for preview and download; the plaintext is never written back to Storage. `syncpad_files.encrypted` marks which files went through this path (`supabase/migrations/0014_file_encryption.sql`).
 
 ---
 
@@ -167,7 +173,7 @@ SyncPad is a personal/demo project. The following are known weaknesses that shou
 
 **Passcode hashes are accessible.** The PBKDF2 hash of a room passcode is stored in `syncpad_rooms` and is readable to anyone with the anon key. The passcode itself is not stored, but offline brute-force against a weak passcode is possible.
 
-**Files are not end-to-end encrypted.** Files sit in Supabase Storage in plaintext. Signed URLs provide time-limited access but not encryption at rest from Supabase's perspective.
+**Files are not end-to-end encrypted for the filename/type, and not encrypted at all outside an encrypted room.** In an unencrypted room, files sit in Supabase Storage in plaintext. In an encrypted room, a file's *content* is AES-256-GCM-encrypted client-side with the room's key before upload (see [Encryption Note](#encryption-note) above) — but its filename and MIME type are not, and files uploaded before the room's encryption was turned on stay plaintext. Either way, signed URLs provide time-limited access, not encryption at rest from Supabase's own perspective (ciphertext or plaintext, Supabase can still read the bucket).
 
 **localStorage is origin-scoped.** Custom templates and drafts stored in `localStorage` are accessible to any JavaScript running on the same origin. If a third-party script is ever loaded on the SyncPad origin (analytics, embeds), it would have access to this data.
 

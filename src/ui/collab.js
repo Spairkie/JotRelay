@@ -11,6 +11,30 @@ import { countWords, formatTimestamp, escapeHtml, relativeTimeShort } from '../u
 // subscription (see comments.js/app.js) already shows new ones live to every
 // connected device, without a redundant broadcast channel.
 let _floatingComposerEl = null;
+let _floatingComposerCleanupMq = null;
+
+// Positions `wrap` for the desktop (caret-relative) path — coords is the
+// raw caret position and, combined with the CSS translate(-8px,-100%)
+// anchor, can place the composer partly or fully off-screen, most easily
+// on narrow phones where the editor spans nearly the full viewport width.
+// Nudges left/top back on-screen using the actual rendered box. Factored
+// out of openFloatingCommentComposer() so the viewport-change handler
+// below can re-run the exact same placement after switching INTO the
+// desktop mode from the mobile dock, not just at initial open.
+function _positionFloatingComposerDesktop(wrap, coords) {
+  wrap.style.left = `${coords.x}px`;
+  wrap.style.top  = `${coords.y}px`;
+  const margin = 8;
+  const rect = wrap.getBoundingClientRect();
+  let dx = 0, dy = 0;
+  if (rect.left < margin) dx = margin - rect.left;
+  else if (rect.right > window.innerWidth - margin) dx = (window.innerWidth - margin) - rect.right;
+  if (rect.top < margin) dy = margin - rect.top;
+  if (dx || dy) {
+    wrap.style.left = `${coords.x + dx}px`;
+    wrap.style.top  = `${coords.y + dy}px`;
+  }
+}
 
 /**
  * @param {{x:number, y:number}} coords - viewport coordinates, e.g. from
@@ -26,8 +50,23 @@ export function openFloatingCommentComposer(coords, onSubmit) {
 
   const wrap = document.createElement('div');
   wrap.className = 'comment-floating-composer';
-  wrap.style.left = `${coords.x}px`;
-  wrap.style.top  = `${coords.y}px`;
+
+  // On narrow viewports this docks to the bottom via CSS (see modals.css)
+  // instead of the caret-relative position below — coords.y is a snapshot
+  // taken BEFORE input.focus() opens the on-screen keyboard, and never
+  // gets corrected afterward, so a caret anywhere in the lower half of the
+  // screen ends up placing the composer on top of the bottom action bar
+  // once the keyboard (and --kb-inset) actually show up. The bottom dock
+  // sidesteps the staleness entirely by not depending on a pre-keyboard
+  // coordinate at all — same fix already applied to Find & Replace (see
+  // #search-panel's mobile rules).
+  const mq = window.matchMedia?.('(max-width: 639px)');
+  if (mq?.matches) {
+    wrap.classList.add('comment-floating-composer-dock');
+  } else {
+    wrap.style.left = `${coords.x}px`;
+    wrap.style.top  = `${coords.y}px`;
+  }
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -38,21 +77,28 @@ export function openFloatingCommentComposer(coords, onSubmit) {
   layer.appendChild(wrap);
   _floatingComposerEl = wrap;
 
-  // coords is the raw caret position and, combined with the CSS
-  // translate(-8px,-100%) anchor, can place the composer partly or fully
-  // off-screen — most easily on narrow phones, where the editor spans
-  // nearly the full viewport width so a caret near the right/top edge is
-  // common. Nudge left/top back on-screen using the actual rendered box.
-  const margin = 8;
-  const rect = wrap.getBoundingClientRect();
-  let dx = 0, dy = 0;
-  if (rect.left < margin) dx = margin - rect.left;
-  else if (rect.right > window.innerWidth - margin) dx = (window.innerWidth - margin) - rect.right;
-  if (rect.top < margin) dy = margin - rect.top;
-  if (dx || dy) {
-    wrap.style.left = `${coords.x + dx}px`;
-    wrap.style.top  = `${coords.y + dy}px`;
-  }
+  if (!mq?.matches) _positionFloatingComposerDesktop(wrap, coords);
+
+  // Re-evaluate mobile-vs-desktop mode if the viewport crosses the
+  // breakpoint WHILE the composer is still open (e.g. rotating a phone
+  // mid-composition) — the dock class's positioning is entirely
+  // media-query-driven and simply stops applying once the viewport widens
+  // past it, and the desktop branch above never runs (no inline left/top)
+  // when the composer opened in mobile mode, so without this the composer
+  // would fall back to unstyled placement near the layer's origin instead
+  // of just relocating.
+  const onViewportChange = () => {
+    const nowMobile = !!mq?.matches;
+    wrap.classList.toggle('comment-floating-composer-dock', nowMobile);
+    if (nowMobile) {
+      wrap.style.left = '';
+      wrap.style.top = '';
+    } else {
+      _positionFloatingComposerDesktop(wrap, coords);
+    }
+  };
+  mq?.addEventListener?.('change', onViewportChange);
+  _floatingComposerCleanupMq = () => mq?.removeEventListener?.('change', onViewportChange);
 
   input.focus();
 
@@ -89,7 +135,18 @@ export function closeFloatingCommentComposer() {
   // of racing to remove the same node twice.
   const el = _floatingComposerEl;
   _floatingComposerEl = null;
+  // Explicitly blur before removing rather than relying on removal itself
+  // to reliably fire blur/focusout — inconsistent across browsers/mobile
+  // Safari in particular — which would otherwise leave
+  // keyboard-viewport.js's body.keyboard-open class stuck (its only
+  // cleanup path is focusout) after Enter/Escape closes this composer.
+  // .blur() on an element that isn't actually focused is a harmless no-op,
+  // and trySubmit()'s clear-before-read pattern above already makes this
+  // safe to trigger a second time from the resulting blur event.
+  el?.querySelector('input')?.blur();
   el?.remove();
+  _floatingComposerCleanupMq?.();
+  _floatingComposerCleanupMq = null;
 }
 
 /** Close the composer and collapse any expanded floating comment bubble

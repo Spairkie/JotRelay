@@ -225,3 +225,119 @@ test.describe('Keyboard resize re-scrolls the caret into view', () => {
     expect(mountedResult).toBe('ok');
   });
 });
+
+// body.keyboard-open reclaims the bottom action bar's footprint the moment
+// ANY text surface is focused on mobile — a separate, focus-driven signal
+// from --kb-inset above (see keyboard-viewport.js's own comment for why
+// --kb-inset alone can't detect this on every platform).
+test.describe('body.keyboard-open — bottom action bar reclaim', () => {
+  test('focusing a textarea on a mobile viewport adds keyboard-open; blurring removes it', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await goToLanding(page);
+
+    const ta = page.locator('#kb-open-test-textarea');
+    await page.evaluate(() => {
+      const el = document.createElement('textarea');
+      el.id = 'kb-open-test-textarea';
+      document.body.appendChild(el);
+    });
+    await ta.focus();
+    await expect(page.locator('body')).toHaveClass(/keyboard-open/);
+
+    await page.evaluate(() => document.getElementById('kb-open-test-textarea')?.blur());
+    // The removal is deliberately deferred one tick (see the file's own
+    // comment) so a focus hop between two text surfaces doesn't flash it.
+    await expect(page.locator('body')).not.toHaveClass(/keyboard-open/, { timeout: 2000 });
+
+    await page.evaluate(() => document.getElementById('kb-open-test-textarea')?.remove());
+  });
+
+  test('does not add keyboard-open on a desktop-width viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await goToLanding(page);
+
+    await page.evaluate(() => {
+      const el = document.createElement('textarea');
+      el.id = 'kb-open-test-textarea-desktop';
+      document.body.appendChild(el);
+    });
+    await page.locator('#kb-open-test-textarea-desktop').focus();
+    await expect(page.locator('body')).not.toHaveClass(/keyboard-open/);
+
+    await page.evaluate(() => document.getElementById('kb-open-test-textarea-desktop')?.remove());
+  });
+
+  test('a focused contenteditable also triggers it (CM6 Live surface)', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await goToLanding(page);
+
+    await page.evaluate(() => {
+      const el = document.createElement('div');
+      el.id = 'kb-open-test-ce';
+      el.contentEditable = 'true';
+      document.body.appendChild(el);
+    });
+    await page.locator('#kb-open-test-ce').focus();
+    await expect(page.locator('body')).toHaveClass(/keyboard-open/);
+
+    await page.evaluate(() => document.getElementById('kb-open-test-ce')?.remove());
+  });
+
+  test('the mobile action bar is actually hidden while keyboard-open is set', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await goToLanding(page);
+
+    // .mobile-action-bar lives inside #app-screen, only shown once a real
+    // room is joined (needs Supabase — unreachable in this sandbox). Force
+    // it visible directly rather than joining a room, since this test only
+    // cares about the keyboard-open CSS rule in isolation, not routing.
+    await page.evaluate(() => document.getElementById('app-screen').classList.remove('hidden'));
+
+    const displayWithout = await page.evaluate(
+      () => getComputedStyle(document.querySelector('.mobile-action-bar')).display
+    );
+    expect(displayWithout).toBe('flex'); // sanity check: visible by default at this viewport
+
+    await page.evaluate(() => document.body.classList.add('keyboard-open'));
+    const displayWith = await page.evaluate(
+      () => getComputedStyle(document.querySelector('.mobile-action-bar')).display
+    );
+    expect(displayWith).toBe('none');
+
+    await page.evaluate(() => {
+      document.body.classList.remove('keyboard-open');
+      document.getElementById('app-screen').classList.add('hidden');
+    });
+  });
+
+  test('closing the floating comment composer (which removes its still-focused input directly) does not leave keyboard-open stuck', async ({ page }) => {
+    // Regression test: closeFloatingCommentComposer() (ui/collab.js) removes
+    // its <input> from the DOM while it's still focused, rather than
+    // blurring first — removal alone isn't guaranteed to fire blur/focusout
+    // on every browser (notably mobile Safari), which is the ONLY cleanup
+    // path for body.keyboard-open. Without the explicit blur() the fix
+    // added, this class — and the hidden action bar/reclaimed padding that
+    // comes with it — would stay stuck after the keyboard actually closes.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await goToLanding(page);
+
+    const result = await page.evaluate(async () => {
+      const UI = await import('/SyncPad/src/ui.js');
+      UI.openFloatingCommentComposer({ x: 100, y: 400 }, () => {});
+      await new Promise((r) => setTimeout(r, 20));
+      const hadClass = document.body.classList.contains('keyboard-open');
+
+      // Escape closes the composer via closeFloatingCommentComposer(),
+      // which removes the still-focused input directly.
+      document.querySelector('.comment-floating-composer input')
+        ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 100));
+
+      return { hadClass, stillHasClass: document.body.classList.contains('keyboard-open'), composerGone: !document.querySelector('.comment-floating-composer') };
+    });
+
+    expect(result.hadClass).toBe(true);
+    expect(result.composerGone).toBe(true);
+    expect(result.stillHasClass).toBe(false);
+  });
+});

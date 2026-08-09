@@ -92,7 +92,7 @@ how they were generated.
 
 ### Security & Privacy (all frontend/convenience — see Known Limitations)
 - **Passcode gate** — PBKDF2-hashed passcode; convenience only
-- **Text encryption** — AES-256-GCM + PBKDF2 in-browser; encrypted rooms use DB-only content sync (no plaintext live snapshots); files are NOT encrypted
+- **Text & file encryption** — AES-256-GCM + PBKDF2 in-browser; encrypted rooms use DB-only content sync (no plaintext live snapshots); files uploaded to an encrypted room are content-encrypted with the same key (filename/type stay plaintext; see `docs/security.md`)
 - **Auto-expiration** — rooms cleared at open after expiry; pg_cron backend cleanup optional
 - **View-once** — note cleared server-side after first non-creator editable viewer
 - **Device limit** — auto-clear the note once N distinct devices (excluding the creator's own) have joined the room; requires the optional `supabase/migrations/0005_device_limit.sql` migration
@@ -240,7 +240,7 @@ ORDER  BY room_id, uploaded_at;
 | Room lock IS backend-enforced | A database trigger, not just frontend JS — this is the one real, server-enforced "nobody can edit this" control |
 | Admin access requires Supabase Auth | The `/admin` route is protected by `signInWithPassword` + `is_syncpad_admin()` RLS — not for end users |
 | View-once is convenience-only | Not a secure destruction guarantee; viewers can still copy or capture content before it clears |
-| Files are not end-to-end encrypted | Text encryption covers note content only unless file encryption is explicitly added |
+| File filename/type are not encrypted | A file's content is encrypted in an encrypted room, but its name and MIME type stay plaintext, and files uploaded before encryption was turned on stay plaintext too |
 | Passcode is a convenience gate | Hash is checked client-side; not server-enforced |
 | Storage cleanup needs service-role maintenance | Admin room deletion removes known physical objects first; backend cleanup paths need the optional `syncpad-cleanup` Edge Function because SQL cannot delete Storage objects |
 
@@ -368,7 +368,7 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 ### Takeover roadmap completed
 
 - [x] Keep SyncPad as a transparent demo project and document frontend-only permission boundaries
-- [x] Keep file attachments unencrypted and document Storage behavior
+- [x] Encrypt file attachment content client-side for encrypted rooms and document Storage behavior
 - [x] Allow read-only viewers to unlock passcode/encrypted rooms when they separately have the secret
 - [x] Keep GitHub Pages `/SyncPad` as the permanent target while centralizing runtime base-path handling
 - [x] Delete known physical Storage objects during admin room deletion paths

@@ -4,12 +4,12 @@
 // delete, and bulk-select.
 
 import { copyToClipboard } from '../utils.js';
-import { uploadFile, listFiles, deleteFile, getDownloadUrl, getForceDownloadUrl } from '../files.js';
+import { uploadFile, listFiles, deleteFile, getFileByNo, getFilePreviewUrl, getFileDownloadUrl, getForceDownloadUrl } from '../files.js';
 import { canUploadFiles, canDeleteFiles, canEdit, editBlockedReason } from '../permissions.js';
 import { broadcastFilesChange } from '../live-broadcast.js';
 import * as UI from '../ui.js';
 import { openFilePreview, _isImage, _ext } from '../file-preview.js';
-import { state } from './state.js';
+import { state, BASE } from './state.js';
 import { _insertTextAtActiveCursor } from './editor-behavior.js';
 
 function _updateBulkBar() {
@@ -40,6 +40,16 @@ function _fileRefId(file) {
   return file.file_no != null ? file.file_no : file.file_path;
 }
 
+/** Shared by the panel's Download button and the preview modal's Download button. */
+async function _downloadFile(file) {
+  try {
+    const url = await getFileDownloadUrl(file, state.encKey);
+    const a   = document.createElement('a');
+    a.href = url; a.download = file.filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  } catch { UI.showToast('Could not download file.', 'error'); }
+}
+
 function _sortFiles(files) {
   const arr = [...files];
   switch (state.filesSort) {
@@ -60,7 +70,7 @@ function _sortFiles(files) {
  */
 export async function _uploadAndInsertImages(files) {
   if (!canUploadFiles()) {
-    UI.showToast(editBlockedReason() || 'File upload is disabled. Text-encrypted rooms do not allow new file uploads in v1.', 'warning');
+    UI.showToast(editBlockedReason() || 'File upload is disabled.', 'warning');
     return;
   }
   const tooLarge = files.filter(f => f.size > 10 * 1024 * 1024);
@@ -78,7 +88,7 @@ export async function _uploadAndInsertImages(files) {
   for (let i = 0; i < toUpload.length; i++) {
     if (toUpload.length > 1) UI.setUploadingState(true, `Uploading image ${i + 1} of ${toUpload.length}…`);
     try {
-      const record = await uploadFile(state.roomId, toUpload[i]);
+      const record = await uploadFile(state.roomId, toUpload[i], { encryptionKey: state.encKey });
       _insertTextAtActiveCursor(`![${_escapeMdLabel(record.filename)}](syncpad-file:${_fileRefId(record)})\n`);
       succeeded++;
     } catch { failed++; }
@@ -106,14 +116,7 @@ export async function refreshFiles() {
   }
   UI.renderFilesList(
     files,
-    async (file) => {
-      try {
-        const url = await getForceDownloadUrl(file.file_path, file.filename);
-        const a   = document.createElement('a');
-        a.href = url; a.download = file.filename;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      } catch { UI.showToast('Could not download file.', 'error'); }
-    },
+    _downloadFile,
     async (file) => {
       if (!canDeleteFiles()) { UI.showToast(editBlockedReason() || 'File deletion is disabled.', 'warning'); return; }
       const ok = await UI.showConfirm(
@@ -162,21 +165,32 @@ export async function refreshFiles() {
       } : null,
       onPreview: async (file) => {
         try {
-          await openFilePreview(
-            file,
-            getDownloadUrl,
-            async (f) => {
-              try {
-                const url = await getForceDownloadUrl(f.file_path, f.filename);
-                const a   = document.createElement('a');
-                a.href = url; a.download = f.filename;
-                document.body.appendChild(a); a.click(); document.body.removeChild(a);
-              } catch { UI.showToast('Could not download file.', 'error'); }
-            }
-          );
+          await openFilePreview(file, () => getFilePreviewUrl(file, state.encKey), _downloadFile);
         } catch { UI.showToast('Could not open preview.', 'error'); }
       },
       onCopyLink: async (file) => {
+        // An encrypted file's bytes are only meaningful with the room's key,
+        // which a raw Storage URL never carries — copying one would just
+        // hand out ciphertext. Instead, copy a link back into the app itself
+        // (room + file number): opening it goes through the room's normal
+        // passcode/encryption gate exactly like any other room link, and
+        // once past that gate the file opens automatically — see
+        // room-lifecycle.js's `?file=` handling and _fileRefId() above for
+        // the same file_no this reuses. Unlike a signed URL, this link never
+        // expires either.
+        if (file.encrypted) {
+          if (file.file_no == null) {
+            UI.showToast('This file predates short file links and can’t be deep-linked — download it instead.', 'warning');
+            return;
+          }
+          const url = `${location.origin}${BASE}/${state.roomId}?file=${file.file_no}`;
+          const ok  = await copyToClipboard(url);
+          UI.showToast(
+            ok ? 'Link copied — opens this file once the room is unlocked.' : 'Could not copy link.',
+            ok ? 'success' : 'error',
+          );
+          return;
+        }
         try {
           // Always mint a fresh URL rather than reusing a cached one — a
           // cached entry can already be up to 55 minutes old, and this link
@@ -194,10 +208,28 @@ export async function refreshFiles() {
   );
 }
 
+/**
+ * Open a file's preview modal directly from its short number — the target
+ * of a `?file=<N>` deep link (see room-lifecycle.js's startApp(), and
+ * onCopyLink above, which is what generates these links for an encrypted
+ * file). Runs after the room's normal passcode/encryption gate and after
+ * refreshFiles() has populated the panel, so this is just "does file N
+ * exist in this room" at this point — no separate auth of its own.
+ */
+export async function openFileDeepLink(fileNo) {
+  let file;
+  try { file = await getFileByNo(state.roomId, fileNo); }
+  catch { file = null; }
+  if (!file) { UI.showToast('That file link is no longer valid.', 'warning'); return; }
+  try {
+    await openFilePreview(file, () => getFilePreviewUrl(file, state.encKey), _downloadFile);
+  } catch { UI.showToast('Could not open preview.', 'error'); }
+}
+
 export function _wireFiles() {
   // ── Files ──────────────────────────────────────────────────────────────────
   UI.setFileHandlers(async (files) => {
-    if (!canUploadFiles()) { UI.showToast(editBlockedReason() || 'File upload is disabled. Text-encrypted rooms do not allow new file uploads in v1.', 'warning'); return; }
+    if (!canUploadFiles()) { UI.showToast(editBlockedReason() || 'File upload is disabled.', 'warning'); return; }
 
     const tooLarge = files.filter(f => f.size > 10 * 1024 * 1024);
     const toUpload = files.filter(f => f.size <= 10 * 1024 * 1024);
@@ -219,7 +251,7 @@ export function _wireFiles() {
     for (let i = 0; i < toUpload.length; i++) {
       if (toUpload.length > 1) UI.setUploadingState(true, `Uploading ${i + 1} of ${toUpload.length}…`);
       try {
-        await uploadFile(state.roomId, toUpload[i]);
+        await uploadFile(state.roomId, toUpload[i], { encryptionKey: state.encKey });
         succeeded++;
       } catch { failed++; }
     }

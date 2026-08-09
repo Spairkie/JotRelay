@@ -57,21 +57,22 @@ export function _forgetRecentRoom(roomId) {
   } catch {}
 }
 
-// Any control that deliberately navigates to the app root (header logo,
-// "Back to SyncPad" links, view-once "Go home" button, etc.) must call this
-// first so boot() shows the real landing screen instead of immediately
-// resuming back into this room.
+// Any control that deliberately navigates to the app root ("Back to
+// SyncPad" links, view-once "Go home" button, etc.) must call this first so
+// boot() shows the real landing screen instead of immediately resuming back
+// into this room. (The in-room header logo does NOT navigate here — see
+// its own comment in index.html — so it isn't one of these.)
 export function _suppressNextResume() {
   try { sessionStorage.setItem(RESUME_SUPPRESS_KEY, '1'); } catch {}
 }
 
-// A plain <a href="{BASE}/"> to the app root — the header logo and every
-// "Back to SyncPad" link on the contact/privacy/terms/info screens — is a
-// real page navigation, so it can't be caught by the room-scoped, one-time
-// wireEvents() wiring (some of those screens are reachable without ever
-// joining a room in this session at all). One delegated listener here
-// catches all of them, present and future, instead of wiring each link
-// individually and risking new ones being missed.
+// A plain <a href="{BASE}/"> to the app root — every "Back to SyncPad" link
+// on the contact/privacy/terms/info screens — is a real page navigation, so
+// it can't be caught by the room-scoped, one-time wireEvents() wiring (some
+// of those screens are reachable without ever joining a room in this
+// session at all). One delegated listener here catches all of them,
+// present and future, instead of wiring each link individually and risking
+// new ones being missed.
 document.addEventListener('click', (e) => {
   const a = e.target.closest?.('a[href]');
   if (!a) return;

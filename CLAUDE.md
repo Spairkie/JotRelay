@@ -45,7 +45,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 | `src/presence.js` | Device tracking, typing indicators, cursor position broadcasting |
 | `src/live-broadcast.js` | Low-level Supabase Broadcast event wiring |
 | `src/live-editor.js` | CodeMirror 6 "Live"/Split editable preview surface — Typora-style seamless markdown editing (hidden syntax markers, inline tables/images/checkboxes, remote cursors), mounted whenever the mode toggle is off Write |
-| `src/keyboard-viewport.js` | Tracks the on-screen keyboard via `window.visualViewport`, exposing it as a `--kb-inset` CSS custom property (bottom-anchored fixed UI opts in via `bottom: calc(<base> + var(--kb-inset, 0px))`) and re-triggering each editor surface's own native caret-visibility scroll after a keyboard resize settles. Imported for its side effects only. |
+| `src/keyboard-viewport.js` | Tracks the on-screen keyboard via `window.visualViewport`, exposing it as a `--kb-inset` CSS custom property (bottom-anchored fixed UI opts in via `bottom: calc(<base> + var(--kb-inset, 0px))`) and re-triggering each editor surface's own native caret-visibility scroll after a keyboard resize settles. Also toggles `body.keyboard-open` off focus entering/leaving any text surface on mobile (a separate signal from `--kb-inset`, needed on platforms where the viewport already resizes natively and `--kb-inset` legitimately stays 0) so the bottom action bar can be hidden outright while typing, not just repositioned. Imported for its side effects only. |
 | `src/footnote-popover.js` | Hover/click popover showing a footnote's definition text without navigating away — shared by the classic renderer (`src/ui/editor.js`) and the CM6 Live surface (`src/live-editor.js`) |
 | `src/rooms.js` | Room CRUD, read-only share links, and short room codes (Supabase queries/RPCs) |
 | `src/comments.js` | Anchored inline comments (optional `0003_room_comments.sql` migration) |
@@ -167,6 +167,8 @@ Work through this list for every new feature or non-trivial change:
 ---
 
 ## 7. Testing Guidance
+
+**Screenshots taken while working (manual UI verification, ad hoc checks, etc.) are worth a second look.** Before discarding one, check whether it's a good candidate for `presskit/` (clean, representative UI at a real breakpoint/theme, no debug overlays or test-fixture content) — if so, flag it to the user instead of letting it disappear into a scratch/temp directory.
 
 Tests live in `tests/` and run with `npm test`. `playwright.config.js` defines four browser projects — `chromium`, `firefox`, `webkit`, and `mobile-chrome` — but only `chromium` is active by default so `npm test` works without a full Playwright browser download; the other three are present but commented out. Uncomment them locally if you have the full browser set installed (`npx playwright install`).
 

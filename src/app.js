@@ -22,11 +22,12 @@ import './keyboard-viewport.js';
 // syncpad-file: scheme — either a short per-room number or, for content
 // written before that existed, a full legacy storage path) rather than a
 // baked-in URL, since a real signed URL expires in ~1h and can't just be
-// stored in the note text. resolveFileRef() needs the *current* room id,
-// which changes across navigations — read state.roomId at call time rather
-// than capturing it, since this resolver is wired once here, not re-wired on
-// every room join.
-const _resolveRef = (ref) => resolveFileRef(state.roomId, ref);
+// stored in the note text. resolveFileRef() needs the *current* room id
+// (and, for an encrypted file, the current decryption key) which both
+// change across navigations — read state.roomId/state.encKey at call time
+// rather than capturing them, since this resolver is wired once here, not
+// re-wired on every room join.
+const _resolveRef = (ref) => resolveFileRef(state.roomId, ref, state.encKey);
 UI.setFileImageResolver(_resolveRef);
 LiveEditor.setFileImageResolver(_resolveRef);
 

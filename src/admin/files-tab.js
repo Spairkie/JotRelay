@@ -12,7 +12,7 @@ import {
 import { _loadStats } from './stats.js';
 import { _openRoomDetail } from './room-drawer.js';
 
-const FILES_SELECT_COLS = 'id, filename, room_id, file_size, mime_type, uploaded_at, file_path';
+const FILES_SELECT_COLS = 'id, filename, room_id, file_size, mime_type, uploaded_at, file_path, encrypted';
 
 let _filesSearch = '';
 
@@ -134,7 +134,7 @@ function _wireFilesTab() {
 
     tbody.insertAdjacentHTML('beforeend', state.files.map(f => `
       <tr data-file-id="${escapeHtml(String(f.id))}">
-        <td class="admin-filename">${escapeHtml(f.filename || '—')}</td>
+        <td class="admin-filename">${f.encrypted ? '🔒 ' : ''}${escapeHtml(f.filename || '—')}</td>
         <td>
           <button class="admin-room-id-btn admin-room-id" data-room-id="${escapeHtml(f.room_id || '')}">${escapeHtml(f.room_id || '—')}</button>
         </td>

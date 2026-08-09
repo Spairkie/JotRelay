@@ -2572,6 +2572,16 @@ begin
   end if;
 end $$;
 
+-- ============================================================
+-- SOURCE: supabase/migrations/0014_file_encryption.sql
+-- ============================================================
+-- File content encryption — see that migration's own header for the full
+-- rationale (client-side AES-256-GCM with the room's key, filename/mime_type
+-- left plaintext).
+
+alter table public.syncpad_files
+  add column if not exists encrypted boolean not null default false;
+
 -- ════════════════════════════════════════════════════════════════
 -- END OF MIGRATION
 -- ════════════════════════════════════════════════════════════════

@@ -853,4 +853,4 @@ Branch: `claude/phase1-stability` · Commit: `refactor: CSS Grid editor layout +
 
 ---
 
-[Unreleased]: https://github.com/saihanswissle/SyncPad/compare/HEAD...HEAD
+[Unreleased]: https://github.com/Spairkie/SyncPad/compare/HEAD...HEAD

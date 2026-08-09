@@ -47,6 +47,19 @@ let _pendingRemoteTimestamp    = null;
 let _applyingRemote            = false;
 let _seqNum                    = 0;
 let _lastSnapshotAt            = 0;
+// Mirrors the 'saving'/'saved'/'error' values already passed to
+// _onStatusChange (UI.setStatus) — tracked here too so hasUnsavedChanges()
+// (app/pwa.js's beforeunload warning) can query it without the UI layer
+// needing to expose its own displayed text back out.
+let _saveStatus                = 'saved';
+// Bumped by every onLocalInput() call. _debouncedSave's debounce() wrapper
+// only guards the TIMER — if a save already escaped its timer and is
+// awaiting the network when a newer edit schedules another one, both can
+// genuinely run concurrently. Comparing this against the value captured at
+// the start of a completing save lets a stale (older) completion detect
+// it's been superseded and skip overwriting _saveStatus back to 'saved' or
+// clearing the draft a newer, not-yet-saved edit still needs.
+let _saveGeneration            = 0;
 
 // ── Init / Destroy ────────────────────────────────────────────────────────────
 
@@ -66,6 +79,8 @@ export function initSync(opts) {
   _applyingRemote            = false;
   _seqNum                    = 0;
   _lastSnapshotAt            = 0;
+  _saveStatus                = 'saved';
+  _saveGeneration            = 0;
 }
 
 export function setEncryption(encryptFn, decryptFn) {
@@ -73,11 +88,23 @@ export function setEncryption(encryptFn, decryptFn) {
   _decryptFn = decryptFn;
 }
 
+/** True while there's a durable-save write queued or in flight (debounced,
+ *  not yet confirmed written) or the last attempt failed outright — used by
+ *  app/pwa.js's beforeunload warning. Local drafts (offline.js) already
+ *  save synchronously on every keystroke, so nothing typed is ever actually
+ *  lost from this device; what's genuinely at risk here is the OTHER
+ *  connected devices missing this edit, or (rarer) this device's own
+ *  localStorage being cleared before the durable write lands. */
+export function hasUnsavedChanges() {
+  return _saveStatus !== 'saved';
+}
+
 export function destroySync() {
   _debouncedSave.cancel?.();
   _roomId    = null;
   _encryptFn = null;
   _decryptFn = null;
+  _saveStatus = 'saved'; // cancelled, not failed — nothing left to warn about
 }
 
 // ── Local input handler ───────────────────────────────────────────────────────
@@ -93,6 +120,17 @@ export async function onLocalInput() {
   // Set the typing timestamp synchronously so conflict detection is accurate
   _localLastEditAt = Date.now();
 
+  // Mark unsaved (and bump the generation counter _debouncedSave below
+  // compares itself against) BEFORE the first await. saveDraft() below
+  // awaits async encryption in an encrypted room; onLocalInput() itself is
+  // called fire-and-forget from the textarea's 'input' listener, so a tab
+  // closed while that encryption is still pending must already read as
+  // unsaved — setting this after the await would leave a real in-flight
+  // edit unprotected by hasUnsavedChanges()'s beforeunload warning.
+  _onStatusChange('saving');
+  _saveStatus = 'saving';
+  _saveGeneration++;
+
   const plaintext = _getEditorVal();
 
   // Save draft immediately. Encrypted rooms store encrypted local drafts only;
@@ -100,7 +138,6 @@ export async function onLocalInput() {
   await saveDraft(_roomId, plaintext, { encryptFn: _encryptFn });
 
   // Kick off debounced DB save
-  _onStatusChange('saving');
   _debouncedSave();
 
   // Broadcast metadata-only typing activity (no note text/ciphertext payload).
@@ -120,12 +157,32 @@ export async function onLocalInput() {
 
 export function onEditorBlur() { return _debouncedSave.flush?.(); }
 export function flushSave()    { return _debouncedSave.flush?.(); }
-export function cancelPendingSave() { _debouncedSave.cancel?.(); }
+// Every caller (room-lifecycle.js) uses this exclusively for "this room's
+// content was just discarded out from under us" — a remote clear/expiry/
+// view-once consumption/device-limit clear/switch to encrypted-no-key mode —
+// always paired with clearDraft()/setContentNoSave(''). There's genuinely
+// nothing left to save in any of those cases, so reset status here rather
+// than leaving it stuck at whatever it was mid-edit — otherwise
+// hasUnsavedChanges() keeps reporting true (spurious beforeunload warnings)
+// for content that no longer exists to be unsaved.
+export function cancelPendingSave() {
+  _debouncedSave.cancel?.();
+  _onStatusChange('saved');
+  _saveStatus = 'saved';
+}
 
 // ── Debounced DB save ─────────────────────────────────────────────────────────
 
 const _debouncedSave = debounce(async () => {
   if (!_roomId) return;
+
+  // The generation current when THIS save started. debounce() only guards
+  // the timer, not an already-running async body — if this save is still
+  // awaiting the network when a newer edit bumps _saveGeneration and starts
+  // its own save, this save's eventual completion must not report 'saved'
+  // (a newer, not-yet-durable edit exists) or clear the draft that edit
+  // still needs (see _saveGeneration's own comment above).
+  const myGeneration = _saveGeneration;
 
   // Re-check permissions at execution time, not only when input occurred.
   // A save may have been queued before another device locked the room, switched
@@ -133,6 +190,7 @@ const _debouncedSave = debounce(async () => {
   // the key. In those cases the queued save must not write stale/plaintext data.
   if (!canEdit()) {
     _onStatusChange('saved');
+    _saveStatus = 'saved';
     return;
   }
 
@@ -140,11 +198,17 @@ const _debouncedSave = debounce(async () => {
     let content = _getEditorVal();
     if (_encryptFn) content = await _encryptFn(content);
     await saveContent(_roomId, content);
-    clearDraft(_roomId);
-    _onStatusChange('saved');
+    if (_saveGeneration === myGeneration) {
+      clearDraft(_roomId);
+      _onStatusChange('saved');
+      _saveStatus = 'saved';
+    }
     _maybeSnapshot(content);
   } catch {
-    _onStatusChange('error');
+    if (_saveGeneration === myGeneration) {
+      _onStatusChange('error');
+      _saveStatus = 'error';
+    }
   }
 }, SAVE_DEBOUNCE_MS);
 

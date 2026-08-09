@@ -518,6 +518,22 @@ export function _wireSettings() {
     if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }
     const encBtn = document.getElementById('setting-enc-btn');
     if (state.room.encryption_enabled) {
+      // Disabling clears state.encKey/encSalt — the only thing that can ever
+      // derive the key any already-encrypted file's content was encrypted
+      // with. Re-enabling later derives a brand-new key from a fresh salt,
+      // which does NOT recover the old one. Without this guard those files'
+      // bytes would become permanently undecryptable ciphertext the moment
+      // encryption is turned off, even with the correct original passphrase.
+      let encryptedFiles;
+      try { encryptedFiles = (await listFiles(state.roomId)).filter((f) => f.encrypted); }
+      catch { encryptedFiles = []; } // non-critical — see existing-files warning below for the enable path's same fallback
+      if (encryptedFiles.length) {
+        UI.showToast(
+          `This room has ${encryptedFiles.length} encrypted file${encryptedFiles.length !== 1 ? 's' : ''} — delete ${encryptedFiles.length !== 1 ? 'them' : 'it'} first. Disabling encryption would make ${encryptedFiles.length !== 1 ? 'them' : 'it'} permanently unreadable, even with the correct passphrase.`,
+          'warning', 7000,
+        );
+        return;
+      }
       if (!await UI.showConfirm('Disable encryption? Content will be stored in plaintext.', { confirmLabel: 'Disable', danger: true })) return;
       await flushSave();
       cancelPendingTypingBroadcast();
@@ -552,7 +568,7 @@ export function _wireSettings() {
       let existingFiles;
       try { existingFiles = await listFiles(state.roomId); }
       catch { existingFiles = []; } // non-critical — just skip the warning if file list fails
-      if (existingFiles.length && !await UI.showConfirm('This room has file attachments. SyncPad v1 encrypts note text only — files are not encrypted. Continue?', { confirmLabel: 'Continue' })) return;
+      if (existingFiles.length && !await UI.showConfirm('This room already has file attachments that were uploaded before encryption was turned on — they will stay unencrypted. Only newly uploaded files will be encrypted. Continue?', { confirmLabel: 'Continue' })) return;
       const pp = await UI.showPrompt('Set an encryption passphrase:', { placeholder: 'Passphrase…', confirmLabel: 'Enable encryption' });
       if (!pp?.trim()) return;
       // PBKDF2 key derivation takes 1-3 s — indicate progress on the button.
