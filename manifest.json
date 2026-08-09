@@ -2,21 +2,21 @@
   "name": "JotRelay",
   "short_name": "JotRelay",
   "description": "Live shared notepad — real-time sync across all your devices.",
-  "start_url": "/JotRelay/",
-  "scope": "/JotRelay/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0c0e1a",
   "theme_color": "#0c0e1a",
   "orientation": "any",
   "icons": [
     {
-      "src": "/JotRelay/assets/icon-192.png",
+      "src": "assets/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/JotRelay/assets/icon-512.png",
+      "src": "assets/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

@@ -16,22 +16,29 @@
 
 ## Base path
 
-JotRelay is deployed at `/JotRelay` on GitHub Pages. The runtime base path is configured in `index.html`:
+JotRelay is deployed on two hosts simultaneously, each with a different natural URL shape, from the exact same static files — no build step, no per-host variant:
+
+- **GitHub Pages** (`spairkie.github.io/JotRelay/`) — project-page hosting always prefixes the URL with the repo name.
+- **Netlify** (`jotrelay.netlify.app/`, and eventually a custom domain) — serves at the literal root.
+
+`index.html` detects which one it's on and adapts automatically, via a `<base>` element patched by a tiny inline script right at the top of `<head>` (before any stylesheet/script tag is parsed):
 
 ```html
-window.SYNCPAD_CONFIG = {
-  basePath: '/JotRelay',
-  ...
-};
+<base id="app-base" href="/" />
+<script>
+  if (location.pathname.indexOf('/JotRelay') === 0) {
+    document.getElementById('app-base').setAttribute('href', '/JotRelay/');
+  }
+</script>
 ```
 
-`src/app.js` reads this value and `service-worker.js` derives its base from the service worker registration scope. The static HTML links, `manifest.json`, and `404.html` still use `/JotRelay` because GitHub Pages is the permanent deployment target.
+Every asset `href`/`src` and internal `<a>` link in `index.html` is written as a **relative** path (no leading slash — e.g. `styles/base.css`, `app/`) so it resolves against whichever `<base>` ends up in effect. `window.SYNCPAD_CONFIG.basePath` (read by `src/app/state.js`'s `BASE` constant, which every JS-side route/link computation uses) runs the identical `location.pathname` check, so the JS layer and the browser's own `<base>` resolution always agree.
 
-**To host at the root** (custom domain, Vercel, Netlify, etc.):
-1. Change `window.SYNCPAD_CONFIG.basePath` to `''`.
-2. Update `manifest.json`: `"start_url": "/"` and `"scope": "/"`.
-3. Replace `/JotRelay/` static prefixes in `index.html` with `/`.
-4. Update the `404.html` redirect script or use the host's SPA rewrite support.
+`manifest.json`'s `start_url`/`scope`/icon `src` use the same trick a different way: per the Web App Manifest spec, those are resolved relative to the manifest file's own URL, not the page's `<base>` — so `"start_url": "./"` and relative icon paths (`"assets/icon-192.png"`) correctly resolve to `/JotRelay/` or `/` on the two hosts without any per-host value at all.
+
+The one thing that's genuinely per-host: `netlify.toml`'s catch-all SPA redirect (`/* → /index.html`, 200) — Netlify has no equivalent to GitHub Pages' automatic project-page routing, so a direct/refreshed visit to an in-app route (a room id, `/admin`, etc.) needs an explicit fallback rule, mirroring what `404.html`'s redirect script already does for GitHub Pages.
+
+If a **third** host is ever added with yet another URL shape, extend the `<base>` script's condition (and `window.SYNCPAD_CONFIG.basePath`'s matching check) rather than hardcoding a new special case elsewhere — those two are the only places that need to agree.
 
 ---
 

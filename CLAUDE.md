@@ -115,7 +115,7 @@ if (!ok) return;
 There is no bundler. Use standard ES module `import`/`export` syntax. Paths must be relative (e.g., `'./utils.js'`). Do not use bare specifiers.
 
 ### BASE Path
-The app is served under `/JotRelay`. This constant is defined in `src/app/state.js` (`BASE`) and `service-worker.js`. Any new route or asset reference must respect this prefix.
+The app is served under `/JotRelay` on GitHub Pages, and at the root on Netlify — both from the same static files, no build step, no per-host variant. `index.html` detects which one it's on (via a `<base>` element patched by an inline script) and `src/app/state.js`'s `BASE` constant follows the identical check on `window.SYNCPAD_CONFIG.basePath`. See DEPLOYMENT.md's "Base path" section for the full mechanism. Any new route or asset reference in `index.html` must be a **relative** path (no leading slash) so it resolves against whichever `<base>` is in effect; any new JS-side link/route computation should go through `BASE`, not a hardcoded prefix.
 
 ### Supabase Credentials
 Credentials are read from `window.SYNCPAD_CONFIG` which is injected inline in `index.html`. Do not hard-code keys anywhere else.
@@ -230,7 +230,7 @@ This project has no build step — nothing renders HTML/JSON from a template —
 - Postgres identifiers in `supabase/**` (`syncpad_*` tables/columns/functions/triggers) and the `syncpad-cleanup` edge function. Renaming live production schema is a real zero-downtime migration project, not a text swap, and no end user ever sees these identifiers.
 - `localStorage` key string literals (`syncpad_theme`, `syncpad_recent_rooms`, etc.) — renaming the string would orphan every existing visitor's saved preferences/drafts.
 - The `syncpad-file:` pseudo-scheme, `data-syncpad-file` attribute, `.syncpad-file-link` class — embedded in every already-saved room's content; renaming breaks file/image references in existing rooms.
-- The `BASE` path constant (`src/app/state.js`), `service-worker.js`'s cache name/scope, and every `/JotRelay`-style URL path segment (`href`/`src` attributes, `manifest.json`'s `start_url`/`scope`, `sitemap.xml`, `robots.txt`, `og:url`/`og:image`). This one **is** meant to change eventually, but only in lockstep with whatever the app is actually deployed under (a GitHub Pages project-site path matching the repo name, or `''` for a root-domain host like Netlify) — changing it any other time serves 404s to real visitors mid-transition. See the SyncPad → JotRelay rebrand PRs for the exact sequencing this required.
+- The `BASE` path constant (`src/app/state.js`) and `index.html`'s `<base>`-tag detection — these already adapt automatically per host (see DEPLOYMENT.md's "Base path" section), so a rename only needs the repo-name string itself updated in the `<base>` script's condition and `window.SYNCPAD_CONFIG.basePath`'s matching check, not a wholesale path migration. `sitemap.xml`, `robots.txt`, and the `og:url`/`og:image` meta tags are still single fixed values (no per-host detection applies to those) and should point at whichever host is currently canonical.
 
 ---
 

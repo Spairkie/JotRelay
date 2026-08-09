@@ -11,6 +11,10 @@ import { test, expect } from '@playwright/test';
 
 test('the header logo inside a room points to /JotRelay/app/, not the landing page', async ({ page }) => {
   await page.goto('/JotRelay/');
-  const href = await page.locator('.header-logo').getAttribute('href');
-  expect(href).toBe('/JotRelay/app/');
+  // .href (the resolved property, not the raw attribute) — the href is a
+  // <base>-relative "app/" in the markup (see index.html's header comment),
+  // resolved to an absolute URL by the browser exactly like real navigation
+  // would use.
+  const href = await page.locator('.header-logo').evaluate((el) => el.href);
+  expect(href).toBe(new URL('/JotRelay/app/', page.url()).href);
 });

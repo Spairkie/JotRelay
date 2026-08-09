@@ -20,9 +20,12 @@ test.describe('URL routing', () => {
 
   test('marketing page CTAs link to /JotRelay/app/', async ({ page }) => {
     await page.goto('/JotRelay/');
-    await expect(page.locator('.lp-nav-cta')).toHaveAttribute('href', '/JotRelay/app/');
-    await expect(page.locator('.lp-btn-primary').first()).toHaveAttribute('href', '/JotRelay/app/');
-    await expect(page.locator('.lp-hero-join-link')).toHaveAttribute('href', '/JotRelay/app/');
+    // .href (resolved property) — the markup uses <base>-relative "app/"
+    // hrefs (see index.html's header comment), resolved to absolute URLs.
+    const expected = new URL('/JotRelay/app/', page.url()).href;
+    expect(await page.locator('.lp-nav-cta').evaluate((el) => el.href)).toBe(expected);
+    expect(await page.locator('.lp-btn-primary').first().evaluate((el) => el.href)).toBe(expected);
+    expect(await page.locator('.lp-hero-join-link').evaluate((el) => el.href)).toBe(expected);
   });
 
   test('/JotRelay/admin shows admin screen', async ({ page }) => {
