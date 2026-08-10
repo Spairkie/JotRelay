@@ -6,12 +6,12 @@ folder is free to use under the terms in [Asset usage](#asset-usage) below.
 
 If you need something that isn't here, see [Contact](#contact).
 
-**[⬇ Download everything in this folder as one .zip](https://raw.githubusercontent.com/Spairkie/JotRelay/main/presskit/SyncPad-Presskit.zip)**
+**[⬇ Download everything in this folder as one .zip](https://raw.githubusercontent.com/Spairkie/JotRelay/main/presskit/JotRelay-Presskit.zip)**
 (logos, screenshots, and the demo video together — regenerated from the
 files below with `npm run presskit:zip`, so it's always this same content,
 just zipped)
 
-This is an absolute link rather than a relative `SyncPad-Presskit.zip` one
+This is an absolute link rather than a relative `JotRelay-Presskit.zip` one
 on purpose: the archive deliberately doesn't contain a copy of itself, so a
 relative link would go dead the moment someone extracts it — this one still
 resolves from inside an already-extracted copy, not just from the repo.
@@ -130,7 +130,7 @@ as a "secure" product in the compliance sense.
 ```text
 presskit/
   README.md               — this file
-  SyncPad-Presskit.zip    — everything below, zipped (npm run presskit:zip)
+  JotRelay-Presskit.zip   — everything below, zipped (npm run presskit:zip)
   icon/                    — logo/icon system (SVG source + PNG exports)
   screenshot/              — product screenshots + the demo video's poster frame
   video/                   — the hero demo video + its narration script
