@@ -98,6 +98,10 @@ test.describe('Room creation and navigation', () => {
     }
     await goToAppLanding(page);
     const testRoomId = `join-test-${Date.now()}`;
+    // #landing-join-input is readonly until first focus (see
+    // src/app/landing.js — deliberate anti-autofill design); a click must
+    // land first or page.fill()'s actionability check never passes.
+    await page.click('.landing-join-input');
     await page.fill('.landing-join-input', testRoomId);
     await page.click('.landing-join-btn');
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15_000 });
@@ -132,6 +136,9 @@ test.describe('Multi-room navigation', () => {
     // deliberate per-device preference, not room-scoped state that resets
     // on navigation (teardownRealtimeSession() only sets a transient
     // 'write' placeholder for the loading screen in between).
+    // styles/modals.css hides the Split segmented-control button below the
+    // 639px mobile breakpoint — there's no control to click there.
+    test.skip((page.viewportSize()?.width ?? 1280) <= 639, 'Split mode control is hidden on narrow/mobile viewports');
     const roomA = await createRoom(page);
 
     // Switch to split mode

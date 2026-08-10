@@ -95,8 +95,14 @@ test.describe('First-time onboarding tour', () => {
     await openTourDirectly(page);
     await expect(page.locator('#sp-onboarding-overlay')).toHaveClass(/visible/);
 
+    // src/ui/onboarding.js swaps this step's title depending on viewport
+    // width — "Split" isn't offered below the 639px mobile breakpoint (see
+    // styles/modals.css hiding that segmented-control button), so the tour
+    // copy correctly omits it there too.
+    const isMobileViewport = (page.viewportSize()?.width ?? 1280) <= 639;
     await page.click('#sp-onboarding-next');
-    await expect(page.locator('#sp-onboarding-title')).toHaveText('Source, Live, or Split');
+    await expect(page.locator('#sp-onboarding-title'))
+      .toHaveText(isMobileViewport ? 'Source or Live' : 'Source, Live, or Split');
 
     await page.click('#sp-onboarding-back');
     await expect(page.locator('#sp-onboarding-title')).toHaveText('Your note');

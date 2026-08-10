@@ -45,6 +45,10 @@ test.describe('Editor', () => {
   });
 
   test('split mode shows both the textarea and the live surface', async ({ page }) => {
+    // styles/modals.css hides the Split segmented-control button below the
+    // 639px mobile breakpoint (not enough width for two side-by-side
+    // panes) — there's no control to click on a narrow viewport.
+    test.skip((page.viewportSize()?.width ?? 1280) <= 639, 'Split mode control is hidden on narrow/mobile viewports');
     await createRoom(page);
     await ensureWriteMode(page);
     await page.locator('#note-editor').fill('**bold** text');
@@ -81,6 +85,7 @@ test.describe('Editor', () => {
   });
 
   test('edits made in the textarea appear in the live surface (split mode)', async ({ page }) => {
+    test.skip((page.viewportSize()?.width ?? 1280) <= 639, 'Split mode control is hidden on narrow/mobile viewports');
     await createRoom(page);
     await ensureWriteMode(page);
     await setEditorMode(page, 'split');
@@ -182,6 +187,7 @@ test.describe('Editor', () => {
   });
 
   test('split mode scroll-syncs the textarea and the live surface', async ({ page }) => {
+    test.skip((page.viewportSize()?.width ?? 1280) <= 639, 'Split mode control is hidden on narrow/mobile viewports');
     await createRoom(page);
     await ensureWriteMode(page);
     const longDoc = Array.from({ length: 150 }, (_, i) => `Line ${i}`).join('\n');
