@@ -5,3 +5,6 @@
 
 # Node
 node_modules/
+
+# Supabase CLI (npx supabase link) — local project-ref cache, no secrets
+supabase/.temp/

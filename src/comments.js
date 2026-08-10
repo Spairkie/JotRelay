@@ -15,7 +15,7 @@ import { logSupabaseError, getDeviceId, getDeviceName } from './utils.js';
 
 const TABLE = 'syncpad_room_comments';
 
-// Postgres "undefined_column" — thrown by PostgREST when a project has run
+// "Column doesn't exist" — thrown when a project has run
 // 0003_room_comments.sql but not yet the later, separate
 // 0013_comment_anchor_text.sql. Falling back to the pre-0013 column set
 // keeps the base comments feature (view/add/delete/thread) working on such
@@ -23,7 +23,20 @@ const TABLE = 'syncpad_room_comments';
 // only the auto-delete-on-text-removal enhancement stays inert until the
 // migration is run, matching every other optional-migration feature's
 // "silently no-op until its migration runs" convention (see DEPLOYMENT.md).
-const MISSING_COLUMN = '42703';
+//
+// Two different codes for the same underlying problem, depending on which
+// operation hits it: a SELECT naming an unknown column reaches Postgres
+// itself, which reports its own "undefined_column" code, 42703. An INSERT
+// naming an unknown column in the payload is instead rejected by
+// PostgREST's own schema-cache validation *before* any SQL runs, which
+// reports its own, differently-coded error, PGRST204 ("Could not find the
+// '<col>' column ... in the schema cache") — confirmed against this
+// project's live database, where listComments()'s SELECT fallback below
+// was already correctly triggering on 42703 while addComment()'s INSERT
+// silently failed every time because it only ever saw PGRST204.
+function _isMissingColumnError(error) {
+  return error?.code === '42703' || error?.code === 'PGRST204';
+}
 
 /** List comments for a room, oldest first (matches reading order in the note). */
 export async function listComments(roomId) {
@@ -32,7 +45,7 @@ export async function listComments(roomId) {
     .select('id, anchor_from, anchor_to, text, anchor_text, device_id, device_name, created_at')
     .eq('room_id', roomId)
     .order('created_at', { ascending: true });
-  if (error?.code === MISSING_COLUMN) {
+  if (_isMissingColumnError(error)) {
     ({ data, error } = await sb.from(TABLE)
       .select('id, anchor_from, anchor_to, text, device_id, device_name, created_at')
       .eq('room_id', roomId)
@@ -57,7 +70,7 @@ export async function addComment(roomId, { anchorFrom, anchorTo, text, anchorTex
     device_name: getDeviceName(),
   };
   let { error } = await sb.from(TABLE).insert({ ...base, anchor_text: anchorText ?? null });
-  if (error?.code === MISSING_COLUMN) {
+  if (_isMissingColumnError(error)) {
     ({ error } = await sb.from(TABLE).insert(base));
   }
   if (error) { logSupabaseError('addComment', error, { room_id: roomId }); throw error; }

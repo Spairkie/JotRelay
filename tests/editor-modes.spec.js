@@ -25,6 +25,10 @@ test.describe('Editor mode classes', () => {
   });
 
   test('clicking split mode adds mode-split and removes mode-write', async ({ page }) => {
+    // styles/modals.css hides the Split segmented-control button below the
+    // 639px mobile breakpoint (not enough width for two side-by-side
+    // panes) — there's no control to click on a narrow viewport.
+    test.skip((page.viewportSize()?.width ?? 1280) <= 639, 'Split mode control is hidden on narrow/mobile viewports');
     await createRoom(page);
     await setEditorMode(page, 'split');
     const wrap = page.locator('.editor-wrap');
@@ -35,6 +39,7 @@ test.describe('Editor mode classes', () => {
   });
 
   test('switching from split back to write restores mode-write', async ({ page }) => {
+    test.skip((page.viewportSize()?.width ?? 1280) <= 639, 'Split mode control is hidden on narrow/mobile viewports');
     await createRoom(page);
     await setEditorMode(page, 'split');
     await expect(page.locator('.editor-wrap')).toHaveClass(/mode-split/);
@@ -64,6 +69,7 @@ test.describe('Editor mode classes', () => {
   });
 
   test('both editor and live surface visible in split mode', async ({ page }) => {
+    test.skip((page.viewportSize()?.width ?? 1280) <= 639, 'Split mode control is hidden on narrow/mobile viewports');
     await createRoom(page);
     await setEditorMode(page, 'split');
     await expect(page.locator('#note-editor')).toBeVisible();

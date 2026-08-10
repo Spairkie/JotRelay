@@ -256,6 +256,12 @@ test.describe('App landing screen (/app)', () => {
     await goToAppLanding(page);
     // Use a unique ID so stale Supabase room state from prior runs cannot interfere.
     const roomId = `test-join-btn-${Date.now()}`;
+    // #landing-join-input is readonly until first focus (see
+    // src/app/landing.js — deliberate anti-autofill design), so a click
+    // must land first: page.fill()'s own actionability check requires the
+    // element already be editable before it will act, which this readonly
+    // attribute would otherwise fail forever.
+    await page.click('.landing-join-input');
     await page.fill('.landing-join-input', roomId);
     await page.click('.landing-join-btn');
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 25_000 });
@@ -270,6 +276,7 @@ test.describe('App landing screen (/app)', () => {
     await goToAppLanding(page);
     // Use a unique ID so stale Supabase room state from prior runs cannot interfere.
     const roomId = `test-join-enter-${Date.now()}`;
+    await page.click('.landing-join-input');
     await page.fill('.landing-join-input', roomId);
     await page.press('.landing-join-input', 'Enter');
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 25_000 });
@@ -286,6 +293,7 @@ test.describe('App landing screen (/app)', () => {
     // actually issued by get_or_create_room_code — resolveRoomCode() should
     // return null for it, and the join flow must fall through to joining it
     // as a literal room ID rather than erroring or getting stuck.
+    await page.click('.landing-join-input');
     await page.fill('.landing-join-input', 'K7X9BQ');
     await page.click('.landing-join-btn');
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 25_000 });

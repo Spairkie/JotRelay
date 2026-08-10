@@ -64,6 +64,10 @@ test.describe('Templates modal', () => {
   });
 
   test('hovering a template shows preview', async ({ page }) => {
+    // styles/modals.css hides .tmpl-preview-col below the 639px mobile
+    // breakpoint (no room for the two-column layout, and hover isn't a
+    // touch interaction anyway).
+    test.skip((page.viewportSize()?.width ?? 1280) <= 639, 'Template preview column is hidden on narrow/mobile viewports');
     await createRoom(page);
     await openTemplatesModal(page);
     const firstBtn = page.locator('.template-btn').first();

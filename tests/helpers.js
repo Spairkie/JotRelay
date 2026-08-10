@@ -188,6 +188,17 @@ export async function openPanel(page, panelId) {
   const panel = page.locator(`#${panelId}`);
   if (await panel.evaluate(el => el.classList.contains('open'))) return;
 
+  // A different side panel left open (e.g. Settings) sits behind a
+  // full-viewport backdrop (z-index 135, pointer-events: auto — see
+  // styles/panels.css) that outranks the header, so a real click on
+  // #btn-more/#btn-files/etc. only dismisses that backdrop instead of
+  // reaching the button underneath — exactly like a user would have to
+  // close the current panel before opening another. Close it first so
+  // callers can switch panels in one call the way real interaction requires
+  // two clicks; otherwise Playwright's actionability check correctly
+  // refuses the click as intercepted.
+  if (await page.locator('.side-panel.open').count()) await closePanels(page);
+
   const desktopButtons = {
     'tools-panel': '#btn-tools',
     'files-panel': '#btn-files',
