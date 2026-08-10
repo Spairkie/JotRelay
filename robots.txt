@@ -9,4 +9,15 @@ Disallow: /JotRelay/admin
 Disallow: /JotRelay/share/
 Disallow: /JotRelay/
 
+# Root-hosted equivalents (Netlify serves these same static files at root).
+Allow: /$
+Allow: /app/
+Allow: /privacy
+Allow: /terms
+Allow: /contact
+Allow: /presskit/
+Disallow: /admin
+Disallow: /share/
+Disallow: /
+
 Sitemap: https://spairkie.github.io/JotRelay/sitemap.xml
