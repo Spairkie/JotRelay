@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const presskitDir = path.join(__dirname, '..', 'presskit');
-const outputName = 'SyncPad-Presskit.zip';
+const outputName = 'JotRelay-Presskit.zip';
 const outputPath = path.join(presskitDir, outputName);
 const tmpPath = `${outputPath}.tmp`;
 

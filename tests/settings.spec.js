@@ -90,12 +90,14 @@ test.describe('Settings panel', () => {
     await createFreshRoom(page);
     await openSettingsPanel(page);
     const themes = page.locator('.theme-option');
-    // Click the second theme option
-    await themes.nth(1).click();
+    // Click the first theme option (Charcoal Amber) — the second option is
+    // Midnight Blue, which is now the default (see theme.js's applyTheme():
+    // the default theme is represented by *removing* data-theme rather than
+    // setting it), so clicking it wouldn't produce an observable attribute.
+    await themes.nth(0).click();
     // data-theme attribute on <html> should be updated
     const htmlTheme = await page.locator('html').getAttribute('data-theme');
-    expect(htmlTheme).toBeTruthy();
-    expect(htmlTheme).not.toBe('');
+    expect(htmlTheme).toBe('charcoal-amber');
   });
 
   test('switching themes re-tints the browser-tab favicon to match', async ({ page }) => {
@@ -104,7 +106,10 @@ test.describe('Settings panel', () => {
 
     await openSettingsPanel(page);
     const themes = page.locator('.theme-option');
-    await themes.nth(1).click();
+    // Use the first option (Charcoal Amber), not Midnight Blue — the room
+    // already loads with Midnight Blue applied by default, so clicking it
+    // would be a same-theme no-op and the favicon href wouldn't change.
+    await themes.nth(0).click();
 
     const after = await page.locator('link[rel="icon"][type="image/svg+xml"]').getAttribute('href');
     expect(after).not.toBe(before);

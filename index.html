@@ -2,21 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!-- Host-aware base path: defaults to root (Netlify / a future custom
-       domain — the primary target), and patches itself to /JotRelay/ only
-       when actually served from GitHub Pages, which requires that prefix
-       for a project-page URL. Must run before any relative href/src below
-       is parsed — every stylesheet/script/asset reference in this file is
-       intentionally relative (no leading slash) so it resolves against
-       whichever <base> ends up in effect. window.SYNCPAD_CONFIG.basePath
-       further down reuses the identical check so src/app/state.js's BASE
-       constant (JS-side routing) agrees with what the browser actually
-       resolved assets against. See DEPLOYMENT.md's "Base path" section. -->
-  <base id="app-base" href="/" />
+  <!-- Host-aware base path: resolves to root (Netlify / a future custom
+       domain — the primary target), or /JotRelay/ when actually served from
+       GitHub Pages, which requires that prefix for a project-page URL.
+       Written via document.write (not a static href + later setAttribute
+       patch) so the correct value is visible to the browser's *preload
+       scanner* — which reads raw HTML bytes ahead of script execution and
+       is blind to DOM mutations — not just the real parser; a static
+       `href="/"` corrected afterward by setAttribute() let the preload
+       scanner speculatively (and wrongly) fetch every stylesheet/module
+       from root on GitHub Pages, each one 503-ing before the real,
+       correctly-based request re-fetched it. Must run before any relative
+       href/src below is parsed — every stylesheet/script/asset reference in
+       this file is intentionally relative (no leading slash) so it
+       resolves against whichever <base> ends up in effect.
+       window.SYNCPAD_CONFIG.basePath further down reuses the identical
+       check so src/app/state.js's BASE constant (JS-side routing) agrees
+       with what the browser actually resolved assets against. See
+       DEPLOYMENT.md's "Base path" section. -->
   <script>
-    if (location.pathname.indexOf('/JotRelay') === 0) {
-      document.getElementById('app-base').setAttribute('href', '/JotRelay/');
-    }
+    document.write('<base id="app-base" href="' +
+      ((location.pathname === '/JotRelay' || location.pathname.indexOf('/JotRelay/') === 0) ? '/JotRelay/' : '/') +
+      '">');
   </script>
   <!-- interactive-widget=resizes-content (Chrome 108+/Android): makes the
        browser actually shrink the *layout* viewport when the on-screen
@@ -188,7 +195,7 @@
   <!-- ⚠️  Replace with your Supabase project credentials -->
   <script>
   window.SYNCPAD_CONFIG = {
-      basePath:        location.pathname.indexOf('/JotRelay') === 0 ? '/JotRelay' : '',
+      basePath:        (location.pathname === '/JotRelay' || location.pathname.indexOf('/JotRelay/') === 0) ? '/JotRelay' : '',
       supabaseUrl:     'https://ddehkgdssdhhwpqljbiq.supabase.co',
       supabaseAnonKey: 'sb_publishable_ElR85NRU23YFtFaCHqu4qw_gzGMaN_r',
       web3FormsAccessKey: '8fcb1063-d426-4062-a5d9-067749be79d0',
