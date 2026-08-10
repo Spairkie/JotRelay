@@ -43,7 +43,8 @@ async function waitForServiceWorkerReady(page, timeout = 30_000) {
 }
 
 test.describe('PWA installability', () => {
-  test('manifest.json is valid with no Chrome-reported errors', async ({ page }) => {
+  test('manifest.json is valid with no Chrome-reported errors', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'newCDPSession (Page.getAppManifest/getInstallabilityErrors) is Chromium-only');
     const client = await page.context().newCDPSession(page);
     await client.send('Page.enable');
     await page.goto('/JotRelay/');
@@ -94,7 +95,8 @@ test.describe('Offline behavior', () => {
     await context.setOffline(false);
   });
 
-  test('the app-landing and a room route both still render their shell while offline', async ({ page, context }) => {
+  test('the app-landing and a room route both still render their shell while offline', async ({ page, context, browserName }) => {
+    test.skip(browserName !== 'chromium', 'newCDPSession (Network.clearBrowserCache) is Chromium-only');
     await page.goto('/JotRelay/');
     await waitForServiceWorkerReady(page);
     // A same-origin navigation while still online, before going offline —
