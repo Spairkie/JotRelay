@@ -21,16 +21,17 @@ JotRelay is deployed on two hosts simultaneously, each with a different natural 
 - **GitHub Pages** (`spairkie.github.io/JotRelay/`) — project-page hosting always prefixes the URL with the repo name.
 - **Netlify** (`jotrelay.netlify.app/`, and eventually a custom domain) — serves at the literal root.
 
-`index.html` detects which one it's on and adapts automatically, via a `<base>` element patched by a tiny inline script right at the top of `<head>` (before any stylesheet/script tag is parsed):
+`index.html` detects which one it's on and adapts automatically, via a `<base>` element written by a tiny inline script right at the top of `<head>` (before any stylesheet/script tag is parsed):
 
 ```html
-<base id="app-base" href="/" />
 <script>
-  if (location.pathname.indexOf('/JotRelay') === 0) {
-    document.getElementById('app-base').setAttribute('href', '/JotRelay/');
-  }
+  document.write('<base id="app-base" href="' +
+    ((location.pathname === '/JotRelay' || location.pathname.indexOf('/JotRelay/') === 0) ? '/JotRelay/' : '/') +
+    '">');
 </script>
 ```
+
+This uses `document.write()` rather than a static `href="/"` corrected afterward via `setAttribute()` — the browser's preload scanner reads raw HTML bytes ahead of script execution and only sees `document.write()`'s synchronous output, not later DOM mutations, so a static-then-patched `<base>` let it speculatively (and wrongly) issue every stylesheet/module request against root on GitHub Pages before the real, correctly-based request re-fetched it.
 
 Every asset `href`/`src` and internal `<a>` link in `index.html` is written as a **relative** path (no leading slash — e.g. `styles/base.css`, `app/`) so it resolves against whichever `<base>` ends up in effect. `window.SYNCPAD_CONFIG.basePath` (read by `src/app/state.js`'s `BASE` constant, which every JS-side route/link computation uses) runs the identical `location.pathname` check, so the JS layer and the browser's own `<base>` resolution always agree.
 
