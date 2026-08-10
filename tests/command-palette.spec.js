@@ -93,9 +93,13 @@ test.describe('Command palette', () => {
 
   test('theme commands are listed and clicking one applies the theme', async ({ page }) => {
     await createRoom(page);
+    // Start from a non-default theme so switching to Midnight Blue (the
+    // default, represented by the *absence* of data-theme — see theme.js's
+    // applyTheme()) is an observable change rather than a no-op.
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'charcoal-amber'));
     await openPaletteViaShortcut(page);
     await page.locator('#command-palette-input').fill('Midnight Blue');
     await page.locator('.command-palette-item-label', { hasText: 'Midnight Blue' }).click();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'midnight-blue');
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme');
   });
 });
