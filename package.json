@@ -35,7 +35,8 @@
     "@codemirror/view": "^6.43.6",
     "@lezer/highlight": "^1.2.3",
     "@playwright/test": "^1.56.0",
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "supabase": "^2.113.0"
   },
   "type": "module"
 }
