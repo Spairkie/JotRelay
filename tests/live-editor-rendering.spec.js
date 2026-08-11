@@ -237,16 +237,16 @@ test.describe('Live/Split surface rendering', () => {
     // The thumb is a real scrollbar — ambiently visible at rest (never a
     // hard 0), same "there's obviously something to scroll" affordance a
     // native scrollbar gives for free.
-    const thumb = page.locator('.note-live .scroll-rail .scroll-rail-thumb');
+    const thumb = page.locator('.scroll-rail-live .scroll-rail-thumb');
     await expect(thumb).toHaveCSS('opacity', '0.32');
 
     // The ticks (the heading "minimap") stay fully invisible until hovered —
     // unlike the thumb, nothing here is worth showing until the user is
     // actually looking for a section to jump to.
-    const ticksLayer = page.locator('.note-live .scroll-rail .scroll-rail-ticks');
+    const ticksLayer = page.locator('.scroll-rail-live .scroll-rail-ticks');
     await expect(ticksLayer).toHaveCSS('opacity', '0');
 
-    const rail = page.locator('.note-live .scroll-rail');
+    const rail = page.locator('.scroll-rail-live');
     const railBox = await rail.boundingBox();
     await page.mouse.move(railBox.x + railBox.width / 2, railBox.y + 10);
     await expect(ticksLayer).toHaveCSS('opacity', '1');
@@ -267,10 +267,18 @@ test.describe('Live/Split surface rendering', () => {
     );
     await setEditorMode(page, 'preview');
 
-    const rail = page.locator('.note-live .scroll-rail');
+    const rail = page.locator('.scroll-rail-live');
     const ticks = rail.locator('.scroll-rail-tick');
+    await expect(ticks).toHaveCount(3);
     const firstTick = ticks.first();
     const lastTick = ticks.last();
+    // CM6 keeps refining its height-map estimate for a few update cycles
+    // right after a long document first mounts, which can re-trigger a real
+    // tick-DOM rebuild (updateHeadings()'s own exact-match check, not just
+    // this test) within the first moment or two — toBeVisible() retries
+    // until that settles, unlike a raw boundingBox() snapshot.
+    await expect(firstTick).toBeVisible();
+    await expect(lastTick).toBeVisible();
 
     const firstBox = await firstTick.boundingBox();
     const lastBox = await lastTick.boundingBox();
@@ -296,7 +304,7 @@ test.describe('Live/Split surface rendering', () => {
     );
     await setEditorMode(page, 'preview');
 
-    const rail = page.locator('.note-live .scroll-rail');
+    const rail = page.locator('.scroll-rail-live');
     const ticks = rail.locator('.scroll-rail-tick');
     expect(await ticks.count()).toBe(3);
     await expect(ticks.nth(2)).toHaveAttribute('title', 'End');
@@ -311,7 +319,7 @@ test.describe('Live/Split surface rendering', () => {
     await createRoom(page);
     await typeInEditor(page, '# Only heading\n\nJust some text.\n');
     await setEditorMode(page, 'preview');
-    await expect(page.locator('.note-live .scroll-rail .scroll-rail-tick')).toHaveCount(0);
+    await expect(page.locator('.scroll-rail-live .scroll-rail-tick')).toHaveCount(0);
   });
 
   test('CM6 scroll rail thumb drag scrolls the surface', async ({ page }) => {
@@ -321,7 +329,7 @@ test.describe('Live/Split surface rendering', () => {
     await setEditorMode(page, 'preview');
 
     const scroller = page.locator('.note-live .cm-scroller');
-    const thumb = page.locator('.note-live .scroll-rail .scroll-rail-thumb');
+    const thumb = page.locator('.scroll-rail-live .scroll-rail-thumb');
     // ScrollRail.updateMetrics() sets the thumb's height once its own
     // ResizeObserver/CM6-geometry callbacks have run — racy right after a
     // fresh mount, so wait for a real (non-empty) height before trusting its

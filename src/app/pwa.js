@@ -55,15 +55,60 @@ if ('serviceWorker' in navigator) {
 }
 
 const INSTALL_DISMISSED_KEY = 'syncpad_install_dismissed';
+
+// A running installed PWA (desktop window, mobile home-screen launch) must
+// never offer to install itself — there's nothing left to install, and a
+// banner sitting there permanently reads as broken. display-mode:standalone
+// covers desktop/Android installs; navigator.standalone is Safari's own
+// pre-standard equivalent for an iOS home-screen launch, which never gets a
+// 'display-mode' media feature at all. Checked once at startup (a page
+// already running standalone doesn't flip modes mid-session) and persisted
+// as an ordinary dismissal so a future non-standalone visit (e.g. the user
+// opens the plain browser tab instead of the installed app) doesn't get a
+// banner reoffered for a device that's already installed it once.
+function _isStandalone() {
+  return !!(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true);
+}
+
+if (_isStandalone()) {
+  localStorage.setItem(INSTALL_DISMISSED_KEY, '1');
+  UI.hideInstallBar();
+}
+
 let _deferredInstall = null;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   _deferredInstall = e;
-  if (localStorage.getItem(INSTALL_DISMISSED_KEY) === '1') return;
+  if (_isStandalone() || localStorage.getItem(INSTALL_DISMISSED_KEY) === '1') return;
   UI.showInstallBar(
-    async () => { _deferredInstall?.prompt(); await _deferredInstall?.userChoice; _deferredInstall = null; },
+    async () => {
+      _deferredInstall?.prompt();
+      const choice = await _deferredInstall?.userChoice;
+      _deferredInstall = null;
+      // 'appinstalled' below also fires on acceptance and is the more
+      // reliable signal in general (a user can accept the native prompt and
+      // then dismiss the OS's own install confirmation, or the reverse), but
+      // acting on 'accepted' here too means the bar disappears immediately
+      // on the common path instead of waiting on a second event that can
+      // lag the prompt's own resolution by a moment.
+      if (choice?.outcome === 'accepted') {
+        localStorage.setItem(INSTALL_DISMISSED_KEY, '1');
+        UI.hideInstallBar();
+      }
+    },
     () => { localStorage.setItem(INSTALL_DISMISSED_KEY, '1'); }
   );
+});
+
+// Fires on every installation, regardless of which UI triggered it (this
+// app's own Install button, the browser's address-bar install icon, an
+// OS-level app-store-style install) — the one signal that's always right,
+// so it's the backstop even though the Install button's own onInstall
+// handler above already covers its own path.
+window.addEventListener('appinstalled', () => {
+  _deferredInstall = null;
+  localStorage.setItem(INSTALL_DISMISSED_KEY, '1');
+  UI.hideInstallBar();
 });
 
 // ── Draft storage warning ─────────────────────────────────────────────────────

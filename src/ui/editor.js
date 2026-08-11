@@ -2,7 +2,7 @@
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { escapeHtml } from '../utils.js';
 import { toggleFootnotePopover } from '../footnote-popover.js';
-import { ScrollRail, collectPlainTextHeadings, measureTextareaHeadingTops } from '../scroll-rail.js';
+import { ScrollRail, collectPlainTextHeadings, measureTextareaHeadingTops, runSmoothScroll, wireProportionalScrollSync } from '../scroll-rail.js';
 
 // ── Editor helpers ────────────────────────────────────────────────────────────
 
@@ -45,53 +45,38 @@ export function mountWriteScrollRail() {
   const adapter = {
     getMetrics: () => ({ scrollTop: editor.scrollTop, scrollHeight: editor.scrollHeight, clientHeight: editor.clientHeight }),
     setScrollTop: (top, { smooth } = {}) => {
-      if (smooth) editor.scrollTo({ top, behavior: 'smooth' });
+      if (smooth) runSmoothScroll(editor, top);
       else editor.scrollTop = top;
     },
     // top/offset were measured directly against this textarea, so no
     // estimate-then-correct dance is needed the way CM6's virtualized
     // renderer requires — the number is already exact. Smooth (like CM6's
     // own jumpToHeading, live-editor.js's _scrollPosIntoView) rather than an
-    // instant snap, honoring prefers-reduced-motion the same way.
+    // instant snap — runSmoothScroll() honors prefers-reduced-motion itself.
     jumpToHeading: (h) => {
-      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      editor.scrollTo({ top: Math.max(0, h.top - 40), behavior: reduceMotion ? 'auto' : 'smooth' });
+      runSmoothScroll(editor, Math.max(0, h.top - 40));
       editor.focus();
       editor.setSelectionRange(h.offset, h.offset);
     },
   };
-  _writeRail = new ScrollRail(wrap, adapter);
+  // #note-editor isn't the rail's containing block (.editor-wrap is, so the
+  // rail can share the floating-card's stacking context the way
+  // .comment-margin-layer already does) and Split mode puts the textarea in
+  // only the *left* column, not the full card width — ScrollRail's own
+  // _reposition() computes this rail's box from #note-editor's live rect on
+  // every relevant resize rather than this being expressed as static CSS.
+  _writeRail = new ScrollRail(wrap, adapter, editor);
   _writeRail.dom.classList.add('scroll-rail-write');
   editor.addEventListener('scroll', () => _writeRail.updateMetrics(), { passive: true });
   // Catches window resize, the monospace-font toggle, focus/typewriter-mode
   // padding changes, and side-panel open/close narrowing the editor — any
-  // layout change that could shift where headings land, how tall the
-  // scrollable content is, or (via _positionWriteRail) where the rail
-  // itself needs to sit, without this file having to know about every
-  // individual feature that can cause one.
-  new ResizeObserver(() => { _positionWriteRail(); _refreshWriteScrollRail(); }).observe(editor);
-  _positionWriteRail();
+  // layout change that could shift where headings land or how tall the
+  // scrollable content is (geometry/positioning is ScrollRail's own concern
+  // now — see its ResizeObserver on surfaceEl — this one is only for
+  // re-measuring heading pixel-tops, which needs the textarea's *content*
+  // width, not just its box).
+  new ResizeObserver(_refreshWriteScrollRail).observe(editor);
   _refreshWriteScrollRail();
-}
-
-// #note-editor isn't the rail's containing block (.editor-wrap is, so the
-// rail can share the floating-card's stacking context the way
-// .comment-margin-layer already does) and Split mode puts the textarea in
-// only the *left* column, not the full card width — so unlike the CM6
-// variant's fixed `right: 9px` inset (always flush with its own pane,
-// since it's mounted inside that pane), this position has to be computed
-// from the textarea's actual live rect rather than expressed as static CSS.
-function _positionWriteRail() {
-  if (!_writeRail) return;
-  const editor = document.getElementById('note-editor');
-  const wrap = editor?.closest('.editor-wrap');
-  if (!editor || !wrap) return;
-  const editorRect = editor.getBoundingClientRect();
-  const wrapRect = wrap.getBoundingClientRect();
-  _writeRail.dom.style.top = `${editorRect.top - wrapRect.top}px`;
-  _writeRail.dom.style.height = `${editorRect.height}px`;
-  _writeRail.dom.style.bottom = 'auto';
-  _writeRail.dom.style.right = `${wrapRect.right - editorRect.right + 9}px`;
 }
 
 // Debounced: the mirror-div heading measurement below forces a synchronous
@@ -521,6 +506,14 @@ export function setMarkdownMode(mode, renderFn, { live = false, syncScroll = tru
     livePane?.classList.toggle('hidden', pane !== 'live');
   };
 
+  // Unconditional, not just in the branches that don't need it — mirrors
+  // live-editor.js's own wireScrollSync/unwireScrollSync (called from
+  // _updateScrollSyncWiring() on every mode switch, unconditionally too),
+  // so this pane's sync is always properly torn down on any switch away
+  // from Split rather than left wired-but-inert behind a runtime hidden-
+  // pane check in the handlers themselves.
+  unwireScrollSync();
+
   if (mode === 'write') {
     editor.classList.remove('hidden');
     showPane(null);
@@ -536,25 +529,20 @@ export function setMarkdownMode(mode, renderFn, { live = false, syncScroll = tru
     wrap?.classList.add('mode-split');
     if (!(live && livePane) && renderFn) {
       preview.innerHTML = renderFn(); _prismHighlight(preview); _injectTocNav(preview); _resolveFileImages(preview); _wireInternalAnchorScroll(preview);
-      if (syncScroll) _wireScrollSync(editor, preview); else unwireScrollSync();
+      if (syncScroll) _wireScrollSync(editor, preview);
     }
-  } else {
-    unwireScrollSync();
   }
 
   // #note-editor's own bounding box only changes here — a mode switch is a
   // display:none <-> visible flip (and, in/out of Split, a column-width
-  // change), neither of which is guaranteed to fire the ResizeObserver
-  // mountWriteScrollRail() set up in time for the very first paint of a
-  // newly-revealed surface (confirmed live: switching straight from a
-  // hidden textarea into Split left the rail at its stale pre-hidden
-  // geometry — usually zero-sized — until *something else* happened to
-  // resize it). Both calls are cheap no-ops while the rail isn't mounted
-  // yet (before _wireEditorCore's one-time mountWriteScrollRail() call) or
-  // while #note-editor is hidden (position math against a 0×0 rect is
-  // harmless; updateMetrics() will just see scrollHeight<=clientHeight and
-  // mark itself unscrollable, same as any other short/empty document).
-  _positionWriteRail();
+  // change) — see ScrollRail.reposition()'s own comment for why that needs
+  // an explicit call here rather than trusting its ResizeObserver alone.
+  // Both calls are cheap no-ops while the rail isn't mounted yet (before
+  // _wireEditorCore's one-time mountWriteScrollRail() call) or while
+  // #note-editor is hidden (position math against a 0×0 rect is harmless;
+  // updateMetrics() will just see scrollHeight<=clientHeight and mark itself
+  // unscrollable, same as any other short/empty document).
+  _writeRail?.reposition();
   _refreshWriteScrollRail();
 }
 
@@ -631,7 +619,7 @@ function _injectTocNav(preview) {
 
 // ── Scroll synchronisation (split mode) ──────────────────────────────────────
 let _scrollSyncWired = false;
-let _scrollSync = null; // { editor, preview, onEditorScroll, onPreviewScroll }
+let _scrollSync = null; // { unwire }
 /** Detach any active scroll-sync listeners and reset the guard so
  *  _wireScrollSync can re-attach fresh on the next split-mode entry. Must be
  *  called from teardownRealtimeSession — previously this only reset the
@@ -643,37 +631,21 @@ export function resetScrollSync() { unwireScrollSync(); }
 function _wireScrollSync(editor, preview) {
   if (_scrollSyncWired) return;
   _scrollSyncWired = true;
-  let _lock = false;
-  const onEditorScroll = () => {
-    if (_lock || preview.classList.contains('hidden')) return;
-    _lock = true;
-    const maxScroll = editor.scrollHeight - editor.clientHeight;
-    const ratio = maxScroll > 0 ? editor.scrollTop / maxScroll : 0;
-    const target = ratio * (preview.scrollHeight - preview.clientHeight);
-    if (Math.abs(preview.scrollTop - target) >= 1) preview.scrollTop = target;
-    requestAnimationFrame(() => { _lock = false; });
-  };
-  const onPreviewScroll = () => {
-    if (_lock || editor.classList.contains('hidden')) return;
-    _lock = true;
-    const maxScroll = preview.scrollHeight - preview.clientHeight;
-    const ratio = maxScroll > 0 ? preview.scrollTop / maxScroll : 0;
-    const target = ratio * (editor.scrollHeight - editor.clientHeight);
-    if (Math.abs(editor.scrollTop - target) >= 1) editor.scrollTop = target;
-    requestAnimationFrame(() => { _lock = false; });
-  };
-  editor.addEventListener('scroll', onEditorScroll);
-  preview.addEventListener('scroll', onPreviewScroll);
-  _scrollSync = { editor, preview, onEditorScroll, onPreviewScroll };
+  // wireProportionalScrollSync() (src/scroll-rail.js) — shared with
+  // live-editor.js's own textarea<->CM6 Split sync so the "don't write
+  // scrollTop into a pane that's mid deliberate smooth-scroll" fix (see its
+  // own header comment) lives in exactly one place for both. Previously
+  // this used a boolean "lock" cleared on the next animation frame, which
+  // is a timing race, not a real guard — see live-editor.js's now-shared
+  // header comment for the phantom-scroll bug that produced.
+  _scrollSync = { unwire: wireProportionalScrollSync(editor, preview) };
 }
 
 /** Detach the non-live split-mode scroll listeners (if wired) so toggling the
  *  Sync scroll setting off takes effect immediately, not just on next mode switch. */
 export function unwireScrollSync() {
   if (!_scrollSync) return;
-  const { editor, preview, onEditorScroll, onPreviewScroll } = _scrollSync;
-  editor.removeEventListener('scroll', onEditorScroll);
-  preview.removeEventListener('scroll', onPreviewScroll);
+  _scrollSync.unwire();
   _scrollSync = null;
   _scrollSyncWired = false;
 }
@@ -737,8 +709,14 @@ function _wireInternalAnchorScroll(preview) {
     const target = document.getElementById(id);
     if (!target) return;
     e.preventDefault();
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    // runSmoothScroll(), not target.scrollIntoView({behavior:'smooth'}) —
+    // scrollIntoView's own smooth animation isn't tracked by
+    // isProgrammaticSmoothScroll(), so the Split-mode proportional scroll
+    // sync below could write straight into `preview` mid-animation and
+    // cancel it. Same fix, same reasoning, as live-editor.js's [TOC]/
+    // heading-tick navigation.
+    const targetTop = preview.scrollTop + target.getBoundingClientRect().top - preview.getBoundingClientRect().top;
+    runSmoothScroll(preview, targetTop);
     location.hash = id;
   });
 }

@@ -231,6 +231,13 @@ export function showInstallBar(onInstall, onDismiss) {
   }
 }
 
+/** Idempotent — safe to call whether or not the bar is currently visible
+ *  (already-standalone startup, an accepted install prompt, 'appinstalled'
+ *  firing possibly *before* this app's own code ever showed the bar). */
+export function hideInstallBar() {
+  document.getElementById('pwa-install-bar')?.classList.remove('visible');
+}
+
 // ── Auth error helpers ────────────────────────────────────────────────────────
 
 // Shared by every auth-screen error field (passcode, encryption): show a

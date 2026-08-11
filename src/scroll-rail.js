@@ -8,9 +8,12 @@
 //
 // Each surface owns its own independent ScrollRail instance rather than one
 // shared singleton — Split mode shows the textarea and the Live surface at
-// once, side by side, so a single shared instance can't work. See
-// wireScrollRail() in app/editor-behavior.js (textarea) and this module's
-// mount() call inside live-editor.js (CM6) for where each is created.
+// once, side by side, so a single shared instance can't work. Both instances
+// mount as siblings of their surface inside the shared `.editor-wrap` card
+// (never inside the surface's own scrolling DOM) and share one positioning
+// algorithm — see mountWriteScrollRail() (ui/editor.js) and _RailPlugin
+// (live-editor.js) for where each is created, and this class's own
+// _reposition() for the shared geometry.
 //
 // `adapter` abstracts over the two surfaces:
 //   - getMetrics(): { scrollTop, scrollHeight, clientHeight }
@@ -38,9 +41,133 @@
 // still reads as a handful of ticks, not the whole rail.
 const _TICK_PROXIMITY_RADIUS_PX = 56;
 
+// ── Shared smooth-scroll tracking ───────────────────────────────────────────
+// Every *deliberate* jump on either surface (a rail tick/track click, [TOC]/
+// anchor navigation, CM6's own off-screen heading correction) goes through
+// runSmoothScroll() rather than calling el.scrollTo({behavior:'smooth'})
+// directly, so that isProgrammaticSmoothScroll(el) can tell a Split-mode
+// proportional-sync handler "this element is mid deliberate animation right
+// now" — see wireProportionalScrollSync() below for why that matters: a
+// script-driven scrollTop write cancels any native smooth scroll already in
+// flight on that same element, so a sync handler must skip exactly that one
+// write (without disabling sync altogether) whenever its target is animating.
+const _pendingScrolls = new WeakMap(); // el -> { token, cancel() }
+let _scrollTokenSeq = 0;
+
+export function isProgrammaticSmoothScroll(el) {
+  return _pendingScrolls.has(el);
+}
+
+/**
+ * Smoothly scroll `el` to `top` (or jump instantly under
+ * prefers-reduced-motion), tracking `el` via isProgrammaticSmoothScroll()
+ * until the browser reports the scroll has settled. Calling this again for
+ * the same `el` before the previous call settled supersedes its tracking —
+ * el.scrollTo({behavior:'smooth'}) naturally retargets an in-flight native
+ * smooth scroll toward the new destination, so the newer call always wins
+ * visually; this only makes sure stale tracking can't outlive it (a correction
+ * from an old CM6 heading jump, say, can't be mistaken for the new one's).
+ */
+export function runSmoothScroll(el, top) {
+  _pendingScrolls.get(el)?.cancel();
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (reduceMotion) {
+    el.scrollTop = top;
+    return;
+  }
+  const token = ++_scrollTokenSeq;
+  el.scrollTo({ top, behavior: 'smooth' });
+
+  // `scrollend` (Chrome 114+, Firefox 109+, Safari 17.4+) is the real
+  // signal, but isn't universal yet and — per spec ambiguity confirmed live
+  // — isn't guaranteed to fire at all for a zero-distance scrollTo. A
+  // bounded rAF poll runs alongside it unconditionally as a safety net:
+  // "stable" requires a couple of quiet frames (not just one) so a
+  // not-yet-started animation isn't mistaken for an already-finished one,
+  // and a hard frame cap means a pane that gets hidden/removed mid-animation
+  // can't wedge the tracking on forever.
+  let frame = 0;
+  let stableFrames = 0;
+  let lastTop = el.scrollTop;
+  let framesLeft = 180; // ~3s at 60fps
+  let rafId = null;
+  const finish = () => {
+    el.removeEventListener('scrollend', finish);
+    if (rafId != null) cancelAnimationFrame(rafId);
+    if (_pendingScrolls.get(el)?.token === token) _pendingScrolls.delete(el);
+  };
+  const poll = () => {
+    if (_pendingScrolls.get(el)?.token !== token) return; // superseded
+    frame++;
+    if (Math.abs(el.scrollTop - lastTop) < 0.5) {
+      if (frame > 2 && ++stableFrames >= 3) { finish(); return; }
+    } else {
+      stableFrames = 0;
+      lastTop = el.scrollTop;
+    }
+    if (--framesLeft <= 0) { finish(); return; }
+    rafId = requestAnimationFrame(poll);
+  };
+  el.addEventListener('scrollend', finish);
+  rafId = requestAnimationFrame(poll);
+  _pendingScrolls.set(el, { token, cancel: finish });
+}
+
+/**
+ * Wire bidirectional proportional (percent-of-scrollable-range) scroll sync
+ * between two panes — shared by both Split-mode implementations (the plain
+ * textarea against either the static rendered preview or the CM6 Live
+ * surface) so the "don't fight a deliberate smooth scroll" fix lives in one
+ * place instead of two nearly-identical copies.
+ *
+ * Skips a write into `to` (rather than disabling sync altogether) whenever
+ * `to` is currently mid-runSmoothScroll() — assigning scrollTop into it would
+ * cancel that animation — while still reading and propagating `from`'s live
+ * position on every scroll event, in both directions. Also skips a write
+ * that's already within a hair of the target so an echo from the last write
+ * can't bounce back and forth forever.
+ *
+ * @returns {() => void} unwire
+ */
+export function wireProportionalScrollSync(elA, elB) {
+  const propagate = (from, to) => {
+    if (isProgrammaticSmoothScroll(to)) return;
+    const maxFrom = from.scrollHeight - from.clientHeight;
+    const ratio = maxFrom > 0 ? from.scrollTop / maxFrom : 0;
+    const target = ratio * (to.scrollHeight - to.clientHeight);
+    if (Math.abs(to.scrollTop - target) < 1) return;
+    to.scrollTop = target;
+  };
+  const onA = () => propagate(elA, elB);
+  const onB = () => propagate(elB, elA);
+  elA.addEventListener('scroll', onA);
+  elB.addEventListener('scroll', onB);
+  return () => {
+    elA.removeEventListener('scroll', onA);
+    elB.removeEventListener('scroll', onB);
+  };
+}
+
+// ── The rail itself ─────────────────────────────────────────────────────────
+// Both surfaces mount their rail as a plain sibling of the surface inside the
+// shared `.editor-wrap` card (never inside the surface's own scrolling DOM —
+// in particular, never inside CM6's `.cm-editor`, which is CodeMirror-owned
+// internal DOM) and both use this class's own _reposition() to overlay the
+// rail on `surfaceEl`'s live border box. One mounting strategy, one
+// positioning algorithm, for both — see mountWriteScrollRail() (ui/editor.js)
+// and _RailPlugin (live-editor.js) for where each instance is created.
 export class ScrollRail {
-  constructor(mountEl, adapter) {
+  /**
+   * @param {HTMLElement} wrapEl - the shared `.editor-wrap` card; the rail is
+   *   appended here and _reposition() reads offsets relative to it.
+   * @param {object} adapter
+   * @param {HTMLElement} [surfaceEl] - the surface this rail overlays
+   *   (`#note-editor` or `#note-live`); its live getBoundingClientRect()
+   *   drives top/height/right on every relevant resize.
+   */
+  constructor(wrapEl, adapter, surfaceEl) {
     this.adapter = adapter;
+    this.surfaceEl = surfaceEl || null;
     this.dom = document.createElement('div');
     this.dom.className = 'scroll-rail';
     this.thumb = document.createElement('div');
@@ -49,11 +176,12 @@ export class ScrollRail {
     this.ticksLayer = document.createElement('div');
     this.ticksLayer.className = 'scroll-rail-ticks';
     this.dom.appendChild(this.ticksLayer);
-    mountEl.appendChild(this.dom);
+    wrapEl.appendChild(this.dom);
 
     this._headings = [];
     this._dragging = false;
     this._lastMetrics = null;
+    this._lastClientY = null;
 
     this._onTrackPointerDown = this._onTrackPointerDown.bind(this);
     this._onThumbPointerDown = this._onThumbPointerDown.bind(this);
@@ -71,9 +199,15 @@ export class ScrollRail {
     // initial layout pass generically, plus every later resize (window
     // resize, a side panel opening, the monospace font toggle, Split mode
     // narrowing the pane) without every mount site needing its own resize
-    // wiring for this.
-    this._resizeObserver = new ResizeObserver(() => this.updateMetrics());
+    // wiring for this. Also observing surfaceEl itself (not just the rail's
+    // own already-positioned box) is what catches a hidden→visible mode
+    // switch and Split's column-width changes *before* the rail has ever
+    // been positioned once — a resize of the rail's own 0×0 box wouldn't
+    // otherwise fire until after that first _reposition() already ran.
+    this._resizeObserver = new ResizeObserver(() => { this.reposition(); this.updateMetrics(); });
     this._resizeObserver.observe(this.dom);
+    if (this.surfaceEl) this._resizeObserver.observe(this.surfaceEl);
+    this.reposition();
 
     this.thumb.addEventListener('pointerdown', this._onThumbPointerDown);
     // Clicking the bare track (not the thumb, not a tick) jumps straight to
@@ -87,6 +221,34 @@ export class ScrollRail {
     // solid dashed line the instant it's hovered.
     this.dom.addEventListener('mousemove', this._onTicksPointerMove);
     this.dom.addEventListener('mouseleave', this._onTicksPointerLeave);
+  }
+
+  // Overlay the rail on this.surfaceEl's current border box, in
+  // this.dom's-parent-relative coordinates — the one positioning algorithm
+  // shared by Write and Live/Preview (see this file's header comment).
+  // Recomputed from live getBoundingClientRect()s rather than cached deltas:
+  // correct even when the offset between the rail's wrap and its surface
+  // changed for a reason that isn't a resize of either individually (e.g.
+  // the toolbar row above growing taller pushes the surface down without
+  // changing the surface's own width, or the wrap's height at all). No-op
+  // when constructed without a surfaceEl (there is currently no such call
+  // site, but nothing here requires one). Public (not just the internal
+  // ResizeObserver's own callback): a mode switch's display:none <-> visible
+  // flip isn't guaranteed to fire that observer in time for the very first
+  // paint of a newly-revealed surface, so callers that own a mode switch
+  // (ui/editor.js's setMarkdownMode, live-editor.js's _RailPlugin.rebuild)
+  // call this explicitly too — confirmed live the observer alone left a
+  // freshly-revealed rail at stale, usually zero-sized, geometry otherwise.
+  reposition() {
+    if (!this.surfaceEl) return;
+    const wrap = this.dom.parentElement;
+    if (!wrap) return;
+    const surfaceRect = this.surfaceEl.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    this.dom.style.top = `${surfaceRect.top - wrapRect.top}px`;
+    this.dom.style.height = `${surfaceRect.height}px`;
+    this.dom.style.bottom = 'auto';
+    this.dom.style.right = `${wrapRect.right - surfaceRect.right + 9}px`;
   }
 
   // Called on scroll/resize of the underlying surface. Cheap — just reads
@@ -151,6 +313,14 @@ export class ScrollRail {
       tick.addEventListener('click', (evt) => { if (evt.detail === 0) jump(); });
       this.ticksLayer.appendChild(tick);
     }
+    // CM6 keeps refining its estimated heading positions for a few update
+    // cycles right after a long document first mounts (see live-editor.js's
+    // rebuild()), each refinement able to call this again — which, without
+    // this, would silently reset any tick a real hover was actively
+    // highlighting back to dim (fresh buttons start with no --proximity)
+    // until the next actual pointer move. A held-still pointer gets its
+    // highlight re-applied to the just-rebuilt ticks immediately instead.
+    if (this._lastClientY != null) this._applyProximity(this._lastClientY);
   }
 
   _onTrackPointerDown(evt) {
@@ -171,18 +341,23 @@ export class ScrollRail {
   // the moment it's hovered. Each tick's own CSS (.scroll-rail-tick) turns
   // --proximity into opacity/scale; this only computes the number.
   _onTicksPointerMove(evt) {
+    this._lastClientY = evt.clientY;
+    this._applyProximity(evt.clientY);
+  }
+  _onTicksPointerLeave() {
+    this._lastClientY = null;
+    for (const tick of this.ticksLayer.children) tick.style.removeProperty('--proximity');
+  }
+  _applyProximity(clientY) {
     if (!this._headings.length) return;
     const rect = this.dom.getBoundingClientRect();
     if (!rect.height) return;
-    const y = evt.clientY - rect.top;
+    const y = clientY - rect.top;
     for (const tick of this.ticksLayer.children) {
       const tickY = (parseFloat(tick.dataset.topPct) / 100) * rect.height;
       const proximity = Math.max(0, 1 - Math.abs(tickY - y) / _TICK_PROXIMITY_RADIUS_PX);
       tick.style.setProperty('--proximity', proximity.toFixed(3));
     }
-  }
-  _onTicksPointerLeave() {
-    for (const tick of this.ticksLayer.children) tick.style.removeProperty('--proximity');
   }
 
   _onThumbPointerDown(evt) {

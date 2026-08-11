@@ -372,8 +372,16 @@
      still leave part of the "hidden" bar, including its inactive Install
      button, visible above the true bottom edge. Only .visible below opts
      into tracking --kb-inset, once the bar is actually meant to be shown
-     above the keyboard. */
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
+     above the keyboard.
+     z-index matches .sw-update-bar's own tier (app-shell.css) and for the
+     same documented reason: beforeinstallprompt can fire on any screen,
+     including the full-screen route containers (.auth-screen/.legal-screen/
+     #landing-screen/#app-landing-screen: 900, #loading-screen: 1000) — a
+     lower z-index left this bar rendered but genuinely unclickable
+     (confirmed live: document.elementFromPoint() on its own buttons
+     resolved to the landing screen underneath) whenever one of those was
+     the active screen. */
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 1100;
   background: var(--bg-elevated); border-top: 1px solid var(--border);
   padding: 12px 20px; display: flex; align-items: center; gap: 12px;
   box-shadow: var(--shadow-md); transform: translateY(100%); transition: transform 0.3s ease, bottom 0.15s ease;
