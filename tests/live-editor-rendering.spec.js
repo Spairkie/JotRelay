@@ -131,17 +131,22 @@ test.describe('Live/Split surface rendering', () => {
   });
 
   test('an unconverted emoji shortcode does not pick up string-literal coloring', async ({ page }) => {
-    // markdownLanguage's own built-in Emoji extension tags ":smile:" with
-    // tags.character, which @lezer/highlight defines as a sub-tag of
-    // tags.string — without an explicit override, the shared HighlightStyle
-    // added for fenced-code string literals would visibly (mis)color this
-    // literal, unconverted shortcode text as if it were a real string.
+    // markdownLanguage's own built-in Emoji extension tags any :word:-shaped
+    // text with tags.character, which @lezer/highlight defines as a
+    // sub-tag of tags.string — without an explicit override, the shared
+    // HighlightStyle added for fenced-code string literals would visibly
+    // (mis)color this literal, unconverted shortcode text as if it were a
+    // real string. Uses the same "definitely not a real shortcode" fixture
+    // as editor.spec.js — ":smile:" (an earlier version of this test) is
+    // actually in markdown-emoji-map.js and gets converted to a real 😄
+    // character, so it's never left as literal text to test the override
+    // against in the first place.
     await createRoom(page);
-    await typeInEditor(page, 'Shortcode: :smile: :rocket:\n');
+    await typeInEditor(page, 'Shortcode: :not_a_real_shortcode: :rocket:\n');
     await setEditorMode(page, 'preview');
     await page.keyboard.press('Control+End');
 
-    const shortcode = page.locator('.note-live').getByText(':smile:', { exact: true });
+    const shortcode = page.locator('.note-live').getByText(':not_a_real_shortcode:', { exact: true });
     await expect(shortcode).toBeVisible();
     const color = await shortcode.evaluate((el) => getComputedStyle(el).color);
     const bodyColor = await page.locator('.note-live').first().evaluate((el) => getComputedStyle(el).color);
@@ -220,7 +225,7 @@ test.describe('Live/Split surface rendering', () => {
     await expect(toc.locator('a')).toHaveCount(2);
   });
 
-  test('document mini-map dots stay invisible until the pointer nears the scroller edge', async ({ page }) => {
+  test('CM6 scroll rail: thumb stays ambiently visible, ticks stay hidden until hover', async ({ page }) => {
     await createRoom(page);
     const filler = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n\n'.repeat(20);
     await typeInEditor(
@@ -229,30 +234,31 @@ test.describe('Live/Split surface rendering', () => {
     );
     await setEditorMode(page, 'preview');
 
-    const firstDot = page.locator('.note-live .cm-minimap-dot').first();
-    await expect(firstDot).toHaveCSS('opacity', '0');
+    // The thumb is a real scrollbar — ambiently visible at rest (never a
+    // hard 0), same "there's obviously something to scroll" affordance a
+    // native scrollbar gives for free.
+    const thumb = page.locator('.note-live .scroll-rail .scroll-rail-thumb');
+    await expect(thumb).toHaveCSS('opacity', '0.32');
 
-    const scrollerBox = await page.locator('.note-live .cm-scroller').boundingBox();
-    // Near the right edge, deliberately not on a specific dot — proximity
-    // alone (not a precise 5px hit) should reveal the whole group at a
-    // subtle opacity.
-    await page.mouse.move(scrollerBox.x + scrollerBox.width - 10, scrollerBox.y + 10);
-    await expect(firstDot).toHaveCSS('opacity', '0.45');
+    // The ticks (the heading "minimap") stay fully invisible until hovered —
+    // unlike the thumb, nothing here is worth showing until the user is
+    // actually looking for a section to jump to.
+    const ticksLayer = page.locator('.note-live .scroll-rail .scroll-rail-ticks');
+    await expect(ticksLayer).toHaveCSS('opacity', '0');
 
-    // Hovering the dot itself brings it to full prominence, not just the
-    // group's dim reveal opacity — .cm-minimap.is-near-edge .cm-minimap-dot
-    // and .cm-minimap .cm-minimap-dot:hover both have 3-class specificity,
-    // so this also guards the fix that made the :hover rule actually win.
-    const firstDotBox = await firstDot.boundingBox();
-    await page.mouse.move(firstDotBox.x + firstDotBox.width / 2, firstDotBox.y + firstDotBox.height / 2);
-    await expect(firstDot).toHaveCSS('opacity', '1');
+    const rail = page.locator('.note-live .scroll-rail');
+    const railBox = await rail.boundingBox();
+    await page.mouse.move(railBox.x + railBox.width / 2, railBox.y + 10);
+    await expect(ticksLayer).toHaveCSS('opacity', '1');
 
-    // Moving away from the editor entirely hides them again.
-    await page.mouse.move(scrollerBox.x + scrollerBox.width / 2, scrollerBox.y - 40);
-    await expect(firstDot).toHaveCSS('opacity', '0');
+    // Moving away from the editor entirely hides the ticks again; the thumb
+    // stays at its ambient opacity regardless.
+    await page.mouse.move(railBox.x - 200, railBox.y - 40);
+    await expect(ticksLayer).toHaveCSS('opacity', '0');
+    await expect(thumb).toHaveCSS('opacity', '0.32');
   });
 
-  test('document mini-map shows one tick per heading and jumps on click', async ({ page }) => {
+  test('CM6 scroll rail ticks only stand out near the pointer, per --proximity', async ({ page }) => {
     await createRoom(page);
     const filler = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n\n'.repeat(20);
     await typeInEditor(
@@ -261,22 +267,101 @@ test.describe('Live/Split surface rendering', () => {
     );
     await setEditorMode(page, 'preview');
 
-    const minimap = page.locator('.note-live .cm-minimap');
-    await expect(minimap).toBeVisible();
-    const dots = minimap.locator('.cm-minimap-dot');
-    expect(await dots.count()).toBe(3);
-    await expect(dots.nth(2)).toHaveAttribute('title', 'End');
+    const rail = page.locator('.note-live .scroll-rail');
+    const ticks = rail.locator('.scroll-rail-tick');
+    const firstTick = ticks.first();
+    const lastTick = ticks.last();
+
+    const firstBox = await firstTick.boundingBox();
+    const lastBox = await lastTick.boundingBox();
+    // Hover directly over the first tick — it should read as fully
+    // prominent while a tick far down the rail stays dim.
+    await page.mouse.move(firstBox.x + firstBox.width / 2, firstBox.y + firstBox.height / 2);
+    await expect.poll(() => firstTick.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+    const lastOpacityNearFirst = await lastTick.evaluate((el) => getComputedStyle(el).opacity);
+    expect(Number(lastOpacityNearFirst)).toBeLessThan(0.3);
+
+    // Move to the far tick instead — prominence should follow the pointer,
+    // not stay pinned to whichever tick was first revealed.
+    await page.mouse.move(lastBox.x + lastBox.width / 2, lastBox.y + lastBox.height / 2);
+    await expect.poll(() => lastTick.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+  });
+
+  test('CM6 scroll rail shows one tick per heading and jumps on click', async ({ page }) => {
+    await createRoom(page);
+    const filler = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n\n'.repeat(20);
+    await typeInEditor(
+      page,
+      `# Intro\n\n${filler}## Middle\n\n${filler}## End\n\n${filler}`,
+    );
+    await setEditorMode(page, 'preview');
+
+    const rail = page.locator('.note-live .scroll-rail');
+    const ticks = rail.locator('.scroll-rail-tick');
+    expect(await ticks.count()).toBe(3);
+    await expect(ticks.nth(2)).toHaveAttribute('title', 'End');
 
     const scroller = page.locator('.note-live .cm-scroller');
     const before = await scroller.evaluate((el) => el.scrollTop);
-    await dots.nth(2).click();
+    await ticks.nth(2).click();
     await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(before);
   });
 
-  test('document mini-map stays hidden with fewer than two headings', async ({ page }) => {
+  test('CM6 scroll rail renders no ticks with fewer than two headings', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page, '# Only heading\n\nJust some text.\n');
     await setEditorMode(page, 'preview');
-    await expect(page.locator('.note-live .cm-minimap')).toBeHidden();
+    await expect(page.locator('.note-live .scroll-rail .scroll-rail-tick')).toHaveCount(0);
+  });
+
+  test('CM6 scroll rail thumb drag scrolls the surface', async ({ page }) => {
+    await createRoom(page);
+    const filler = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n\n'.repeat(40);
+    await typeInEditor(page, `# Intro\n\n${filler}## End\n\n${filler}`);
+    await setEditorMode(page, 'preview');
+
+    const scroller = page.locator('.note-live .cm-scroller');
+    const thumb = page.locator('.note-live .scroll-rail .scroll-rail-thumb');
+    // ScrollRail.updateMetrics() sets the thumb's height once its own
+    // ResizeObserver/CM6-geometry callbacks have run — racy right after a
+    // fresh mount, so wait for a real (non-empty) height before trusting its
+    // boundingBox() rather than reading one mid-layout.
+    await expect(thumb).not.toHaveCSS('height', '0px');
+    const before = await scroller.evaluate((el) => el.scrollTop);
+    const thumbBox = await thumb.boundingBox();
+    await page.mouse.move(thumbBox.x + thumbBox.width / 2, thumbBox.y + thumbBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(thumbBox.x + thumbBox.width / 2, thumbBox.y + 400, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(before);
+  });
+
+  test('Write-mode scroll rail shows one tick per heading and jumps on click', async ({ page }) => {
+    await createRoom(page);
+    const filler = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n\n'.repeat(20);
+    await typeInEditor(
+      page,
+      `# Intro\n\n${filler}## Middle\n\n${filler}## End\n\n${filler}`,
+    );
+
+    const rail = page.locator('.scroll-rail-write');
+    const ticks = rail.locator('.scroll-rail-tick');
+    // The mirror-div measurement (src/scroll-rail.js's measureTextareaHeadingTops)
+    // is debounced 150ms after the last 'input' — see ui/editor.js's
+    // refreshWriteScrollRailDebounced().
+    await expect(ticks).toHaveCount(3);
+    await expect(ticks.nth(2)).toHaveAttribute('title', 'End');
+
+    const editor = page.locator('#note-editor');
+    // Typing leaves the textarea scrolled to follow the caret at the very
+    // end of the document (past "End"'s own heading line, into its trailing
+    // filler) — unlike the CM6 tests above, whose surface mounts fresh at
+    // scrollTop 0 on the switch into Preview. Reset explicitly so "jumps on
+    // click" has an unambiguous starting point instead of only sometimes
+    // moving downward depending on where typing happened to leave the caret.
+    await editor.evaluate((el) => { el.scrollTop = 0; });
+    const before = await editor.evaluate((el) => el.scrollTop);
+    await ticks.nth(2).click();
+    await expect.poll(() => editor.evaluate((el) => el.scrollTop)).toBeGreaterThan(before);
   });
 });

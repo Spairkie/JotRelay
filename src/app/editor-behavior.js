@@ -36,6 +36,7 @@ export function _enforceBodyMax() {
 
 export function _wireEditorCore() {
   const editor = document.getElementById('note-editor');
+  UI.mountWriteScrollRail();
 
   editor?.addEventListener('input', () => {
     if (!canEdit()) return;
@@ -53,6 +54,7 @@ export function _wireEditorCore() {
     _debouncedRefreshFloatingComments();
     _debouncedPruneDeletedCommentAnchors();
     _updateSlashMenu();
+    UI.refreshWriteScrollRailDebounced();
   });
   editor?.addEventListener('blur', () => { onEditorBlur(); _closeSlashMenu(); });
 

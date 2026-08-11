@@ -27,6 +27,7 @@ import { parseTableAlignments } from './markdown-table-utils.js';
 import { EMOJI_MAP } from './markdown-emoji-map.js';
 import { renderMarkdown } from './markdown.js';
 import { toggleFootnotePopover } from './footnote-popover.js';
+import { ScrollRail } from './scroll-rail.js';
 
 let _view                = null;
 let _onChange            = null;
@@ -496,12 +497,36 @@ const _checklistProgressField = StateField.define({
 // it explicitly rather than it being a blanket default.
 function _scrollPosIntoView(view, pos, { center = true, smooth = false } = {}) {
   const scroller = view.scrollDOM;
-  const block = view.lineBlockAt(Math.min(pos, view.state.doc.length));
-  const target = center ? block.top - scroller.clientHeight / 2 : block.top - 40;
-  const top = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
+  const clampedPos = Math.min(pos, view.state.doc.length);
+  const computeTop = () => {
+    const block = view.lineBlockAt(clampedPos);
+    const target = center ? block.top - scroller.clientHeight / 2 : block.top - 40;
+    return Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
+  };
   const reduceMotion = smooth && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  if (smooth && !reduceMotion) scroller.scrollTo({ top, behavior: 'smooth' });
-  else scroller.scrollTop = top;
+  const doScroll = (top) => {
+    if (smooth && !reduceMotion) scroller.scrollTo({ top, behavior: 'smooth' });
+    else scroller.scrollTop = top;
+  };
+
+  // CM6 only has an *estimated* height for a position outside the currently
+  // -drawn viewport (view.viewport) — real measurement happens when that
+  // region actually renders. A smooth scroll commits to a fixed target the
+  // instant it's called and has no way to course-correct if the real
+  // height comes in mid-flight once the target region renders — that
+  // mismatch is what made a minimap/TOC jump to a distant, unvisited
+  // heading sometimes stop short of (or past) the actual heading instead
+  // of landing on it. Confirmed live: an instant jump first — forcing CM6
+  // to render and therefore measure that region — then recomputing the
+  // target from those now-real numbers lands accurately every time; a
+  // target already inside the drawn viewport is already accurately
+  // measured, so it skips straight to one clean scroll with no pre-jump.
+  if (clampedPos >= view.viewport.from && clampedPos <= view.viewport.to) {
+    doScroll(computeTop());
+    return;
+  }
+  scroller.scrollTop = computeTop();
+  requestAnimationFrame(() => doScroll(computeTop()));
 }
 
 // Typora-style [TOC] marker: a line containing only "[TOC]" gets a rendered
@@ -713,49 +738,48 @@ const _tocField = StateField.define({
   provide: (f) => EditorView.decorations.from(f),
 });
 
-// ── Document mini-map (heading overview strip) ──────────────────────────────
-// A very thin rail along the scroller's right edge, near-invisible until
-// hovered, with one tick per heading positioned proportionally to where it
-// falls in the full scrollable document — a subtle "you are here, and here's
-// what's ahead" overview built from the same heading list [TOC] uses,
-// without the fully-fledged always-visible sidebar a real minimap would be.
-// Ticks are fixed relative to the viewport (not the scrolled content), same
-// as a native scrollbar, so they only need recomputing when the document or
-// the editor's own size changes — never on scroll.
-// How close the pointer needs to be to the scroller's right edge (in CSS
-// px) before the otherwise-invisible dots fade in — wide enough to cover
-// the real scrollbar plus a comfortable margin, narrow enough that moving
-// the mouse across the body of the document doesn't trigger it. .cm-minimap
-// itself stays pointer-events:none (see its CSS) so it can never intercept
-// clicks meant for the actual scrollbar underneath it; this is a plain
-// mousemove/clientX check against the scroller's own bounding rect instead
-// of a CSS :hover, specifically so the reveal can start before the pointer
-// is precisely on a 5px dot, not just once it's already there.
-const _MINIMAP_REVEAL_ZONE_PX = 32;
-
-class _MinimapTrack {
+// ── Scroll rail (unified scrollbar + heading overview) ──────────────────────
+// Replaces the native scrollbar's visual chrome with a shared component
+// (src/scroll-rail.js) that also owns this surface's minimap: a draggable
+// thumb tracking real scroll position, plus one tick per heading positioned
+// proportionally to where it falls in the full scrollable document. Hidden
+// until hovered — see .scroll-rail's CSS — so it reads as "considered" chrome
+// rather than a permanent sidebar. The Write-mode textarea gets its own
+// independent instance of the same component (app/editor-behavior.js);
+// see scroll-rail.js's header comment for why they can't share one.
+class _RailPlugin {
   constructor(view) {
-    this.dom = document.createElement('div');
-    this.dom.className = 'cm-minimap';
-    view.dom.appendChild(this.dom);
+    this.view = view;
     this._positioned = null;
-    // Listened on view.dom (.cm-editor), not view.scrollDOM (.cm-scroller):
-    // .cm-minimap is a *sibling* of .cm-scroller, not a descendant of it (both
-    // are direct children of view.dom, appended above), and each dot has its
-    // own pointer-events:auto — so a mousemove landing exactly on a dot never
-    // bubbles up through .cm-scroller at all, only through .cm-minimap and
-    // view.dom. Listening on .cm-scroller alone would miss that case, leaving
-    // only the one dot under the pointer visible via its own :hover rule
-    // while the rest of the group stayed invisible.
-    this._listenDOM = view.dom;
-    this._onScrollerMove = (evt) => {
-      const rect = view.scrollDOM.getBoundingClientRect();
-      const nearEdge = evt.clientX >= rect.right - _MINIMAP_REVEAL_ZONE_PX;
-      this.dom.classList.toggle('is-near-edge', nearEdge);
+    const adapter = {
+      getMetrics: () => {
+        const el = view.scrollDOM;
+        return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight };
+      },
+      setScrollTop: (top, { smooth } = {}) => {
+        if (smooth) view.scrollDOM.scrollTo({ top, behavior: 'smooth' });
+        else view.scrollDOM.scrollTop = top;
+      },
+      jumpToHeading: (h) => {
+        const pos = Math.min(h.pos, view.state.doc.length);
+        view.dispatch({ selection: { anchor: pos } });
+        _scrollPosIntoView(view, pos, { smooth: true });
+        view.focus();
+      },
     };
-    this._onScrollerLeave = () => this.dom.classList.remove('is-near-edge');
-    view.dom.addEventListener('mousemove', this._onScrollerMove);
-    view.dom.addEventListener('mouseleave', this._onScrollerLeave);
+    // Mounted on view.dom (.cm-editor), a sibling of view.scrollDOM
+    // (.cm-scroller) — see styles/editor.css for how .scroll-rail is
+    // positioned absolute over the scroller without becoming a descendant of
+    // it (a descendant would itself add to scrollHeight).
+    this.rail = new ScrollRail(view.dom, adapter);
+    _railInstance = this;
+    // A native 'scroll' event, not CM6's own update()/viewportChanged: pure
+    // scrolling (no doc change) doesn't reliably dispatch a CM6 transaction,
+    // but the rail's thumb has to track scrollTop on every scroll regardless
+    // — unlike the old fixed-position minimap dots, the thumb's position
+    // *is* the scroll position.
+    this._onScroll = () => this.rail.updateMetrics();
+    view.scrollDOM.addEventListener('scroll', this._onScroll, { passive: true });
     this.rebuild(view);
   }
   update(update) {
@@ -777,79 +801,39 @@ class _MinimapTrack {
   }
   rebuild(view) {
     const headings = _collectHeadings(view.state);
-    const totalHeight = view.contentHeight || 1;
-    const positioned = headings.map((h) => ({
-      ...h,
-      top: Math.min(100, (view.lineBlockAt(h.pos).top / totalHeight) * 100),
-    }));
+    const positioned = headings.map((h) => ({ ...h, top: view.lineBlockAt(h.pos).top }));
     // A tolerance comparison, not an exact-match fingerprint — CM6 estimates
     // unmeasured lines' heights and keeps refining the estimate as more of a
     // long document is scrolled into view, which nudges every later
-    // heading's cumulative "top" by a fraction of a percent even when
+    // heading's cumulative pixel `top` by a fraction of a pixel even when
     // nothing about its actual position changed in any way a user could
-    // perceive (confirmed by measurement: a full round-trip through an
-    // already-settled document, position deltas topped out under 0.4
-    // percentage points — a fraction of a CSS pixel on the minimap rail).
-    // Rounding to a fixed precision before an exact-match comparison still
-    // misfires for values that happen to straddle a rounding boundary
-    // between two reads, so this compares the actual delta against a
-    // tolerance instead — immune to boundary-crossing by construction.
-    const TOP_TOLERANCE_PCT = 0.75;
+    // perceive. pos is still compared exactly, never with tolerance — each
+    // tick's jump() closure captures the h.pos current when it was built, so
+    // skipping a rebuild while pos actually moved (an edit shifted this
+    // heading's offset while its level/text/pixel-top all stayed within
+    // tolerance) would leave that tick jumping to stale content.
+    const TOP_TOLERANCE_PX = 2;
     const prev = this._positioned;
-    // pos is compared exactly, never with tolerance — each button's jump()
-    // closure below captures the h.pos current at the time it's built, so
-    // skipping a rebuild while pos actually moved (e.g. an edit inserted or
-    // removed text before this heading, shifting its offset while its
-    // level/text/percentage position all stayed within tolerance) would
-    // leave that tick jumping to stale, now-wrong content until some later
-    // update happened to force a real rebuild.
     const unchanged = prev && prev.length === positioned.length && positioned.every((h, i) =>
       h.level === prev[i].level && h.text === prev[i].text && h.pos === prev[i].pos
-      && Math.abs(h.top - prev[i].top) <= TOP_TOLERANCE_PCT);
-    if (unchanged) return; // nothing actually changed — skip the DOM churn
-    this._positioned = positioned;
-
-    this.dom.innerHTML = '';
-    this.dom.classList.toggle('hidden', positioned.length < 2);
-    if (positioned.length < 2) return;
-    for (const h of positioned) {
-      const dot = document.createElement('button');
-      dot.type = 'button';
-      dot.className = `cm-minimap-dot cm-minimap-dot-h${h.level}`;
-      dot.style.top = `${h.top}%`;
-      dot.title = h.text || 'section';
-      dot.setAttribute('aria-label', `Jump to ${h.text || 'section'}`);
-      const jump = () => {
-        const pos = Math.min(h.pos, view.state.doc.length);
-        view.dispatch({ selection: { anchor: pos } });
-        _scrollPosIntoView(view, pos, { smooth: true });
-        view.focus();
-      };
-      dot.addEventListener('mousedown', (evt) => {
-        // mousedown, same as the [TOC] widget above, so this fires before
-        // the editor would otherwise steal focus/selection on the way to a click.
-        evt.preventDefault();
-        jump();
-      });
-      // Same reasoning as the [TOC] widget's <a> above: a native <button> is
-      // Tab-focusable, but keyboard Enter/Space activation only ever fires
-      // 'click' (never 'mousedown'), so without this a keyboard user could
-      // Tab to a tick and have Enter/Space do nothing. evt.detail is 0 only
-      // for a keyboard-synthesized click, never a real pointer one, so a
-      // mouse click (already handled by mousedown above) doesn't re-jump.
-      dot.addEventListener('click', (evt) => {
-        if (evt.detail === 0) jump();
-      });
-      this.dom.appendChild(dot);
+      && Math.abs(h.top - prev[i].top) <= TOP_TOLERANCE_PX);
+    if (!unchanged) {
+      this._positioned = positioned;
+      this.rail.updateHeadings(positioned);
     }
+    this.rail.updateMetrics();
   }
   destroy() {
-    this._listenDOM.removeEventListener('mousemove', this._onScrollerMove);
-    this._listenDOM.removeEventListener('mouseleave', this._onScrollerLeave);
-    this.dom.remove();
+    this.view.scrollDOM.removeEventListener('scroll', this._onScroll);
+    this.rail.destroy();
+    if (_railInstance === this) _railInstance = null;
   }
 }
-const _minimapPlugin = ViewPlugin.fromClass(_MinimapTrack);
+const _railPlugin = ViewPlugin.fromClass(_RailPlugin);
+// Set by _RailPlugin's own constructor/destroy — refreshLayout() below is
+// the only outside caller that needs a handle to the live instance, so this
+// stays a plain module-level reference rather than a getter/exported class.
+let _railInstance = null;
 
 // GFM tables → real <table>s. A block-replace decoration (unlike the
 // additive widgets above) must come from a StateField — CM6 rejects block
@@ -979,7 +963,7 @@ export function setCommentAnchors(comments) {
   });
 }
 
-// True on touch/coarse-pointer devices — same test the CSS minimap rule
+// True on touch/coarse-pointer devices — same test the CSS scroll-rail rule
 // uses (inverted) to decide it should hide itself there. Used only as a
 // fallback below, when no real pointerdown has told us what kind of
 // pointer is actually being used.
@@ -1274,6 +1258,41 @@ const _theme = EditorView.theme({
 
 export function isMounted() { return !!_view; }
 
+// app/comments-preview.js's _applyMarkdownMode() calls LiveEditor.mount()
+// *before* UI.setMarkdownMode() removes .hidden from #note-live's container
+// (mount() needs to exist first so setMarkdownMode can decide whether "live"
+// mode actually succeeded) — so a first-ever mount always constructs this
+// view while its container is still display:none. CM6 measures scrollDOM's
+// real geometry lazily and doesn't know on its own that a later, unrelated
+// class change just made a hidden container visible, so scrollDOM.scrollHeight
+// / clientHeight (and therefore the scroll rail's thumb — see _RailPlugin)
+// silently stay wrong until *something* forces CM6 to look again. Call this
+// right after the container is actually shown (see setMarkdownMode's own
+// trailing call into ui/editor.js's write-mode equivalent, _positionWriteRail/
+// _refreshWriteScrollRail, for the same fix on the other surface).
+export function refreshLayout() {
+  if (!_view) return;
+  _view.requestMeasure();
+  // requestMeasure() alone isn't enough: confirmed live that immediately
+  // after a hidden-container mount is unhidden, .cm-scroller's real
+  // scrollHeight (27000+ for a long test doc) still read back as just its
+  // own clientHeight for at least one frame — CM6 hadn't yet finished
+  // populating the virtualized spacer elements that represent unmeasured
+  // off-screen content while it was invisible, so _RailPlugin's rebuild()
+  // saw an apparently-unscrollable document and never got a second chance
+  // to re-check (nothing else about the view's geometry changes on its own
+  // after that). A short setTimeout gives requestMeasure()'s queued work a
+  // moment to actually land before re-reading, confirmed reliable live —
+  // NOT requestAnimationFrame, which is throttled/fully suspended for a
+  // backgrounded tab (confirmed live — it never fired at all while testing
+  // through a non-foreground automation surface), and a real user
+  // backgrounding the tab right after opening a room in Split/Preview mode
+  // is a completely ordinary thing to do, not an edge case worth leaving
+  // broken. setTimeout still runs in the background (Chrome only clamps its
+  // minimum delay there, it doesn't suspend it outright).
+  setTimeout(() => _railInstance?.rebuild(_view), 50);
+}
+
 /**
  * Viewport pixel coordinates for a document offset (floating comment
  * composer/bubble placement). Returns null when unmounted or the position can't be resolved
@@ -1419,7 +1438,7 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
         _remoteCursorField,
         _checklistProgressField,
         _tocField,
-        _minimapPlugin,
+        _railPlugin,
         _tableField,
         _commentAnchorsField,
         EditorView.updateListener.of((update) => {

@@ -2,6 +2,7 @@
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { escapeHtml } from '../utils.js';
 import { toggleFootnotePopover } from '../footnote-popover.js';
+import { ScrollRail, collectPlainTextHeadings, measureTextareaHeadingTops } from '../scroll-rail.js';
 
 // ── Editor helpers ────────────────────────────────────────────────────────────
 
@@ -18,6 +19,103 @@ export function setEditorValue(text) {
     editor.selectionStart = Math.max(0, start + offset);
     editor.selectionEnd   = Math.max(0, end   + offset);
   }
+  // Every programmatic value-set (room load, remote sync, template
+  // insert/append, paste-file import, undo/redo of a whole-doc replace)
+  // funnels through here, unlike live typing (which mutates editor.value
+  // directly via the browser's own input handling and never calls this) —
+  // see refreshWriteScrollRail()'s own callers for the typing side.
+  _refreshWriteScrollRail();
+}
+
+// ── Write-mode scroll rail (unified scrollbar + heading overview) ──────────
+// Mirrors live-editor.js's own CM6 _RailPlugin using the same shared
+// src/scroll-rail.js component — see that file's header comment for why
+// each surface needs its own independent instance rather than one shared
+// singleton (Split mode shows both at once). Mounted once, for the whole
+// page lifecycle (guarded by _wireEditorCore's caller, same as every other
+// one-time listener — see app/wiring.js's wireEvents()); the textarea itself
+// persists across room navigation, so there's nothing room-scoped to reset.
+let _writeRail = null;
+let _writeRailRefreshTimer = null;
+
+export function mountWriteScrollRail() {
+  const editor = document.getElementById('note-editor');
+  const wrap = editor?.closest('.editor-wrap');
+  if (!editor || !wrap || _writeRail) return;
+  const adapter = {
+    getMetrics: () => ({ scrollTop: editor.scrollTop, scrollHeight: editor.scrollHeight, clientHeight: editor.clientHeight }),
+    setScrollTop: (top, { smooth } = {}) => {
+      if (smooth) editor.scrollTo({ top, behavior: 'smooth' });
+      else editor.scrollTop = top;
+    },
+    // top/offset were measured directly against this textarea, so no
+    // estimate-then-correct dance is needed the way CM6's virtualized
+    // renderer requires — the number is already exact. Smooth (like CM6's
+    // own jumpToHeading, live-editor.js's _scrollPosIntoView) rather than an
+    // instant snap, honoring prefers-reduced-motion the same way.
+    jumpToHeading: (h) => {
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      editor.scrollTo({ top: Math.max(0, h.top - 40), behavior: reduceMotion ? 'auto' : 'smooth' });
+      editor.focus();
+      editor.setSelectionRange(h.offset, h.offset);
+    },
+  };
+  _writeRail = new ScrollRail(wrap, adapter);
+  _writeRail.dom.classList.add('scroll-rail-write');
+  editor.addEventListener('scroll', () => _writeRail.updateMetrics(), { passive: true });
+  // Catches window resize, the monospace-font toggle, focus/typewriter-mode
+  // padding changes, and side-panel open/close narrowing the editor — any
+  // layout change that could shift where headings land, how tall the
+  // scrollable content is, or (via _positionWriteRail) where the rail
+  // itself needs to sit, without this file having to know about every
+  // individual feature that can cause one.
+  new ResizeObserver(() => { _positionWriteRail(); _refreshWriteScrollRail(); }).observe(editor);
+  _positionWriteRail();
+  _refreshWriteScrollRail();
+}
+
+// #note-editor isn't the rail's containing block (.editor-wrap is, so the
+// rail can share the floating-card's stacking context the way
+// .comment-margin-layer already does) and Split mode puts the textarea in
+// only the *left* column, not the full card width — so unlike the CM6
+// variant's fixed `right: 9px` inset (always flush with its own pane,
+// since it's mounted inside that pane), this position has to be computed
+// from the textarea's actual live rect rather than expressed as static CSS.
+function _positionWriteRail() {
+  if (!_writeRail) return;
+  const editor = document.getElementById('note-editor');
+  const wrap = editor?.closest('.editor-wrap');
+  if (!editor || !wrap) return;
+  const editorRect = editor.getBoundingClientRect();
+  const wrapRect = wrap.getBoundingClientRect();
+  _writeRail.dom.style.top = `${editorRect.top - wrapRect.top}px`;
+  _writeRail.dom.style.height = `${editorRect.height}px`;
+  _writeRail.dom.style.bottom = 'auto';
+  _writeRail.dom.style.right = `${wrapRect.right - editorRect.right + 9}px`;
+}
+
+// Debounced: the mirror-div heading measurement below forces a synchronous
+// layout, so running it on every keystroke of a fast typist would be
+// wasteful — a short trailing debounce keeps the rail's ticks fresh within
+// a perceptual instant without doing that work on every single 'input'.
+export function refreshWriteScrollRailDebounced() {
+  if (!_writeRail) return;
+  clearTimeout(_writeRailRefreshTimer);
+  _writeRailRefreshTimer = setTimeout(_refreshWriteScrollRail, 150);
+}
+
+function _refreshWriteScrollRail() {
+  if (!_writeRail) return;
+  const editor = document.getElementById('note-editor');
+  if (!editor) return;
+  const headings = collectPlainTextHeadings(editor.value);
+  if (headings.length < 2) {
+    _writeRail.updateHeadings([]);
+  } else {
+    const tops = measureTextareaHeadingTops(editor, headings);
+    _writeRail.updateHeadings(headings.map((h, i) => ({ ...h, top: tops[i] })));
+  }
+  _writeRail.updateMetrics();
 }
 
 export function getEditorValue() {
@@ -443,6 +541,21 @@ export function setMarkdownMode(mode, renderFn, { live = false, syncScroll = tru
   } else {
     unwireScrollSync();
   }
+
+  // #note-editor's own bounding box only changes here — a mode switch is a
+  // display:none <-> visible flip (and, in/out of Split, a column-width
+  // change), neither of which is guaranteed to fire the ResizeObserver
+  // mountWriteScrollRail() set up in time for the very first paint of a
+  // newly-revealed surface (confirmed live: switching straight from a
+  // hidden textarea into Split left the rail at its stale pre-hidden
+  // geometry — usually zero-sized — until *something else* happened to
+  // resize it). Both calls are cheap no-ops while the rail isn't mounted
+  // yet (before _wireEditorCore's one-time mountWriteScrollRail() call) or
+  // while #note-editor is hidden (position math against a 0×0 rect is
+  // harmless; updateMetrics() will just see scrollHeight<=clientHeight and
+  // mark itself unscrollable, same as any other short/empty document).
+  _positionWriteRail();
+  _refreshWriteScrollRail();
 }
 
 
