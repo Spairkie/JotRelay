@@ -254,6 +254,21 @@ export async function _resetEntireDatabase() {
   const { error: rateLimitErr } = await state.sb.from('syncpad_rate_limit_log').delete().not('id', 'is', null);
   if (rateLimitErr) console.error('[admin] failed to clear syncpad_rate_limit_log during full reset', rateLimitErr);
 
+  // The storage removal above only ever reaches files this reset itself
+  // just deleted syncpad_files rows for — it can't know about a Storage
+  // object that has no matching row at all (an interrupted upload, or any
+  // other gap predating this reset). A "start over" button that still
+  // leaves orphaned bytes behind isn't a full reset, so sweep those too.
+  // Best-effort and silent-if-unavailable: the syncpad-cleanup Edge
+  // Function is an optional, separately-deployed piece (see its README),
+  // and its absence shouldn't fail (or even warn on) the reset itself —
+  // the room/file part above is the part this button actually promises.
+  // functions.invoke() resolves (doesn't throw) even when the Edge
+  // Function is unreachable — it reports that via the returned `error`,
+  // same as every other supabase-js call — so check that, not a catch
+  // block, or an undeployed function would silently look handled here.
+  await state.sb.functions.invoke('syncpad-cleanup', { body: { mode: 'orphans', dryRun: false } }).catch(() => {});
+
   return { error: null, roomsDeleted: roomIds.length };
 }
 
