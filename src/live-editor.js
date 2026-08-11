@@ -512,6 +512,24 @@ function _scrollPosIntoView(view, pos, { center = true, smooth = false } = {}) {
   const reduceMotion = smooth && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const useSmooth = smooth && !reduceMotion;
 
+  // Every navigation call supersedes whatever came before it, regardless of
+  // which branch below it ends up taking — an earlier off-screen jump's
+  // still-listening correction (see the bottom of this function) must never
+  // survive to fire later and drag the view back toward its own, now-stale,
+  // target. Bumping the token here (not just inside the off-screen branch)
+  // is what closes that gap: without it, a second click landing in the
+  // *in-viewport* branch below returned early without invalidating the
+  // first click's pending correction, so if the scroller's own scroll
+  // events (driven by this second jump) happened to bring the first
+  // click's target into view.viewport, its stale listener would fire and
+  // override the second jump's destination.
+  _scrollNavToken++;
+  const myToken = _scrollNavToken;
+  if (_pendingCorrection) {
+    _pendingCorrection.scroller.removeEventListener('scroll', _pendingCorrection.onScroll);
+    _pendingCorrection = null;
+  }
+
   // A target already inside the drawn viewport is already accurately
   // measured — one clean scroll, no pre-jump or correction needed either way.
   if (clampedPos >= view.viewport.from && clampedPos <= view.viewport.to) {
@@ -539,12 +557,8 @@ function _scrollPosIntoView(view, pos, { center = true, smooth = false } = {}) {
   // animation approaches it), retarget with one more runSmoothScroll() call
   // — the browser blends a same-element retarget into the animation
   // already in flight rather than restarting it, so this reads as one
-  // coherent movement rather than two.
-  if (_pendingCorrection) {
-    _pendingCorrection.scroller.removeEventListener('scroll', _pendingCorrection.onScroll);
-    _pendingCorrection = null;
-  }
-  const myToken = ++_scrollNavToken;
+  // coherent movement rather than two. (myToken/_pendingCorrection's own
+  // prior entry were already invalidated above, before the branch split.)
   runSmoothScroll(scroller, computeTop());
   const onScroll = () => {
     if (myToken !== _scrollNavToken) { scroller.removeEventListener('scroll', onScroll); _pendingCorrection = null; return; }

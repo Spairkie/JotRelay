@@ -196,7 +196,7 @@ test.describe('PWA install banner', () => {
     await expect(page.locator('#pwa-install-bar')).not.toHaveClass(/visible/);
   });
 
-  test('accepting the install prompt hides the banner and persists suppression', async ({ page }) => {
+  test('accepting the install prompt hides the banner without persisting a lasting dismissal', async ({ page }) => {
     await goToLanding(page);
     await page.evaluate(() => localStorage.removeItem('syncpad_install_dismissed'));
     await dispatchFakeInstallPrompt(page, 'accepted');
@@ -204,21 +204,23 @@ test.describe('PWA install banner', () => {
 
     await page.locator('#pwa-install-bar .install').click();
     await expect(page.locator('#pwa-install-bar')).not.toHaveClass(/visible/);
-    expect(await page.evaluate(() => localStorage.getItem('syncpad_install_dismissed'))).toBe('1');
+    // Not persisted as a dismissal — "currently installed" and "user opted
+    // out" are different, differently-lived facts (see src/app/pwa.js's own
+    // comment on the 'appinstalled' listener for why: unlike a real "Not
+    // now" click, this must not survive an eventual uninstall+reinstall).
+    expect(await page.evaluate(() => localStorage.getItem('syncpad_install_dismissed'))).toBeNull();
   });
 
-  test('appinstalled hides and persists suppression, even if the banner was never shown, and blocks a later beforeinstallprompt', async ({ page }) => {
+  test('appinstalled hides the banner, even if it was never shown, without persisting a lasting dismissal', async ({ page }) => {
     await goToLanding(page);
     await page.evaluate(() => {
       localStorage.removeItem('syncpad_install_dismissed');
       window.dispatchEvent(new Event('appinstalled'));
     });
-    expect(await page.evaluate(() => localStorage.getItem('syncpad_install_dismissed'))).toBe('1');
     await expect(page.locator('#pwa-install-bar')).not.toHaveClass(/visible/);
-
-    // A stray beforeinstallprompt after installation (some browsers still
-    // fire it) must not resurrect the banner.
-    await dispatchFakeInstallPrompt(page);
-    await expect(page.locator('#pwa-install-bar')).not.toHaveClass(/visible/);
+    // Same reasoning as the accepted-prompt test above: installed-ness is
+    // suppressed live (via _isStandalone()) on a future load that's
+    // actually still installed, not by a permanent flag set here.
+    expect(await page.evaluate(() => localStorage.getItem('syncpad_install_dismissed'))).toBeNull();
   });
 });

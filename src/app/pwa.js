@@ -91,10 +91,10 @@ window.addEventListener('beforeinstallprompt', (e) => {
       // acting on 'accepted' here too means the bar disappears immediately
       // on the common path instead of waiting on a second event that can
       // lag the prompt's own resolution by a moment.
-      if (choice?.outcome === 'accepted') {
-        localStorage.setItem(INSTALL_DISMISSED_KEY, '1');
-        UI.hideInstallBar();
-      }
+      // Not persisted as a dismissal — see 'appinstalled' below for why
+      // "currently installed" and "user doesn't want this" must stay two
+      // different, differently-lived facts.
+      if (choice?.outcome === 'accepted') UI.hideInstallBar();
     },
     () => { localStorage.setItem(INSTALL_DISMISSED_KEY, '1'); }
   );
@@ -105,9 +105,19 @@ window.addEventListener('beforeinstallprompt', (e) => {
 // OS-level app-store-style install) — the one signal that's always right,
 // so it's the backstop even though the Install button's own onInstall
 // handler above already covers its own path.
+//
+// Deliberately does NOT persist INSTALL_DISMISSED_KEY here (unlike the
+// "Not now" dismiss handler above, which is a real lasting preference).
+// Installed-ness is a temporary fact, not a permanent one: origin storage
+// commonly survives a PWA uninstall (there's no browser event for that
+// either), so persisting a dismissal on install would permanently block a
+// perfectly legitimate future beforeinstallprompt after the user
+// uninstalls and later revisits, with no in-app way to ever clear it.
+// Hiding the bar for the current session is enough — a future load that's
+// actually still installed gets suppressed again by the live
+// _isStandalone() check above, not by this flag.
 window.addEventListener('appinstalled', () => {
   _deferredInstall = null;
-  localStorage.setItem(INSTALL_DISMISSED_KEY, '1');
   UI.hideInstallBar();
 });
 
