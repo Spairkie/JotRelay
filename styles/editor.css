@@ -556,46 +556,98 @@ pre.code-block:hover .code-block-copy-btn,
 .note-live .cm-md-inline-toc a { color: var(--text-primary); text-decoration: none; cursor: pointer; }
 .note-live .cm-md-inline-toc a:hover { color: var(--accent); text-decoration: underline; }
 
-/* Document mini-map (live-editor.js's _MinimapTrack) — one tick per heading,
-   positioned proportionally within the full scrollable document, fixed to
-   the viewport like a native scrollbar rather than scrolling with content.
-   `right: 9px` clears modals.css's 6px custom scrollbar with a small gap
-   instead of sitting flush against it. */
-.cm-minimap {
+/* Scroll rail (src/scroll-rail.js) — a single component merging a draggable
+   scroll-position thumb with a heading-tick overview, replacing the native
+   scrollbar's *visual* chrome on both editor surfaces. Two mount points:
+   this bare .scroll-rail rule is the CM6 Live surface's own positioning
+   (absolute within .cm-editor, a sibling of .cm-scroller — see
+   live-editor.js's _RailPlugin); .scroll-rail-write below overrides it for
+   the plain textarea, which has no equivalent absolutely-positioned parent
+   of its own — see ui/editor.js's _positionWriteRail() for why its top/
+   height/right are computed from #note-editor's live bounding box instead
+   of being fixed CSS insets the way the CM6 variant's are (giving it its
+   own explicit CSS Grid placement instead, an earlier version of this rule,
+   fought #note-editor's *auto* placement for the same cell — confirmed live
+   it collapsed the intended row to 0px and shoved the textarea into an
+   unrelated implicit row).
+   Two different reveal rules for two different pieces, not one group
+   opacity toggle: the thumb (a real scrollbar) stays ambiently visible at
+   all times, like any other subtle scrollbar — see .scroll-rail-thumb —
+   while the ticks (the heading overview / "minimap") stay fully invisible
+   until hovered, and even then fade in individually by distance from the
+   pointer rather than all at once (see .scroll-rail-tick's --proximity and
+   _onTicksPointerMove in scroll-rail.js) — "only show the dots close to the
+   mouse." Mouse-precision-sized and hidden entirely on touch/coarse-pointer
+   devices rather than shipping a barely-tappable UI element there, same
+   reasoning as the landing demo's own pointer tilt; touch users keep plain
+   native scrolling, untouched by any of this. */
+.scroll-rail {
   display: none;
-  position: absolute; top: 0; right: 9px; bottom: 0; width: 6px;
-  z-index: 5; pointer-events: none;
+  position: absolute; top: 0; right: 9px; bottom: 0; width: 14px;
+  z-index: 5; pointer-events: auto;
 }
-/* Hover-driven and mouse-precision-sized (5px dots) — hidden entirely on
-   touch/coarse-pointer devices rather than shipping a barely-tappable UI
-   element there, same reasoning as the landing demo's own pointer tilt. */
+/* This block must come after the bare .scroll-rail rule above — same
+   specificity (one class selector each), so source order is what makes
+   `display: block` here win over the `display: none` default instead of
+   the reverse. */
 @media (hover: hover) and (pointer: fine) {
-  .cm-minimap:not(.hidden) { display: block; }
+  .scroll-rail { display: block; }
+  /* The rail visually replaces the scrollbar it sits over, so the browser's
+     own rendering of that scrollbar is hidden underneath it — scrolling
+     itself (wheel/keyboard/drag-select) is completely unaffected, only the
+     native bar's paint is suppressed. */
+  #note-editor, .note-live .cm-scroller { scrollbar-width: none; }
+  #note-editor::-webkit-scrollbar, .note-live .cm-scroller::-webkit-scrollbar { display: none; }
 }
-.cm-minimap-dot {
-  position: absolute; right: 0; transform: translateY(-50%);
-  width: 5px; height: 5px; border-radius: 50%;
-  background: var(--text-muted); opacity: 0;
+.scroll-rail.is-unscrollable { pointer-events: none; }
+.scroll-rail.is-unscrollable .scroll-rail-thumb { display: none; }
+.scroll-rail-write { position: absolute; }
+
+.scroll-rail-thumb {
+  position: absolute; right: 4px; width: 6px;
+  border-radius: 3px; background: var(--text-muted);
+  cursor: grab; pointer-events: auto;
+  /* Ambient, not hidden — this is the actual scrollbar; a user shouldn't
+     have to hover to find out the document scrolls at all. Subtle enough
+     (low opacity, muted color) to disappear into the UI at rest, same
+     "considered, not absent" balance as the rest of this component. */
+  opacity: 0.32;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.scroll-rail-thumb:hover, .scroll-rail.is-dragging .scroll-rail-thumb {
+  opacity: 0.9; background: var(--accent); cursor: grabbing;
+}
+
+.scroll-rail-ticks {
+  position: absolute; inset: 0; pointer-events: none;
+  opacity: 0; transition: opacity 0.15s ease;
+}
+.scroll-rail:hover .scroll-rail-ticks,
+.scroll-rail:focus-within .scroll-rail-ticks,
+.scroll-rail.is-dragging .scroll-rail-ticks {
+  opacity: 1;
+}
+.scroll-rail-tick {
+  position: absolute; right: 5px; transform: translateY(-50%) scale(calc(0.85 + var(--proximity, 0) * 0.75));
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--text-secondary);
   border: none; padding: 0; cursor: pointer; pointer-events: auto;
-  transition: opacity 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  /* --proximity (0–1, set live on pointermove — see scroll-rail.js's
+     _onTicksPointerMove) is what makes only the *nearby* ticks stand out
+     once the ticks layer is revealed: distant ones sit at a bare-minimum
+     0.12 rather than 0, so the eye can still find the full shape of the
+     document's structure, but only the tick(s) near the cursor actually
+     read as legible/prominent. A short transition smooths the sweep as the
+     pointer moves rather than snapping tick-to-tick. */
+  opacity: calc(0.12 + var(--proximity, 0) * 0.88);
+  transition: opacity 0.08s linear, transform 0.08s linear, background 0.15s ease, box-shadow 0.15s ease;
 }
-/* Stay fully invisible at rest; live-editor.js's _MinimapTrack toggles
-   is-near-edge on plain mousemove proximity to the scroller's right edge
-   (not CSS :hover — .cm-minimap is pointer-events:none so it never steals
-   clicks from the real scrollbar underneath it, and a mousemove check can
-   start the fade-in before the pointer is precisely on a 5px dot). */
-.cm-minimap.is-near-edge .cm-minimap-dot { opacity: 0.45; }
-/* .cm-minimap prefix (not bare .cm-minimap-dot:hover) matches is-near-edge's
-   specificity (3 class selectors each) so this reliably wins on cascade
-   order rather than losing outright to a higher-specificity selector — a
-   bare :hover/:focus-visible here would otherwise always lose to the rule
-   above regardless of source order, leaving the hovered dot at the same dim
-   group-reveal opacity as every other dot instead of standing out. */
-.cm-minimap .cm-minimap-dot:hover,
-.cm-minimap .cm-minimap-dot:focus-visible {
-  opacity: 1; background: var(--accent); transform: translateY(-50%) scale(1.5);
+.scroll-rail-tick:hover, .scroll-rail-tick:focus-visible {
+  background: var(--accent); transform: translateY(-50%) scale(1.6);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent);
+  opacity: 1;
 }
-.cm-minimap-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.scroll-rail-tick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .note-preview pre code { background: none; padding: 0; font-size: 0.9em; line-height: 1.6; }
 .note-preview blockquote { border-left: 3px solid var(--accent); padding-left: 14px; margin: 0.8em 0; color: var(--text-secondary); }
@@ -758,9 +810,9 @@ body.lock-mode .md-toolbar { opacity: 0.4; pointer-events: none; }
 }
 .comment-dot:hover, .comment-dot.active { transform: translateY(-50%) scale(1.35); }
 /* Hover-driven and mouse-precision-sized (9px) — same rationale as the
-   minimap's dots (see .cm-minimap above): hidden on touch/coarse-pointer
+   scroll rail's ticks (see .scroll-rail above): hidden on touch/coarse-pointer
    devices rather than shipping a barely-tappable target there. Unlike the
-   minimap, this isn't a dead end on touch — .cm-comment-anchor spans
+   scroll rail, this isn't a dead end on touch — .cm-comment-anchor spans
    (the dotted-underline text itself) are tap targets there instead (see
    live-editor.js's _isCoarsePointer-gated mousedown handler), so the
    bubble below still needs to render on touch; only the dot disappears.

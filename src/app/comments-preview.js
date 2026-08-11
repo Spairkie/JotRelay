@@ -334,6 +334,10 @@ export function _applyMarkdownMode(mode) {
   }
 
   UI.setMarkdownMode(mode, () => renderMarkdown(UI.getEditorValue()), { live, syncScroll: state.syncScroll });
+  // Container visibility just changed (see LiveEditor.refreshLayout()'s own
+  // comment for why mount() alone can't do this) — no-op while unmounted or
+  // still hidden.
+  if (live) LiveEditor.refreshLayout();
   if (state.showPreview && !live) _wirePreviewClickOnce();
 
   _updateScrollSyncWiring();

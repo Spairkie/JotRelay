@@ -18,7 +18,15 @@ type SupabaseAdminClient = SupabaseClient<any, 'public', 'public', any, any>;
 // surface an origin allowlist would be protecting against.
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-syncpad-cleanup-secret, content-type',
+  // apikey and x-client-info are sent on every supabase-js call
+  // (functions.invoke() included) whether or not the caller is
+  // authenticated — omitting them here doesn't block those headers from
+  // being *read*, it makes the browser refuse to *send* the real POST at
+  // all after a preflight that didn't list them, surfacing to callers as a
+  // generic network failure (supabase-js's FunctionsFetchError) with no
+  // HTTP status to debug from. Confirmed live: the admin dashboard's own
+  // Storage Orphan Reconciliation button hit exactly this before this fix.
+  'Access-Control-Allow-Headers': 'authorization, x-syncpad-cleanup-secret, content-type, apikey, x-client-info',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 

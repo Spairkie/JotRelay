@@ -130,7 +130,10 @@
 .legal-links { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; margin-top:20px; }
 .legal-links a { color: var(--text-muted); text-decoration:none; font-size:13px; }
 .legal-links a:hover { color: var(--text-primary); text-decoration:underline; }
-.legal-screen { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--bg-base); }
+/* 100svh (not 100vh) so mobile browser chrome collapsing/expanding never
+   shifts this card or clips the footer links below the fold — same fix as
+   .lp-intro in landing.css. */
+.legal-screen { min-height:100svh; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--bg-base); }
 .legal-card { width:min(760px,100%); background:var(--bg-elevated); border:1px solid var(--border); border-radius:16px; padding:28px; box-shadow:var(--shadow-md); }
 .legal-card h1 { margin:0 0 8px; font-size:30px; }
 .legal-lead { margin:0 0 18px; color:var(--text-muted); }
