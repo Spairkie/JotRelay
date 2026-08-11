@@ -676,11 +676,45 @@ async function startApp(isNewRoom = false) {
 
   wireEvents();
 
-  state.onlineCleanup = onOnlineChange((online) => {
-    if (online) { UI.hideOfflineBanner(); UI.setStatus('connected'); _reconcileAndFlush(); }
-    else        { UI.showOfflineBanner();  UI.setStatus('offline'); }
-  });
-  if (!isOnline()) UI.showOfflineBanner();
+  // Passive browser 'online'/'offline' events are not a reliable signal on
+  // their own (MDN documents this explicitly) — in practice that shows up
+  // as a WiFi/mobile blip resolving without the OS-level interface ever
+  // reporting "down" (so 'online' never fires), or the device sleeping/the
+  // tab being backgrounded through the whole outage and waking up already
+  // reconnected with no event ever delivered. Left alone, the app stays
+  // stuck showing the offline banner and never re-runs _reconcileAndFlush()
+  // until *something else* happens to touch the network — in practice, the
+  // next keystroke's debounced save, which is what made this look like
+  // "typing reconnects it" rather than a missed event. The two extra checks
+  // below actively verify real connectivity instead of only ever reacting
+  // to the passive event: the tab regaining visibility (laptop wake, phone
+  // screen on, switching back from another app — exactly the scenarios
+  // most likely to have swallowed the event), and a slow poll while
+  // genuinely believed offline as a fallback for staying on the same tab
+  // through a blip that never fires anything at all.
+  let believedOffline = !isOnline();
+  const applyOnline = () => {
+    believedOffline = false;
+    UI.hideOfflineBanner(); UI.setStatus('connected'); _reconcileAndFlush();
+  };
+  const applyOffline = () => {
+    believedOffline = true;
+    UI.showOfflineBanner(); UI.setStatus('offline');
+  };
+  const probeIfBelievedOffline = async () => {
+    if (!believedOffline || !state.roomId) return;
+    try { await loadRoom(state.roomId); applyOnline(); } catch { /* still offline */ }
+  };
+  const cleanupOnlineEvent = onOnlineChange((online) => (online ? applyOnline() : applyOffline()));
+  const onVisibility = () => { if (document.visibilityState === 'visible') probeIfBelievedOffline(); };
+  document.addEventListener('visibilitychange', onVisibility);
+  const offlinePollId = setInterval(probeIfBelievedOffline, 20_000);
+  state.onlineCleanup = () => {
+    cleanupOnlineEvent();
+    document.removeEventListener('visibilitychange', onVisibility);
+    clearInterval(offlinePollId);
+  };
+  if (believedOffline) UI.showOfflineBanner();
 
   // Preview is now a possible starting mode (see _resolveInitialEditorMode()
   // above), where the plain textarea is hidden — UI.focusEditor() would
