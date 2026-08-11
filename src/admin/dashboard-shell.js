@@ -11,7 +11,7 @@
 import { state } from './state.js';
 import { escapeHtml } from '../utils.js';
 import { getIcon } from '../icons.js';
-import { _probeColumn, _probeTable, _skeletonTabHtml } from './shared.js';
+import { _probeColumn, _probeTable, _skeletonTabHtml, _homePath } from './shared.js';
 import { _loadStats } from './stats.js';
 import { _closeDrawer } from './room-drawer.js';
 import { _renderRoomsTab } from './rooms-tab.js';
@@ -33,11 +33,12 @@ export async function _renderDashboard(sb, session, { onLogout } = {}) {
     <div class="admin-shell">
 
       <div class="admin-header">
-        <div class="admin-header-brand">${getIcon('admin', 18)} JotRelay Admin</div>
+        <a class="admin-header-brand" href="${_homePath()}" title="Back to JotRelay">${getIcon('admin', 18)} JotRelay Admin</a>
         <div class="admin-header-actions">
           <span class="admin-user-email">${escapeHtml(session?.user?.email ?? '')}</span>
           <span class="admin-refreshed-label" id="admin-refreshed-label" title="Last data refresh"></span>
           <button class="admin-icon-btn" id="admin-refresh-btn" title="Refresh (r)" aria-label="Refresh dashboard">↺</button>
+          <a class="admin-logout-btn" id="admin-home-btn" href="${_homePath()}">Back to JotRelay</a>
           <button class="admin-logout-btn" id="admin-logout-btn">Sign out</button>
         </div>
       </div>
