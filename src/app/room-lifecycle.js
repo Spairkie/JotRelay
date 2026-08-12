@@ -97,17 +97,18 @@ function _shouldPersistScrollMemory() {
   return _roomContentReady && !state.room?.encryption_enabled && !state.viewOnceConsumedByThisSession;
 }
 
-// Bumped at the top of every startApp() call — lets a *stale* invocation
-// recognize, once its own slow refreshFiles()/_refreshComments() awaits
-// finally resolve, that a newer navigation has since superseded it (the
-// user navigated again before this one finished starting up).
-// teardownRealtimeSession() clears state.scrollSaveTimer for whichever
-// invocation is current *when it runs* — a stale invocation that hasn't
-// reached its own `state.scrollSaveTimer = setInterval(...)` line yet at
-// that point has nothing for it to clear, and resuming afterward to
-// install its own interval would silently overwrite the *new* invocation's
-// already-installed handle, leaking the new one running forever with no
-// handle left to ever clear it. Checked immediately before that line below.
+// Bumped by teardownRealtimeSession() at the top of every joinRoom() call
+// (see its own comment for why there, not just in startApp()) — lets a
+// *stale* startApp() invocation recognize, once its own slow
+// refreshFiles()/_refreshComments() awaits finally resolve, that a newer
+// navigation has since superseded it. teardownRealtimeSession() clears
+// state.scrollSaveTimer for whichever invocation is current *when it
+// runs* — a stale invocation that hasn't reached its own
+// `state.scrollSaveTimer = setInterval(...)` line yet at that point has
+// nothing for it to clear, and resuming afterward to install its own
+// interval would silently overwrite the *new* invocation's already-
+// installed handle, leaking the new one running forever with no handle
+// left to ever clear it. Checked immediately before that line, further down.
 let _roomSessionGeneration = 0;
 
 function _showQuarantinedScreen(room) {
@@ -376,6 +377,20 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
     return;
   }
 
+  // Cleared as soon as the loaded room is known to be encrypted — before
+  // the quarantine check and the passcode gate below, not after either of
+  // them. A room that's quarantined, or protected by a passcode, would
+  // otherwise leave a pre-encryption fingerprint sitting in localStorage
+  // indefinitely (quarantine has no unlock at all from here; a passcode
+  // would only clear it once solved), even though encryption_enabled is
+  // already known from this room row regardless of either gate. This
+  // device may have last seen the room while it was still unencrypted
+  // (offline or simply absent when some other device turned encryption
+  // on) — neither the local enable path (panels.js) nor the live remote-
+  // transition path elsewhere runs for a device that missed the change
+  // entirely and only discovers it here, on its next cold load.
+  if (state.room.encryption_enabled) clearScrollOffset(roomId);
+
   // Quarantine blocks the room entirely — before any passcode prompt,
   // decryption attempt, or editor initialization. quarantined_at/
   // quarantine_reason only exist if the optional admin-dashboard migration
@@ -385,19 +400,6 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
     _showQuarantinedScreen(state.room);
     return;
   }
-
-  // Cleared as soon as the loaded room is known to be encrypted — before
-  // the passcode gate below, not after it. A room protected by both a
-  // passcode *and* encryption would otherwise leave a pre-encryption
-  // fingerprint sitting in localStorage until someone actually enters the
-  // correct passcode, even though encryption_enabled is already known from
-  // this room row regardless of whether the passcode has been solved yet.
-  // This device may have last seen the room while it was still
-  // unencrypted (offline or simply absent when some other device turned
-  // encryption on) — neither the local enable path (panels.js) nor the
-  // live remote-transition path elsewhere runs for a device that missed
-  // the change entirely and only discovers it here, on its next cold load.
-  if (state.room.encryption_enabled) clearScrollOffset(roomId);
 
   if (state.room.passcode_hash) {
     UI.showScreen('passcode');
@@ -488,7 +490,10 @@ export async function onEncryptionSubmit() {
 // ── Start app ─────────────────────────────────────────────────────────────────
 
 async function startApp(isNewRoom = false) {
-  const _myRoomSession = ++_roomSessionGeneration;
+  // Read, not incremented, here — teardownRealtimeSession() already bumps
+  // this at the top of every joinRoom() call, including ones that never
+  // reach this function at all (see its own comment for why that matters).
+  const _myRoomSession = _roomSessionGeneration;
   UI.setLoadingMessage('Starting…');
   UI.showScreen('loading');
 
@@ -1278,6 +1283,17 @@ export function flushScrollPosition() {
 export function teardownRealtimeSession() {
   // Must run before anything below resets state.roomId/markdownMode/encKey
   // for the next room.
+  //
+  // Bumped here, not just inside startApp() — this runs unconditionally at
+  // the top of every joinRoom() call, even one that ends up stopping at a
+  // passcode/encryption/quarantine gate or an error screen and never
+  // reaches startApp() at all. A stale startApp() invocation from the
+  // *previous* room, still awaiting its own slow refreshFiles()/
+  // _refreshComments() calls, needs to see every subsequent navigation as
+  // superseding it — including one that doesn't get as far as starting a
+  // new startApp() of its own — or it can still resume and leak its
+  // interval with nothing left running to ever invalidate it.
+  _roomSessionGeneration++;
   clearInterval(state.scrollSaveTimer);
   state.scrollSaveTimer = null;
   flushScrollPosition();
