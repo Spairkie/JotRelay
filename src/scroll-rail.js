@@ -734,7 +734,12 @@ export function getTextareaOffsetAtTop(textarea, targetTop) {
   // down the exact wrapped row targetTop falls on.
   const lineEnd = lo + 1 < lineStarts.length ? lineStarts[lo + 1] - 1 : text.length;
   if (lineEnd === lineStart) return lineStart;
-  return _binarySearchWrappedLineTop(textarea, text, lineStart, lineEnd, targetTop);
+  // targetTop is document-relative; the mirror below contains only this
+  // one line's own text, so its measured rowTops are line-relative (0 at
+  // the line's own first visual row) — targetTop has to be converted into
+  // that same local coordinate space, or a targetTop deep in the document
+  // would compare as "past every row" and this would always return lineEnd.
+  return _binarySearchWrappedLineTop(textarea, text, lineStart, lineEnd, targetTop - tops[lo]);
 }
 
 // Same binary search as getTextareaOffsetAtTop()'s old wrapped-line fallback,
@@ -752,6 +757,12 @@ export function getTextareaOffsetAtTop(textarea, targetTop) {
 // computed layout for free, the same "one layout pass" idea as
 // _measureLineTopsInOnePass() above, applied within a single wrapped line's
 // own character range instead of across a whole document's lines.
+//
+// `targetTop` here is *line*-relative (0 at this line's own first visual
+// row), not document-relative — the mirror below contains only this one
+// line's text, so every rowTop() it measures is naturally in that same
+// local space. Callers passing a document-relative scrollTop must subtract
+// the line's own absolute top first (see getTextareaOffsetAtTop() above).
 function _binarySearchWrappedLineTop(textarea, text, lineStart, lineEnd, targetTop) {
   const mirror = _createTextareaMirror(textarea);
   try {
