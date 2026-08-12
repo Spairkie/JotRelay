@@ -534,6 +534,25 @@ async function startApp(isNewRoom = false) {
   }
   UI.updateWordCount(UI.getEditorValue());
 
+  // The plain Write textarea is a single persistent DOM element reused
+  // across an in-app join to a *different* room (no full page reload) — CM6
+  // gets a brand-new view per room (mount() always destroy()s the old one
+  // first, see live-editor.js), but the textarea's own scrollTop is not
+  // reset by a plain .value assignment (confirmed live: assigning shorter
+  // content does not itself clamp/reset scrollTop until a later real layout
+  // pass touches it). Without this, a never-visited room joined right after
+  // scrolling deep into a previous long room would silently inherit that
+  // stale pixel position as its own "current" scroll below, rather than
+  // genuinely starting at the top.
+  //
+  // Done immediately here, right after content is set — not later, next to
+  // the _preFocusOffset capture below — because several awaited operations
+  // (refreshFiles(), _refreshComments(), etc.) run between here and there
+  // while the editor is already visible and interactive; resetting *after*
+  // those would clobber any real scrolling the user did during that window
+  // instead of just the stale carry-over this exists to fix.
+  UI.scrollWriteOffsetToTop(0);
+
   // Apply the user's remembered editor mode now that real content exists —
   // Preview/Split mount the live surface against the current editor value,
   // so this has to run after setContentNoSave() above, not alongside the
@@ -718,18 +737,6 @@ async function startApp(isNewRoom = false) {
     clearInterval(offlinePollId);
   };
   if (believedOffline) UI.showOfflineBanner();
-
-  // The plain Write textarea is a single persistent DOM element reused
-  // across an in-app join to a *different* room (no full page reload) — CM6
-  // gets a brand-new view per room (mount() always destroy()s the old one
-  // first, see live-editor.js), but the textarea's own scrollTop is not
-  // reset by a plain .value assignment (confirmed live: assigning shorter
-  // content does not itself clamp/reset scrollTop until a later real layout
-  // pass touches it). Without this, a never-visited room joined right after
-  // scrolling deep into a previous long room would silently inherit that
-  // stale pixel position as its own "current" scroll below, rather than
-  // genuinely starting at the top.
-  UI.scrollWriteOffsetToTop(0);
 
   // Captured *before* focusing below — a textarea/CM6 view auto-scrolls to
   // keep its own caret visible the instant it's focused, which (confirmed

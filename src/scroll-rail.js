@@ -547,7 +547,7 @@ const _MIRROR_PROPS = [
 // so a caller needing several measurements (heading positions, a binary
 // search) pays the one-time mirror-creation cost once instead of once per
 // probe.
-function _withTextareaMirror(textarea, fn) {
+function _createTextareaMirror(textarea) {
   const style = getComputedStyle(textarea);
   const mirror = document.createElement('div');
   mirror.style.position = 'absolute';
@@ -560,7 +560,11 @@ function _withTextareaMirror(textarea, fn) {
   mirror.style.overflowWrap = 'break-word';
   for (const prop of _MIRROR_PROPS) mirror.style[prop] = style[prop];
   document.body.appendChild(mirror);
+  return mirror;
+}
 
+function _withTextareaMirror(textarea, fn) {
+  const mirror = _createTextareaMirror(textarea);
   const text = textarea.value;
   const measureTop = (offset) => {
     mirror.textContent = text.slice(0, offset);
@@ -571,6 +575,39 @@ function _withTextareaMirror(textarea, fn) {
   };
   try {
     return fn(measureTop, text);
+  } finally {
+    mirror.remove();
+  }
+}
+
+// Measures every line's pixel top in one layout pass, for _getLineTopIndex()'s
+// cache below — as opposed to _withTextareaMirror()'s measureTop(offset),
+// which rebuilds the mirror's entire textContent (an ever-larger prefix) and
+// forces a fresh synchronous layout on *every* call. That's fine for a
+// handful of probes (a binary search, a page's worth of headings), but
+// calling it once per LINE to build this cache is a different order of
+// magnitude on a document with thousands of short lines (a pasted log, say)
+// — tens of thousands of forced layouts (and an O(n^2) textContent rebuild)
+// just to populate the cache once. Building all of a line's marker spans
+// into the mirror up front, in one DOM-mutation batch, then reading their
+// .offsetTop afterward gets the same wrap-accurate answer for one browser
+// layout cost total: only the *first* .offsetTop read in the batch actually
+// forces layout — every read after it, with no DOM mutation in between,
+// serves from that same already-computed layout for free.
+function _measureLineTopsInOnePass(textarea, lineStarts, text) {
+  const mirror = _createTextareaMirror(textarea);
+  try {
+    const markers = [];
+    lineStarts.forEach((start, i) => {
+      if (i > 0) mirror.appendChild(document.createElement('br'));
+      const marker = document.createElement('span');
+      marker.textContent = '​';
+      mirror.appendChild(marker);
+      const end = i + 1 < lineStarts.length ? lineStarts[i + 1] - 1 : text.length;
+      if (end > start) mirror.appendChild(document.createTextNode(text.slice(start, end)));
+      markers.push(marker);
+    });
+    return markers.map((m) => m.offsetTop);
   } finally {
     mirror.remove();
   }
@@ -599,8 +636,12 @@ function _getLineTopIndex(textarea) {
   const text = textarea.value;
   const style = getComputedStyle(textarea);
   // Width alone isn't enough to invalidate on — a font/size change (e.g.
-  // the monospace toggle) reflows every line without touching clientWidth.
-  const key = `${textarea.clientWidth}|${style.fontFamily}|${style.fontSize}`;
+  // the monospace toggle) reflows every line without touching clientWidth,
+  // and Typewriter mode (ui/editor.js's setTypewriterMode/refreshTypewriterMode)
+  // sets top/bottom padding equal to half the editor's own viewport height
+  // via --typewriter-pad, shifting every line's measured top without
+  // touching clientWidth/fontFamily/fontSize either.
+  const key = `${textarea.clientWidth}|${style.fontFamily}|${style.fontSize}|${style.paddingTop}|${style.paddingBottom}`;
   const cached = _lineTopIndexCache.get(textarea);
   if (cached && cached.text === text && cached.key === key) return cached;
 
@@ -608,7 +649,7 @@ function _getLineTopIndex(textarea) {
   for (let i = 0; i < text.length; i++) {
     if (text.charCodeAt(i) === 10) lineStarts.push(i + 1); // '\n'
   }
-  const tops = text.length ? _withTextareaMirror(textarea, (measureTop) => lineStarts.map((offset) => measureTop(offset))) : [0];
+  const tops = text.length ? _measureLineTopsInOnePass(textarea, lineStarts, text) : [0];
   const lineHeight = parseFloat(style.lineHeight) || 0;
   const index = { text, key, lineStarts, tops, lineHeight };
   _lineTopIndexCache.set(textarea, index);

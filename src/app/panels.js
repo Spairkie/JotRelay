@@ -21,6 +21,7 @@ import {
 } from '../settings.js';
 import { flushSave, setEncryption, snapshotBeforeDestructiveChange } from '../sync.js';
 import { clearDraft } from '../offline.js';
+import { clearScrollOffset } from '../scroll-memory.js';
 import { listFiles } from '../files.js';
 import { broadcastSettingsChange, cancelPendingTypingBroadcast, cancelPendingLiveContentBroadcast } from '../live-broadcast.js';
 import { canEdit, canUseTemplates, canChangeSettings, canToggleLock, editBlockedReason } from '../permissions.js';
@@ -583,6 +584,18 @@ export function _wireSettings() {
         );
         state.room   = await loadRoom(state.roomId);
         clearDraft(state.roomId);
+        // Any remembered scroll position saved while this room was still
+        // unencrypted (src/scroll-memory.js) is a plaintext length + a
+        // deterministic hash of the plaintext, sitting in plain localStorage
+        // — room-lifecycle.js's own encryption_enabled gate only stops
+        // *future* reads/writes to it, so a record already written before
+        // encryption was turned on would otherwise keep exposing that
+        // fingerprint indefinitely even though the room's content is now
+        // encrypted. Same leak this whole feature already refuses to touch
+        // for an encrypted room in the first place — just needs clearing
+        // retroactively here, the one path that flips a room from
+        // unencrypted to encrypted without otherwise resetting its content.
+        clearScrollOffset(state.roomId);
         _updatePermissionContext();
         _renderRoomHeader();
         UI.renderSettingsPanel(state.room);
