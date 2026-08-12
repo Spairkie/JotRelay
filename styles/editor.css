@@ -810,9 +810,18 @@ body.lock-mode .md-toolbar { opacity: 0.4; pointer-events: none; }
    full comment + Prev/Next/delete — see ui/collab.js's
    renderFloatingComments(). pointer-events:none on the layer, auto on the
    dots/bubble themselves, so the layer never blocks clicks/selection on the
-   editor beneath it. */
+   editor beneath it. Above .scroll-rail's z-index (5), not equal to it: the
+   rail is a sibling appended into .editor-wrap at runtime whenever CM6
+   mounts, later than this layer's own static markup, so equal z-index would
+   leave DOM/paint order deciding the tie — the rail winning and silently
+   swallowing clicks meant for a .comment-dot wherever the two happen to
+   overlap horizontally (a fine-pointer Live/Split surface with anchored
+   comments always has both in the same margin). An explicit lower z-index
+   for the rail would fix the same overlap, but comments should render above
+   the rail either way — it's chrome for navigating the document, not part
+   of its content. */
 .comment-margin-layer {
-  position: absolute; inset: 0; pointer-events: none; z-index: 5;
+  position: absolute; inset: 0; pointer-events: none; z-index: 6;
 }
 .comment-dot {
   position: absolute; right: 6px; width: 9px; height: 9px; border-radius: 50%;

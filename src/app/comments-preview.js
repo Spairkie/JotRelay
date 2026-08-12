@@ -283,12 +283,100 @@ export function _refreshFloatingComments(animate = false) {
 
 // ── Preview helpers ───────────────────────────────────────────────────────────
 
+// Which surface(s) are actually visible in each mode — the write/live pair
+// each mode "owns" (Split shows both). Used below to figure out which
+// surface, if any, is newly *entering* on a given mode switch: a surface
+// that was already visible keeps its own scrollTop across the display:none
+// toggle for free (it's never remounted, just hidden/shown), so only a
+// surface that's about to appear for the first time needs its scroll
+// position transferred in from wherever the user just was.
+const _MODE_SURFACES = { write: ['write'], preview: ['live'], split: ['write', 'live'] };
+function _enteringSurfaces(fromMode, toMode) {
+  const before = new Set(_MODE_SURFACES[fromMode] || []);
+  return (_MODE_SURFACES[toMode] || []).filter((s) => !before.has(s));
+}
+
+// The source char-offset at the exact top of whichever surface is actually
+// visible for `mode` right now — null if there's nothing meaningful to
+// capture (Live isn't mounted, e.g. the static-preview fallback, which has
+// no offset-mapping of its own). Read *before* anything about the switch
+// touches the DOM, since "what was the user looking at" only means
+// something relative to the surface about to be hidden. Exported: also
+// used by room-lifecycle.js's periodic/on-teardown save of the persisted
+// last-scroll-position (src/scroll-memory.js) — same "what's the user
+// looking at right now" question, just asked on a timer instead of at a
+// mode switch.
+// Split mode + Sync scroll off can leave the two panes at genuinely
+// different positions — _captureTopOffset('split') below needs to know
+// which one the user actually last interacted with. Focus alone isn't
+// enough: wheel-scrolling a pane, or dragging/clicking its own custom
+// scroll rail (whose handlers call preventDefault(), so they never move
+// focus either), don't change document.activeElement at all — so a plain
+// activeElement check misses the common "scrolled without ever clicking
+// into it" case. A raw 'scroll' listener on each surface tracks this
+// directly instead: Write's textarea is static in the DOM for the app's
+// whole lifetime (wired once, below), Live's CM6 scroller is recreated
+// per mount so it's wired alongside the *other* one-time-mount listener in
+// _applyMarkdownMode() further down. Reset on room navigation (see
+// room-lifecycle.js's teardownRealtimeSession()) since a stale value from
+// a previous room could otherwise pick the wrong initial pane before either
+// surface has been scrolled at all in the new one.
+let _lastScrolledSplitSurface = null; // 'write' | 'live' | null
+let _writeScrollTrackerWired = false;
+function _wireSplitPaneTracking(liveScroller) {
+  if (!_writeScrollTrackerWired) {
+    document.getElementById('note-editor')?.addEventListener('scroll', () => {
+      _lastScrolledSplitSurface = 'write';
+    }, { passive: true });
+    _writeScrollTrackerWired = true;
+  }
+  liveScroller?.addEventListener('scroll', () => {
+    _lastScrolledSplitSurface = 'live';
+  }, { passive: true });
+}
+export function _resetSplitPaneTracking() {
+  _lastScrolledSplitSurface = null;
+}
+
+export function _captureTopOffset(mode) {
+  if (mode === 'write') {
+    const editor = document.getElementById('note-editor');
+    return editor ? UI.getWriteOffsetAtTop() : null;
+  }
+  // Split shows both surfaces at once — with Sync scroll on (the default)
+  // they track the same source position anyway, so which one this reads
+  // from doesn't matter. With it off, they can be at genuinely unrelated
+  // positions: prefer whichever the user actually last scrolled, falling
+  // back to focus only for the case where neither has been scrolled yet
+  // this session (e.g. right after entering Split) — falling back to
+  // always reading Live regardless would silently persist the *other*
+  // pane's position for room-lifecycle.js's periodic/teardown save.
+  if (mode === 'split') {
+    const preferWrite = _lastScrolledSplitSurface
+      ? _lastScrolledSplitSurface === 'write'
+      : document.activeElement?.id === 'note-editor';
+    if (preferWrite) return UI.getWriteOffsetAtTop();
+  }
+  return LiveEditor.isMounted() ? LiveEditor.getOffsetAtTop() : null;
+}
+
 /**
  * Single entry point for every Write/Preview/Split mode change. Preview and
  * Split's right pane use the Typora-style editable CM6 surface; if it fails
  * to mount for any reason the old rendered-HTML preview is the fallback.
  */
 export function _applyMarkdownMode(mode) {
+  // Scroll-position transfer: capture where the user was (as a source
+  // char-offset, not a scroll percentage — a plain textarea and CM6's
+  // rendered view don't map onto each other proportionally in any way that
+  // reads as "the same place," see live-editor.js/scroll-rail.js's own
+  // getOffsetAtTop()/getWriteOffsetAtTop()) before the switch changes what's
+  // visible, and apply it to whichever surface(s) are about to appear —
+  // see _enteringSurfaces() below the entry point using it, further down.
+  const fromMode = state.markdownMode;
+  const topOffset = _captureTopOffset(fromMode);
+  const entering = _enteringSurfaces(fromMode, mode);
+
   // The floating comment composer is positioned in viewport coordinates
   // specific to whichever surface was visible when it opened (the Write
   // textarea or the CM6 live view) — any mode switch invalidates that
@@ -315,7 +403,9 @@ export function _applyMarkdownMode(mode) {
           // CM6 persists across later mode switches (mount() is only called
           // once, guarded above), so this scroll listener only needs wiring
           // here, not on every switch into Preview/Split.
-          container.querySelector('.cm-scroller')?.addEventListener('scroll', () => _refreshFloatingComments());
+          const liveScroller = container.querySelector('.cm-scroller');
+          liveScroller?.addEventListener('scroll', () => _refreshFloatingComments());
+          _wireSplitPaneTracking(liveScroller);
         } else {
           LiveEditor.syncFromText(UI.getEditorValue());
           LiveEditor.setReadOnly(!canEdit());
@@ -334,10 +424,16 @@ export function _applyMarkdownMode(mode) {
   }
 
   UI.setMarkdownMode(mode, () => renderMarkdown(UI.getEditorValue()), { live, syncScroll: state.syncScroll });
-  // Container visibility just changed (see LiveEditor.refreshLayout()'s own
-  // comment for why mount() alone can't do this) — no-op while unmounted or
-  // still hidden.
-  if (live) LiveEditor.refreshLayout();
+  // Transfer the captured scroll position onto whichever surface(s) just
+  // became visible — instant, no animation, so the surface is already
+  // showing the right place the moment it's revealed rather than visibly
+  // catching up to it. Write is synchronous (a plain textarea measures
+  // correctly the instant display flips); Live goes through refreshLayout()
+  // (see its own comment) since a freshly-revealed CM6 container needs a
+  // moment to re-measure before scrollTop math against it is trustworthy —
+  // container visibility just changed and mount() alone doesn't know that.
+  if (topOffset != null && entering.includes('write')) UI.scrollWriteOffsetToTop(topOffset);
+  if (live) LiveEditor.refreshLayout(topOffset != null && entering.includes('live') ? topOffset : undefined);
   if (state.showPreview && !live) _wirePreviewClickOnce();
 
   _updateScrollSyncWiring();

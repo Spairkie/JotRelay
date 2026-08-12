@@ -135,14 +135,22 @@ test.describe('Deliberate navigation smoothness', () => {
     const scroller = page.locator('.note-live .cm-scroller');
     const rail = page.locator('.scroll-rail-live');
     await expect(rail).not.toHaveCSS('height', '0px');
-    const before = await scroller.evaluate((el) => el.scrollTop);
 
     const box = await rail.boundingBox();
     // Low on the track, well clear of the thumb (starts near the top) and
     // of any tick (ticks only hit-test meaningfully once hovered/faded in).
     await page.mouse.click(box.x + box.width / 2, box.y + box.height - 12);
 
-    await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(before);
+    // Asserted as an absolute "landed near the bottom" rather than "moved
+    // forward from wherever it happened to start" — mode-switch scroll-
+    // position transfer now carries over wherever Write was left (after
+    // typeInEditor(), near the very end, since typing follows the caret),
+    // and CM6's own selection/viewport bookkeeping can nudge scrollTop by a
+    // few px on its own right after an explicit reset, so comparing
+    // against a "before" snapshot here chases a moving target. A click 12px
+    // from the very bottom of the track should land close to the maximum
+    // scroll position regardless of where it started.
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop / (el.scrollHeight - el.clientHeight))).toBeGreaterThan(0.85);
   });
 
   test('[TOC] entry click smoothly navigates to its heading', async ({ page }) => {
@@ -208,12 +216,16 @@ test.describe('Split-mode scroll sync', () => {
     await expect(ticks).toHaveCount(3);
     await ticks.nth(2).click(); // End — far off-screen
 
-    const readRatios = () => page.evaluate(() => {
+    const readPositions = () => page.evaluate(async () => {
+      const { getTextareaOffsetAtTop } = await import('/JotRelay/src/scroll-rail.js');
+      const { getOffsetAtTop } = await import('/JotRelay/src/live-editor.js');
       const e = document.getElementById('note-editor');
       const s = document.querySelector('.note-live .cm-scroller');
       return {
-        editorRatio: (e.scrollHeight - e.clientHeight) > 0 ? e.scrollTop / (e.scrollHeight - e.clientHeight) : 0,
         scrollerRatio: (s.scrollHeight - s.clientHeight) > 0 ? s.scrollTop / (s.scrollHeight - s.clientHeight) : 0,
+        editorOffset: getTextareaOffsetAtTop(e, e.scrollTop),
+        liveOffset: getOffsetAtTop(),
+        docLength: e.value.length,
       };
     });
 
@@ -223,19 +235,29 @@ test.describe('Split-mode scroll sync', () => {
     // smooth-scroll animation's real duration isn't guaranteed to fit any
     // one fixed wait. "End" sits roughly 2/3 through the document (it's
     // followed by its own trailing filler block), not at the very bottom.
-    await expect.poll(async () => (await readRatios()).scrollerRatio, { timeout: 8000 }).toBeGreaterThan(0.6);
+    await expect.poll(async () => (await readPositions()).scrollerRatio, { timeout: 8000 }).toBeGreaterThan(0.6);
     // The opposite (Write) pane kept following the animated pane's live
-    // position throughout, landing at the same proportional offset.
-    const final = await readRatios();
-    expect(Math.abs(final.scrollerRatio - final.editorRatio)).toBeLessThan(0.05);
+    // position throughout, landing at the *same source position* — the
+    // actual guarantee wireOffsetScrollSync() makes (see its own comment),
+    // not a matching scroll percentage: Write's line-wrapping density and
+    // CM6's rendered line heights don't produce identical ratios for the
+    // same offset, so asserting ratio-closeness here would be checking a
+    // property this mechanism never promised.
+    const final = await readPositions();
+    expect(Math.abs(final.editorOffset - final.liveOffset)).toBeLessThan(final.docLength * 0.02);
 
     // Sync isn't left disabled after that animation — an ordinary scroll on
     // the *other* pane still propagates normally. Re-asserted with a
     // generous timeout for the same reason as above: isProgrammaticSmoothScroll()
     // on the CM6 pane must have actually cleared before a write into it will
     // take effect at all, and that's gated on the same real animation
-    // finishing, not on this test's own clock.
+    // finishing, not on this test's own clock. wireOffsetScrollSync()'s own
+    // rAF-throttle (scroll-rail.js) adds a "wait for the next animation
+    // frame" indirection on top of that — under heavy system load (e.g. the
+    // full suite running many browser processes at once) rAF callbacks can
+    // be delayed well past what's noticeable running this file alone, so
+    // this needs real margin rather than a tight bound tuned for isolation.
     await editor.evaluate((el) => { el.scrollTop = 0; });
-    await expect.poll(() => scroller.evaluate((el) => el.scrollTop), { timeout: 8000 }).toBeLessThan(10);
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop), { timeout: 20000 }).toBeLessThan(10);
   });
 });

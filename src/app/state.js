@@ -20,6 +20,7 @@ export const state = {
   unsubFiles: null,
   unsubComments: null,
   expTimer: null,
+  scrollSaveTimer: null, // periodic persisted-scroll-position save — see scroll-memory.js
   onlineCleanup: null, // v1: teardown fn returned by onOnlineChange()
   monospace: false,
   eventsWired: false, // v1: guard against double-wiring

@@ -54,6 +54,16 @@ const _TICK_PROXIMITY_RADIUS_PX = 56;
 const _pendingScrolls = new WeakMap(); // el -> { token, cancel() }
 let _scrollTokenSeq = 0;
 
+// Registered by wireProportionalScrollSync()/wireOffsetScrollSync() below so
+// that a deliberate runSmoothScroll() on one pane of a synced Split-mode pair
+// can supersede a smooth scroll still in flight on its *paired* pane — see
+// runSmoothScroll()'s own use of this for why.
+const _syncedSibling = new WeakMap(); // el -> paired el
+function _registerSyncedSiblings(elA, elB) {
+  _syncedSibling.set(elA, elB);
+  _syncedSibling.set(elB, elA);
+}
+
 export function isProgrammaticSmoothScroll(el) {
   return _pendingScrolls.has(el);
 }
@@ -70,6 +80,18 @@ export function isProgrammaticSmoothScroll(el) {
  */
 export function runSmoothScroll(el, top) {
   _pendingScrolls.get(el)?.cancel();
+  // Also cancel a still-in-flight smooth scroll on el's synced pane partner,
+  // if any: both wireProportionalScrollSync() and wireOffsetScrollSync()
+  // skip a sync write into any element that isProgrammaticSmoothScroll(), so
+  // two independent deliberate jumps landing on both panes in quick
+  // succession (one rail tick per pane) would otherwise leave *both*
+  // directions of sync suppressed until one animation happens to finish on
+  // its own — letting whichever settles first silently pull the other pane
+  // back toward it, or leaving the two apart with no further scroll event to
+  // reconcile them. The newest deliberate jump, on either pane, should
+  // always be the one that wins.
+  const sibling = _syncedSibling.get(el);
+  if (sibling) _pendingScrolls.get(sibling)?.cancel();
   const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   if (reduceMotion) {
     el.scrollTop = top;
@@ -130,6 +152,7 @@ export function runSmoothScroll(el, top) {
  * @returns {() => void} unwire
  */
 export function wireProportionalScrollSync(elA, elB) {
+  _registerSyncedSiblings(elA, elB);
   const propagate = (from, to) => {
     if (isProgrammaticSmoothScroll(to)) return;
     const maxFrom = from.scrollHeight - from.clientHeight;
@@ -145,6 +168,93 @@ export function wireProportionalScrollSync(elA, elB) {
   return () => {
     elA.removeEventListener('scroll', onA);
     elB.removeEventListener('scroll', onB);
+  };
+}
+
+/**
+ * Wire bidirectional scroll sync between two panes by matching *source
+ * position*, not scroll percentage — "whatever's at the top of A's viewport
+ * should also be at the top of B's" — the same anchor heading ticks and
+ * mode-switch transfer already use, rather than a second, cruder mechanism.
+ * More accurate than wireProportionalScrollSync() at every point (not just at
+ * a one-shot transfer), at the cost of a real per-call computation on
+ * whichever adapter's getOffsetAtTop() has to do a Write-side mirror-div
+ * search.
+ *
+ * A single shared sequence number — not two independently-throttled ones —
+ * guards every scheduled propagation, in either direction: scheduling a new
+ * one immediately invalidates any earlier one still pending, whichever
+ * direction it was headed. Two separate per-direction throttles (an earlier
+ * version of this) can't see each other, so a delayed A->B echo scheduled a
+ * frame or two ago can fire *after* A has kept moving in the meantime (a
+ * fast continuous trackpad scroll produces several native 'scroll' events
+ * across a few frames), writing B's stale, already-superseded position back
+ * into A and visibly tugging the pane the user is actively scrolling
+ * backward. Sharing one counter across both directions means a fresher
+ * scroll — on *either* pane — always supersedes anything still pending, and
+ * naturally reproduces the old throttle's "coalesce a burst down to one
+ * call" behavior as a side effect (every scheduled call but the last one
+ * scheduled before its own animation frame arrives finds itself stale).
+ *
+ * @param {{ el: HTMLElement, getOffsetAtTop: () => number, scrollToOffset: (offset: number) => void }} adapterA
+ * @param {{ el: HTMLElement, getOffsetAtTop: () => number, scrollToOffset: (offset: number) => void }} adapterB
+ * @returns {() => void} unwire
+ */
+// Elements with a to.scrollToOffset() write still pending its own 'scroll'
+// event — see wireOffsetScrollSync() below for why this exists.
+const _suppressNextScrollEcho = new WeakSet();
+
+export function wireOffsetScrollSync(adapterA, adapterB) {
+  _registerSyncedSiblings(adapterA.el, adapterB.el);
+  let seq = 0;
+  const schedule = (from, to) => {
+    const mySeq = ++seq;
+    requestAnimationFrame(() => {
+      if (seq !== mySeq) return; // superseded by a later scroll, either direction
+      if (isProgrammaticSmoothScroll(to.el)) return;
+      const offset = from.getOffsetAtTop();
+      // Skip a write that's already correct — an echo from the last write
+      // would otherwise compute back to (approximately) the same offset and
+      // bounce forever between the two panes.
+      if (to.getOffsetAtTop() === offset) return;
+      // A 'scroll' event fires *asynchronously* after a scrollTop write, not
+      // within this same task — so the event this write is about to cause on
+      // `to` can still arrive after a genuinely newer user scroll on `from`
+      // has already scheduled its own, later propagation. Without marking it
+      // as self-caused, that delayed echo reaches to's own listener, gets
+      // treated as fresh user input, and schedules a from<-to write that
+      // invalidates (via the shared `seq`) the newer, still-pending
+      // from->to one — silently overwriting where the user just scrolled
+      // *from* with to's older position. Ordering the callbacks by `seq`
+      // alone can't distinguish "a newer real scroll" from "an echo of our
+      // own last write"; this does, by suppressing the echo outright before
+      // it ever reaches schedule().
+      const beforeTop = to.el.scrollTop;
+      _suppressNextScrollEcho.add(to.el);
+      to.scrollToOffset(offset);
+      // Multiple character offsets can share one visual row's pixel top —
+      // in that case this write leaves scrollTop unchanged, which never
+      // fires a 'scroll' event at all, so the suppression flag just armed
+      // above would otherwise never get consumed and would wrongly swallow
+      // whatever the user's *next genuine* scroll on `to` turns out to be.
+      // scrollTop itself updates synchronously even though the resulting
+      // event dispatches later, so this can be checked immediately.
+      if (to.el.scrollTop === beforeTop) _suppressNextScrollEcho.delete(to.el);
+    });
+  };
+  const onA = () => {
+    if (_suppressNextScrollEcho.delete(adapterA.el)) return;
+    schedule(adapterA, adapterB);
+  };
+  const onB = () => {
+    if (_suppressNextScrollEcho.delete(adapterB.el)) return;
+    schedule(adapterB, adapterA);
+  };
+  adapterA.el.addEventListener('scroll', onA);
+  adapterB.el.addEventListener('scroll', onB);
+  return () => {
+    adapterA.el.removeEventListener('scroll', onA);
+    adapterB.el.removeEventListener('scroll', onB);
   };
 }
 
@@ -463,8 +573,13 @@ const _MIRROR_PROPS = [
   'tabSize', 'textIndent', 'wordSpacing',
 ];
 
-export function measureTextareaHeadingTops(textarea, headings) {
-  if (headings.length === 0) return [];
+// Sets up one mirror div for `textarea` and hands the caller a `measureTop(offset)`
+// function that can be called any number of times before the mirror is torn
+// down — shared setup/teardown for every offset<->pixel-top measurement below,
+// so a caller needing several measurements (heading positions, a binary
+// search) pays the one-time mirror-creation cost once instead of once per
+// probe.
+function _createTextareaMirror(textarea) {
   const style = getComputedStyle(textarea);
   const mirror = document.createElement('div');
   mirror.style.position = 'absolute';
@@ -477,19 +592,243 @@ export function measureTextareaHeadingTops(textarea, headings) {
   mirror.style.overflowWrap = 'break-word';
   for (const prop of _MIRROR_PROPS) mirror.style[prop] = style[prop];
   document.body.appendChild(mirror);
+  return mirror;
+}
 
+function _withTextareaMirror(textarea, fn) {
+  const mirror = _createTextareaMirror(textarea);
   const text = textarea.value;
-  const tops = [];
+  const measureTop = (offset) => {
+    mirror.textContent = text.slice(0, offset);
+    const marker = document.createElement('span');
+    marker.textContent = '​';
+    mirror.appendChild(marker);
+    return marker.offsetTop;
+  };
   try {
-    for (const h of headings) {
-      mirror.textContent = text.slice(0, h.offset);
-      const marker = document.createElement('span');
-      marker.textContent = '​';
-      mirror.appendChild(marker);
-      tops.push(marker.offsetTop);
-    }
+    return fn(measureTop, text);
   } finally {
     mirror.remove();
   }
-  return tops;
+}
+
+// Measures every line's pixel top in one layout pass, for _getLineTopIndex()'s
+// cache below — as opposed to _withTextareaMirror()'s measureTop(offset),
+// which rebuilds the mirror's entire textContent (an ever-larger prefix) and
+// forces a fresh synchronous layout on *every* call. That's fine for a
+// handful of probes (a binary search, a page's worth of headings), but
+// calling it once per LINE to build this cache is a different order of
+// magnitude on a document with thousands of short lines (a pasted log, say)
+// — tens of thousands of forced layouts (and an O(n^2) textContent rebuild)
+// just to populate the cache once. Building all of a line's marker spans
+// into the mirror up front, in one DOM-mutation batch, then reading their
+// .offsetTop afterward gets the same wrap-accurate answer for one browser
+// layout cost total: only the *first* .offsetTop read in the batch actually
+// forces layout — every read after it, with no DOM mutation in between,
+// serves from that same already-computed layout for free.
+function _measureLineTopsInOnePass(textarea, lineStarts, text) {
+  const mirror = _createTextareaMirror(textarea);
+  try {
+    const markers = [];
+    lineStarts.forEach((start, i) => {
+      if (i > 0) mirror.appendChild(document.createElement('br'));
+      const marker = document.createElement('span');
+      marker.textContent = '​';
+      mirror.appendChild(marker);
+      const end = i + 1 < lineStarts.length ? lineStarts[i + 1] - 1 : text.length;
+      if (end > start) mirror.appendChild(document.createTextNode(text.slice(start, end)));
+      markers.push(marker);
+    });
+    return markers.map((m) => m.offsetTop);
+  } finally {
+    mirror.remove();
+  }
+}
+
+export function measureTextareaHeadingTops(textarea, headings) {
+  if (headings.length === 0) return [];
+  return _withTextareaMirror(textarea, (measureTop) => headings.map((h) => measureTop(h.offset)));
+}
+
+// Per-textarea index of each logical (unwrapped source) line's start offset
+// and measured top, rebuilt only when the content or wrapping width/font
+// actually changes — not on every call. getTextareaOffsetAtTop() drives a
+// mirror-based binary search from Split-mode's continuous scroll sync, once
+// per animation frame; without this cache, every one of the search's ~16
+// probes reassigns the mirror's full textContent and forces a synchronous
+// layout read, at BODY_MAX (50,000 chars) real enough to visibly jank an
+// ordinary fast scroll. Caching line starts/tops turns a repeat lookup into
+// a fast in-memory binary search over (typically a few hundred) lines with
+// no DOM work at all — a probe only needs the mirror at all for a line
+// that's demonstrably wrapped into more than one visual row (see the
+// row-span check in both functions below), which is the uncommon case.
+const _lineTopIndexCache = new WeakMap(); // textarea -> { text, key, lineStarts, tops, lineHeight }
+
+// Bumped once JotRelay's own web fonts (DM Sans/DM Mono) finish loading and
+// folded into the cache key below — a lookup that runs before then measures
+// line tops against the browser's fallback font, and once the real font
+// swaps in and reflows the text, none of the key's other fields change
+// (clientWidth, the *declared* fontFamily string, fontSize, padding all stay
+// exactly as they were) to signal that the measurements it already cached
+// are now stale.
+let _fontGeneration = 0;
+if (typeof document !== 'undefined' && document.fonts) {
+  document.fonts.ready.then(() => { _fontGeneration++; });
+}
+
+function _getLineTopIndex(textarea) {
+  const text = textarea.value;
+  const style = getComputedStyle(textarea);
+  // Width alone isn't enough to invalidate on — a font/size change (e.g.
+  // the monospace toggle) reflows every line without touching clientWidth,
+  // and Typewriter mode (ui/editor.js's setTypewriterMode/refreshTypewriterMode)
+  // sets top/bottom padding equal to half the editor's own viewport height
+  // via --typewriter-pad, shifting every line's measured top without
+  // touching clientWidth/fontFamily/fontSize either.
+  const key = `${textarea.clientWidth}|${style.fontFamily}|${style.fontSize}|${style.paddingTop}|${style.paddingBottom}|${_fontGeneration}`;
+  const cached = _lineTopIndexCache.get(textarea);
+  if (cached && cached.text === text && cached.key === key) return cached;
+
+  const lineStarts = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10) lineStarts.push(i + 1); // '\n'
+  }
+  const tops = text.length ? _measureLineTopsInOnePass(textarea, lineStarts, text) : [0];
+  const lineHeight = parseFloat(style.lineHeight) || 0;
+  const index = { text, key, lineStarts, tops, lineHeight };
+  _lineTopIndexCache.set(textarea, index);
+  return index;
+}
+
+// True when logical line `lineIndex` rendered as more than one visual row
+// (i.e. it wrapped) — the one case where every character on the line does
+// *not* share the same measured top, so the cached line-start/top pair
+// alone isn't precise enough and a caller needs to fall back to a real
+// mirror measurement. Conservatively true for the last line (no next
+// line's top to diff against) and whenever lineHeight itself couldn't be
+// determined, rather than risk silently returning an imprecise answer.
+function _lineIsWrapped({ lineStarts, tops, lineHeight }, lineIndex) {
+  if (!lineHeight || lineIndex === lineStarts.length - 1) return true;
+  return (tops[lineIndex + 1] - tops[lineIndex]) > lineHeight * 1.5;
+}
+
+/** Pixel top of a single arbitrary character offset — the same technique as
+ *  measureTextareaHeadingTops(), generalized to any offset (used for mode-
+ *  switch/Split-sync scroll-position transfer, not just heading ticks). */
+export function measureTextareaOffsetTop(textarea, offset) {
+  if (!textarea.value.length) return 0;
+  const index = _getLineTopIndex(textarea);
+  const { lineStarts, tops } = index;
+  let lo = 0, hi = lineStarts.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (lineStarts[mid] <= offset) lo = mid; else hi = mid - 1;
+  }
+  if (!_lineIsWrapped(index, lo)) return tops[lo];
+  return _withTextareaMirror(textarea, (measureTop) => measureTop(offset));
+}
+
+/**
+ * The inverse of measureTextareaOffsetTop(): which character offset sits at
+ * pixel position `targetTop` (typically the textarea's own scrollTop, i.e.
+ * "what's at the top of the viewport right now"). A character's measured
+ * top is monotonically non-decreasing as offset increases (text only ever
+ * flows forward/downward), so this binary-searches for the largest offset
+ * whose line starts at or above targetTop.
+ */
+export function getTextareaOffsetAtTop(textarea, targetTop) {
+  const text = textarea.value;
+  if (!text.length) return 0;
+  const index = _getLineTopIndex(textarea);
+  const { lineStarts, tops } = index;
+
+  let lo = 0, hi = lineStarts.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (tops[mid] <= targetTop) lo = mid; else hi = mid - 1;
+  }
+  const lineStart = lineStarts[lo];
+  if (!_lineIsWrapped(index, lo)) return lineStart;
+
+  // This line wrapped into multiple visual rows — a bounded fine search
+  // within just its own character range (never the whole document) pins
+  // down the exact wrapped row targetTop falls on.
+  const lineEnd = lo + 1 < lineStarts.length ? lineStarts[lo + 1] - 1 : text.length;
+  if (lineEnd === lineStart) return lineStart;
+  // targetTop is document-relative; the mirror below contains only this
+  // one line's own text, so its measured rowTops are line-relative (0 at
+  // the line's own first visual row) — targetTop has to be converted into
+  // that same local coordinate space, or a targetTop deep in the document
+  // would compare as "past every row" and this would always return lineEnd.
+  return _binarySearchWrappedLineTop(textarea, text, lineStart, lineEnd, targetTop - tops[lo]);
+}
+
+// Same binary search as getTextareaOffsetAtTop()'s old wrapped-line fallback,
+// but measured with Range.getBoundingClientRect() against a mirror whose
+// content is set *once* up front, rather than _withTextareaMirror()'s
+// measureTop() (which mutates the mirror's textContent — an ever-larger
+// prefix — on every probe). A single long wrapped line/no-newline document
+// (a minified blob, a huge pasted JSON value) can span nearly the entire
+// document, so "bounded to just this line" doesn't bound the *document*
+// size the old approach still had to re-render into the mirror on each of
+// the search's ~16 probes: a plain textContent assignment forces a fresh
+// synchronous layout every time. A collapsed Range's bounding rect forces a
+// layout too, but only for the *first* one — every later read in this same
+// search, with no DOM mutation in between, is served from that one already-
+// computed layout for free, the same "one layout pass" idea as
+// _measureLineTopsInOnePass() above, applied within a single wrapped line's
+// own character range instead of across a whole document's lines.
+//
+// `targetTop` here is *line*-relative (0 at this line's own first visual
+// row), not document-relative — the mirror below contains only this one
+// line's text, so every rowTop() it measures is naturally in that same
+// local space. Callers passing a document-relative scrollTop must subtract
+// the line's own absolute top first (see getTextareaOffsetAtTop() above).
+function _binarySearchWrappedLineTop(textarea, text, lineStart, lineEnd, targetTop) {
+  const mirror = _createTextareaMirror(textarea);
+  try {
+    const textNode = document.createTextNode(text.slice(lineStart, lineEnd));
+    mirror.appendChild(textNode);
+    const range = document.createRange();
+    const rectTop = (charIndex) => {
+      range.setStart(textNode, charIndex);
+      range.collapse(true);
+      return range.getBoundingClientRect().top;
+    };
+    // Normalized against this line's own first row, not the mirror's own
+    // border box: _createTextareaMirror() clones the textarea's padding
+    // onto the mirror, so the mirror's getBoundingClientRect().top sits
+    // above the text by that padding — ordinarily a few px of harmless
+    // constant error, but Typewriter mode's padding is roughly half the
+    // editor's own viewport height, which was inflating every rowTop() by
+    // that same huge amount and collapsing the search to lineStart almost
+    // always. The caller already made targetTop relative to this line's own
+    // first row (0 there) — normalizing rowTop() the same way, instead of
+    // against the border box, is what actually keeps the two comparable.
+    const firstRowTop = rectTop(0);
+    const rowTop = (charIndex) => rectTop(charIndex) - firstRowTop;
+    let a = 0, b = lineEnd - lineStart;
+    while (a < b) {
+      const mid = Math.ceil((a + b) / 2);
+      if (rowTop(mid) <= targetTop) a = mid; else b = mid - 1;
+    }
+    return lineStart + a;
+  } finally {
+    mirror.remove();
+  }
+}
+
+/** Build a { el, getOffsetAtTop, scrollToOffset } adapter for a plain
+ *  textarea surface — usable directly with wireOffsetScrollSync(). The
+ *  Write-mode half of a sync pair; the CM6 half is built the same shape by
+ *  live-editor.js itself (wireScrollSync()), since it needs that module's
+ *  own view state. Shared here (rather than duplicated in both ui/editor.js
+ *  and live-editor.js) so the "how do I read/set Write's top-visible-offset"
+ *  logic lives in exactly one place. */
+export function createTextareaOffsetAdapter(editor) {
+  return {
+    el: editor,
+    getOffsetAtTop: () => (editor.value.length ? getTextareaOffsetAtTop(editor, editor.scrollTop) : 0),
+    scrollToOffset: (offset) => { editor.scrollTop = Math.max(0, measureTextareaOffsetTop(editor, offset)); },
+  };
 }

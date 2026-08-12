@@ -7,7 +7,7 @@
 // IMPORTANT: do NOT cache Supabase REST, Realtime, Auth, or Storage URLs.
 // Cross-origin API requests pass through directly.
 
-const CACHE_VERSION = 'jotrelay-v77';
+const CACHE_VERSION = 'jotrelay-v78';
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 
 const PRECACHE_ASSETS = [
@@ -86,6 +86,7 @@ const PRECACHE_ASSETS = [
   `${BASE}/src/comments.js`,
   `${BASE}/src/live-editor.js`,
   `${BASE}/src/scroll-rail.js`,
+  `${BASE}/src/scroll-memory.js`,
   `${BASE}/src/footnote-popover.js`,
   `${BASE}/vendor/codemirror.js`,
   `${BASE}/assets/icon-192.png`,
