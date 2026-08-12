@@ -275,13 +275,20 @@ test.describe('Live/Split surface rendering', () => {
     // CM6 keeps refining its height-map estimate for a few update cycles
     // right after a long document first mounts, which can re-trigger a real
     // tick-DOM rebuild (updateHeadings()'s own exact-match check, not just
-    // this test) within the first moment or two — toBeVisible() retries
-    // until that settles, unlike a raw boundingBox() snapshot.
-    await expect(firstTick).toBeVisible();
-    await expect(lastTick).toBeVisible();
-
-    const firstBox = await firstTick.boundingBox();
-    const lastBox = await lastTick.boundingBox();
+    // this test) within the first moment or two. toBeVisible() alone
+    // retries until *a* tick is visible, but a rebuild landing in the gap
+    // between that check resolving and the boundingBox() call actually
+    // running can still hand back null (confirmed live, more so under
+    // heavier system load) — polling boundingBox() itself is what actually
+    // waits out a rebuild happening at that exact moment, not just the one
+    // before it.
+    const pollBox = async (locator) => {
+      let box = null;
+      await expect.poll(async () => { box = await locator.boundingBox(); return box; }, { timeout: 5000 }).not.toBeNull();
+      return box;
+    };
+    const firstBox = await pollBox(firstTick);
+    const lastBox = await pollBox(lastTick);
     // Hover directly over the first tick — it should read as fully
     // prominent while a tick far down the rail stays dim.
     await page.mouse.move(firstBox.x + firstBox.width / 2, firstBox.y + firstBox.height / 2);
@@ -310,9 +317,19 @@ test.describe('Live/Split surface rendering', () => {
     await expect(ticks.nth(2)).toHaveAttribute('title', 'End');
 
     const scroller = page.locator('.note-live .cm-scroller');
-    const before = await scroller.evaluate((el) => el.scrollTop);
+    // Asserted as an absolute "landed near the bottom", not "moved forward
+    // from wherever it happened to start" — mode-switch scroll-position
+    // transfer now carries over wherever Write was left (after
+    // typeInEditor(), near the very end, since typing follows the caret),
+    // and CM6's own selection/viewport bookkeeping can nudge scrollTop by a
+    // few px on its own right after a reset, so comparing against a
+    // "before" snapshot here chases a moving target. Landing near the
+    // bottom is the actual thing this test cares about regardless of where
+    // it started.
     await ticks.nth(2).click();
-    await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(before);
+    // "End" starts around 2/3 through this three-equal-filler-block
+    // document — comfortably past halfway once centered in the viewport.
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop / (el.scrollHeight - el.clientHeight))).toBeGreaterThan(0.5);
   });
 
   test('CM6 scroll rail renders no ticks with fewer than two headings', async ({ page }) => {

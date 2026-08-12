@@ -27,14 +27,14 @@ import { parseTableAlignments } from './markdown-table-utils.js';
 import { EMOJI_MAP } from './markdown-emoji-map.js';
 import { renderMarkdown } from './markdown.js';
 import { toggleFootnotePopover } from './footnote-popover.js';
-import { ScrollRail, runSmoothScroll, wireProportionalScrollSync } from './scroll-rail.js';
+import { ScrollRail, runSmoothScroll, wireOffsetScrollSync, createTextareaOffsetAdapter } from './scroll-rail.js';
 
 let _view                = null;
 let _onChange            = null;
 let _onCursorActivity    = null;
 let _onImageFiles        = null;
 let _onCommentAnchorTap  = null;
-let _scrollSync          = null; // unwire() fn returned by wireProportionalScrollSync, or null
+let _scrollSync          = null; // unwire() fn returned by wireOffsetScrollSync, or null
 const _readOnly = new Compartment();
 
 // Marks transactions applied from outside (textarea → CM6) so the update
@@ -501,12 +501,18 @@ const _checklistProgressField = StateField.define({
 // a newer jump (e.g. a rapid second heading click) has already taken over.
 let _scrollNavToken = 0;
 let _pendingCorrection = null; // { scroller, onScroll } for the in-flight off-screen smooth jump, if any
-function _scrollPosIntoView(view, pos, { center = true, smooth = false } = {}) {
+function _scrollPosIntoView(view, pos, { center = true, smooth = false, flush = false } = {}) {
   const scroller = view.scrollDOM;
   const clampedPos = Math.min(pos, view.state.doc.length);
   const computeTop = () => {
     const block = view.lineBlockAt(clampedPos);
-    const target = center ? block.top - scroller.clientHeight / 2 : block.top - 40;
+    // flush: exactly block.top, no margin — used by scrollOffsetToTop(),
+    // which needs round-trip consistency with getOffsetAtTop() (posAtCoords
+    // at the scroller's literal top edge) for mode-switch transfer and
+    // Split-sync to agree on what "at the top" means. center/the -40
+    // fallback are for a jump whose point is being *revealed*, not being
+    // used as a scroll-position anchor in their own right.
+    const target = flush ? block.top : center ? block.top - scroller.clientHeight / 2 : block.top - 40;
     return Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
   };
   const reduceMotion = smooth && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -1329,7 +1335,14 @@ export function isMounted() { return !!_view; }
 // right after the container is actually shown (see setMarkdownMode's own
 // trailing call into ui/editor.js's write-mode equivalent, _positionWriteRail/
 // _refreshWriteScrollRail, for the same fix on the other surface).
-export function refreshLayout() {
+/**
+ * @param {number} [scrollOffsetToTop] - if given, scroll (instantly, no
+ *   animation) so this source char-offset ends up at the exact top of the
+ *   viewport once layout has settled — the mode-switch/Split-sync transfer
+ *   case, which needs this to happen *after* the same re-measure this
+ *   function already forces for a freshly-revealed container, not before.
+ */
+export function refreshLayout(scrollOffsetToTop) {
   if (!_view) return;
   _view.requestMeasure();
   // requestMeasure() alone isn't enough: confirmed live that immediately
@@ -1349,7 +1362,38 @@ export function refreshLayout() {
   // is a completely ordinary thing to do, not an edge case worth leaving
   // broken. setTimeout still runs in the background (Chrome only clamps its
   // minimum delay there, it doesn't suspend it outright).
-  setTimeout(() => _railInstance?.rebuild(_view), 50);
+  setTimeout(() => {
+    if (!_view) return;
+    if (Number.isFinite(scrollOffsetToTop)) _scrollPosIntoView(_view, scrollOffsetToTop, { flush: true });
+    _railInstance?.rebuild(_view);
+  }, 50);
+}
+
+/**
+ * The source char-offset currently at the exact top of the viewport — the
+ * CM6-side half of the shared "top-visible-offset" anchor used for mode-
+ * switch scroll transfer, Split-sync, and persisted last-position (see
+ * scroll-rail.js's textarea equivalents). posAtCoords() resolves the actual
+ * rendered position at that pixel, which CM6 always has for whatever's
+ * currently drawn — unlike lineBlockAt(), it doesn't need an offset to
+ * start from. Returns 0 when unmounted or nothing is resolvable (an empty
+ * document, or scrolled to a boundary posAtCoords can't place).
+ */
+export function getOffsetAtTop() {
+  if (!_view) return 0;
+  const rect = _view.scrollDOM.getBoundingClientRect();
+  const pos = _view.posAtCoords({ x: rect.left + 1, y: rect.top + 1 });
+  return pos ?? 0;
+}
+
+/** The inverse of getOffsetAtTop(): scroll so `offset` ends up at the exact
+ *  top of the viewport. `smooth` is only for a deliberate, user-visible
+ *  jump (there is currently no such caller — mode-switch transfer and
+ *  Split-sync both want this instant, so the view is already correct the
+ *  moment it's revealed/the other pane moves, not visibly catching up). */
+export function scrollOffsetToTop(offset, { smooth = false } = {}) {
+  if (!_view) return;
+  _scrollPosIntoView(_view, offset, { flush: true, smooth });
 }
 
 /**
@@ -1579,28 +1623,33 @@ export function scrollCaretIntoView() {
 
 // ── Split-mode scroll sync ───────────────────────────────────────────────────
 //
-// Proportional (percent-of-scrollable-range) sync between the Write textarea
-// and this surface's own scroller, mirroring the sync the old rendered pane
-// had. Rewired on every mount() since CM6's scrollDOM is a fresh element
-// each time the view is (re)created, unlike the old #note-preview div.
+// Source-position-anchored sync between the Write textarea and this
+// surface's own scroller: "whatever's at the top of one pane's viewport
+// should also be at the top of the other's," matched by character offset
+// rather than scroll percentage — the same anchor mode-switch transfer uses
+// (see comments-preview.js's _applyMarkdownMode), so Split's continuous
+// sync and a one-shot mode switch agree on what "the same place" means
+// instead of using two different mechanisms. Rewired on every mount() since
+// CM6's scrollDOM is a fresh element each time the view is (re)created,
+// unlike the old #note-preview div.
 //
-// wireProportionalScrollSync() (src/scroll-rail.js) does the actual work —
-// shared with ui/editor.js's own textarea<->rendered-preview Split fallback
-// sync, so there's exactly one comparison-based re-entrancy guard (instead of
-// a boolean "lock" cleared on the next animation frame, which is a timing
-// race, not a real guard — a scrollTop assignment's resulting 'scroll' event
-// is dispatched asynchronously, on a schedule this code doesn't control; an
-// echo arriving even one tick after the lock already cleared gets bounced
-// back to the other pane as if it were a fresh user scroll — the "phantom
-// scroll" of both panes visibly correcting each other by a few pixels after
-// every real scroll) and exactly one "don't fight a deliberate smooth
-// scroll" fix (skipping a write into whichever pane is currently mid
-// runSmoothScroll() — see that function's own comment — rather than either
-// pane's animation getting cancelled by the other's echo).
+// wireOffsetScrollSync() (src/scroll-rail.js) does the actual work,
+// including the "don't fight a deliberate smooth scroll" fix (skipping a
+// write into whichever pane is currently mid runSmoothScroll() — see that
+// function's own comment) and an rAF throttle (this offset mapping is a
+// real per-call cost on the Write side — a mirror-div binary search — unlike
+// the older percentage math's free arithmetic). ui/editor.js's own
+// textarea<->rendered-preview Split *fallback* sync stays on the older
+// wireProportionalScrollSync() — the static rendered-HTML pane has no
+// offset-mapping of its own to anchor to (that would need markdown.js to
+// tag every rendered block with its source position, which it doesn't).
 export function wireScrollSync(editorEl) {
   unwireScrollSync();
   if (!_view || !editorEl) return;
-  _scrollSync = wireProportionalScrollSync(editorEl, _view.scrollDOM);
+  _scrollSync = wireOffsetScrollSync(
+    createTextareaOffsetAdapter(editorEl),
+    { el: _view.scrollDOM, getOffsetAtTop, scrollToOffset: scrollOffsetToTop },
+  );
 }
 
 export function unwireScrollSync() {

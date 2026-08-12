@@ -148,6 +148,56 @@ export function wireProportionalScrollSync(elA, elB) {
   };
 }
 
+// Runs `fn` at most once per animation frame — extra calls before the next
+// frame are dropped, not queued, since only the most recent scroll position
+// matters. Browsers already coalesce native 'scroll' events to roughly once
+// per frame in practice, but this is an explicit, defensive guarantee rather
+// than relying on that: wireOffsetScrollSync's per-call cost (a Write-side
+// mirror-div binary search) is real enough that an uncoalesced burst of
+// events (e.g. a fast trackpad fling) would otherwise be worth avoiding.
+function _rafThrottle(fn) {
+  let scheduled = false;
+  return (...args) => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => { scheduled = false; fn(...args); });
+  };
+}
+
+/**
+ * Wire bidirectional scroll sync between two panes by matching *source
+ * position*, not scroll percentage — "whatever's at the top of A's viewport
+ * should also be at the top of B's" — the same anchor heading ticks and
+ * mode-switch transfer already use, rather than a second, cruder mechanism.
+ * More accurate than wireProportionalScrollSync() at every point (not just at
+ * a one-shot transfer), at the cost of a real per-call computation on
+ * whichever adapter's getOffsetAtTop() has to do a Write-side mirror-div
+ * search — see _rafThrottle above for how that's kept bounded.
+ *
+ * @param {{ el: HTMLElement, getOffsetAtTop: () => number, scrollToOffset: (offset: number) => void }} adapterA
+ * @param {{ el: HTMLElement, getOffsetAtTop: () => number, scrollToOffset: (offset: number) => void }} adapterB
+ * @returns {() => void} unwire
+ */
+export function wireOffsetScrollSync(adapterA, adapterB) {
+  const propagate = (from, to) => {
+    if (isProgrammaticSmoothScroll(to.el)) return;
+    const offset = from.getOffsetAtTop();
+    // Skip a write that's already correct — an echo from the last write
+    // would otherwise compute back to (approximately) the same offset and
+    // bounce forever between the two panes.
+    if (to.getOffsetAtTop() === offset) return;
+    to.scrollToOffset(offset);
+  };
+  const onA = _rafThrottle(() => propagate(adapterA, adapterB));
+  const onB = _rafThrottle(() => propagate(adapterB, adapterA));
+  adapterA.el.addEventListener('scroll', onA);
+  adapterB.el.addEventListener('scroll', onB);
+  return () => {
+    adapterA.el.removeEventListener('scroll', onA);
+    adapterB.el.removeEventListener('scroll', onB);
+  };
+}
+
 // ── The rail itself ─────────────────────────────────────────────────────────
 // Both surfaces mount their rail as a plain sibling of the surface inside the
 // shared `.editor-wrap` card (never inside the surface's own scrolling DOM —
@@ -463,8 +513,13 @@ const _MIRROR_PROPS = [
   'tabSize', 'textIndent', 'wordSpacing',
 ];
 
-export function measureTextareaHeadingTops(textarea, headings) {
-  if (headings.length === 0) return [];
+// Sets up one mirror div for `textarea` and hands the caller a `measureTop(offset)`
+// function that can be called any number of times before the mirror is torn
+// down — shared setup/teardown for every offset<->pixel-top measurement below,
+// so a caller needing several measurements (heading positions, a binary
+// search) pays the one-time mirror-creation cost once instead of once per
+// probe.
+function _withTextareaMirror(textarea, fn) {
   const style = getComputedStyle(textarea);
   const mirror = document.createElement('div');
   mirror.style.position = 'absolute';
@@ -479,17 +534,65 @@ export function measureTextareaHeadingTops(textarea, headings) {
   document.body.appendChild(mirror);
 
   const text = textarea.value;
-  const tops = [];
+  const measureTop = (offset) => {
+    mirror.textContent = text.slice(0, offset);
+    const marker = document.createElement('span');
+    marker.textContent = '​';
+    mirror.appendChild(marker);
+    return marker.offsetTop;
+  };
   try {
-    for (const h of headings) {
-      mirror.textContent = text.slice(0, h.offset);
-      const marker = document.createElement('span');
-      marker.textContent = '​';
-      mirror.appendChild(marker);
-      tops.push(marker.offsetTop);
-    }
+    return fn(measureTop, text);
   } finally {
     mirror.remove();
   }
-  return tops;
+}
+
+export function measureTextareaHeadingTops(textarea, headings) {
+  if (headings.length === 0) return [];
+  return _withTextareaMirror(textarea, (measureTop) => headings.map((h) => measureTop(h.offset)));
+}
+
+/** Pixel top of a single arbitrary character offset — the same technique as
+ *  measureTextareaHeadingTops(), generalized to any offset (used for mode-
+ *  switch/Split-sync scroll-position transfer, not just heading ticks). */
+export function measureTextareaOffsetTop(textarea, offset) {
+  return _withTextareaMirror(textarea, (measureTop) => measureTop(offset));
+}
+
+/**
+ * The inverse of measureTextareaOffsetTop(): which character offset sits at
+ * pixel position `targetTop` (typically the textarea's own scrollTop, i.e.
+ * "what's at the top of the viewport right now"). A character's measured
+ * top is monotonically non-decreasing as offset increases (text only ever
+ * flows forward/downward), so this binary-searches for the largest offset
+ * whose line starts at or above targetTop — O(log n) mirror measurements
+ * rather than one per character.
+ */
+export function getTextareaOffsetAtTop(textarea, targetTop) {
+  const text = textarea.value;
+  if (!text.length) return 0;
+  return _withTextareaMirror(textarea, (measureTop) => {
+    let lo = 0, hi = text.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (measureTop(mid) <= targetTop) lo = mid; else hi = mid - 1;
+    }
+    return lo;
+  });
+}
+
+/** Build a { el, getOffsetAtTop, scrollToOffset } adapter for a plain
+ *  textarea surface — usable directly with wireOffsetScrollSync(). The
+ *  Write-mode half of a sync pair; the CM6 half is built the same shape by
+ *  live-editor.js itself (wireScrollSync()), since it needs that module's
+ *  own view state. Shared here (rather than duplicated in both ui/editor.js
+ *  and live-editor.js) so the "how do I read/set Write's top-visible-offset"
+ *  logic lives in exactly one place. */
+export function createTextareaOffsetAdapter(editor) {
+  return {
+    el: editor,
+    getOffsetAtTop: () => (editor.value.length ? getTextareaOffsetAtTop(editor, editor.scrollTop) : 0),
+    scrollToOffset: (offset) => { editor.scrollTop = Math.max(0, measureTextareaOffsetTop(editor, offset)); },
+  };
 }

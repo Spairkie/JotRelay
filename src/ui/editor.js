@@ -2,7 +2,10 @@
 // Split from the former monolithic ui.js — see src/ui.js for the barrel.
 import { escapeHtml } from '../utils.js';
 import { toggleFootnotePopover } from '../footnote-popover.js';
-import { ScrollRail, collectPlainTextHeadings, measureTextareaHeadingTops, runSmoothScroll, wireProportionalScrollSync } from '../scroll-rail.js';
+import {
+  ScrollRail, collectPlainTextHeadings, measureTextareaHeadingTops, measureTextareaOffsetTop,
+  getTextareaOffsetAtTop, runSmoothScroll, wireProportionalScrollSync,
+} from '../scroll-rail.js';
 
 // ── Editor helpers ────────────────────────────────────────────────────────────
 
@@ -101,6 +104,28 @@ function _refreshWriteScrollRail() {
     _writeRail.updateHeadings(headings.map((h, i) => ({ ...h, top: tops[i] })));
   }
   _writeRail.updateMetrics();
+}
+
+// ── Shared "top-visible-offset" anchor (mode-switch transfer, Split-sync,
+// persisted last-position — see live-editor.js's CM6 equivalents) ─────────
+
+/** The source char-offset currently at the exact top of the Write surface's
+ *  viewport. Returns 0 when unmounted/empty. */
+export function getWriteOffsetAtTop() {
+  const editor = document.getElementById('note-editor');
+  if (!editor || !editor.value.length) return 0;
+  return getTextareaOffsetAtTop(editor, editor.scrollTop);
+}
+
+/** The inverse: scroll so `offset` ends up at the exact top of the Write
+ *  surface's viewport. `smooth` is only for a deliberate, user-visible jump
+ *  — mode-switch transfer and Split-sync both want this instant. */
+export function scrollWriteOffsetToTop(offset, { smooth = false } = {}) {
+  const editor = document.getElementById('note-editor');
+  if (!editor) return;
+  const top = Math.max(0, measureTextareaOffsetTop(editor, offset));
+  if (smooth) runSmoothScroll(editor, top);
+  else editor.scrollTop = top;
 }
 
 export function getEditorValue() {

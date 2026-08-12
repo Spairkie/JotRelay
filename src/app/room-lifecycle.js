@@ -35,6 +35,7 @@ import {
 } from '../settings.js';
 import { encryptContent, decryptContent, looksEncrypted } from '../encryption.js';
 import { loadDraft, clearDraft, isDraftNewer } from '../offline.js';
+import { saveScrollOffset, loadScrollOffset, clearScrollOffset } from '../scroll-memory.js';
 import * as LiveEditor from '../live-editor.js';
 import { setPermissionContext, canEdit, canChangeSettings, editBlockedReason } from '../permissions.js';
 import { loadSavedTheme, THEMES, getSavedTheme, applyTheme } from '../theme.js';
@@ -49,7 +50,7 @@ import {
   _suppressNextResume,
 } from './routing.js';
 import { refreshFiles, openFileDeepLink } from './files-panel.js';
-import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedPruneDeletedCommentAnchors, _pruneDeletedCommentAnchors } from './comments-preview.js';
+import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedPruneDeletedCommentAnchors, _pruneDeletedCommentAnchors, _captureTopOffset } from './comments-preview.js';
 import { _closeSlashMenu, _focusActiveEditorSurface } from './editor-behavior.js';
 import { _selectExpirationPreset } from './panels.js';
 import { wireEvents } from './wiring.js';
@@ -564,6 +565,7 @@ async function startApp(isNewRoom = false) {
       cancelPendingTypingBroadcast();
       cancelPendingLiveContentBroadcast();
       clearDraft(state.roomId);
+      clearScrollOffset(state.roomId);
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
@@ -716,10 +718,53 @@ async function startApp(isNewRoom = false) {
   };
   if (believedOffline) UI.showOfflineBanner();
 
+  // Captured *before* focusing below — a textarea/CM6 view auto-scrolls to
+  // keep its own caret visible the instant it's focused, which (confirmed
+  // live) can silently jump to wherever the caret happens to sit (typically
+  // the very end of the document, from whatever the initial content
+  // assignment left it at) — completely independent of any scroll-position
+  // write already made, and not something that goes through a normal
+  // scrollTop assignment this code could otherwise just run after. This is
+  // "the position before that native behavior gets a chance to interfere,"
+  // used as the fallback below when there's no remembered position to
+  // restore, so focusing never gets the last word on scroll position by
+  // simply defaulting to wherever it wants.
+  const _preFocusOffset = _captureTopOffset(_initialMode);
+
   // Preview is now a possible starting mode (see _resolveInitialEditorMode()
   // above), where the plain textarea is hidden — UI.focusEditor() would
   // silently focus an invisible element and leave no visible caret anywhere.
   if (!isMobile() && !state.isReadOnly) _focusActiveEditorSurface();
+
+  // Remembered scroll position (local-only, per room — see scroll-memory.js)
+  // takes over from wherever things have landed so far, falling back to
+  // _preFocusOffset (not simply doing nothing) when there's nothing to
+  // restore — loadScrollOffset() returns null for a first-ever visit or
+  // when the content's fingerprint doesn't match what was saved, and
+  // either way the right behavior is "stay where this load already had it
+  // before focus," not "let focus's own native caret-scroll decide."
+  // Running after _focusActiveEditorSurface() above, not before, is what
+  // lets this have the final say regardless of what focusing just did.
+  const _restoreOffset = loadScrollOffset(state.roomId, UI.getEditorValue());
+  const _finalOffset = _restoreOffset != null ? _restoreOffset : _preFocusOffset;
+  if (_finalOffset != null) {
+    if (_initialMode === 'write' || _initialMode === 'split') UI.scrollWriteOffsetToTop(_finalOffset);
+    if ((_initialMode === 'preview' || _initialMode === 'split') && LiveEditor.isMounted()) {
+      LiveEditor.refreshLayout(_finalOffset);
+    }
+  }
+  // Periodic save while this room stays open, so returning later restores
+  // roughly where the user left off — reuses _applyMarkdownMode()'s own
+  // "what's at the top of whichever surface is visible" capture rather
+  // than a second copy of that logic. A plain interval (not a scroll
+  // listener) deliberately: this is a "remember for next time" feature, not
+  // a live sync, so it doesn't need to react to every scroll — see
+  // teardownRealtimeSession() for the matching cleanup and the final flush
+  // on leaving this room.
+  state.scrollSaveTimer = setInterval(() => {
+    const offset = _captureTopOffset(state.markdownMode);
+    if (offset != null) saveScrollOffset(state.roomId, UI.getEditorValue(), offset);
+  }, 2000);
 
   // ── View-once: consume AFTER the note is visible to the user ───────────────
   // Set state.consumingViewOnce so the subscribeToRoom postgres echo of our own
@@ -1059,6 +1104,17 @@ async function _reconcileAndFlush() {
 }
 
 export function teardownRealtimeSession() {
+  // Final flush of the persisted scroll position (scroll-memory.js) — the
+  // periodic save below only runs every 2s, so without this the last couple
+  // seconds of scrolling before navigating away would be lost. Must read
+  // state.roomId/markdownMode/editor value *before* anything below resets
+  // them for the next room.
+  clearInterval(state.scrollSaveTimer);
+  state.scrollSaveTimer = null;
+  if (state.roomId) {
+    const _offset = _captureTopOffset(state.markdownMode);
+    if (_offset != null) saveScrollOffset(state.roomId, UI.getEditorValue(), _offset);
+  }
   try { state.unsubRoom?.(); } catch {}
   try { state.unsubFiles?.(); } catch {}
   try { state.unsubComments?.(); } catch {}
