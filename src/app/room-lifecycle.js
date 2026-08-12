@@ -97,6 +97,19 @@ function _shouldPersistScrollMemory() {
   return _roomContentReady && !state.room?.encryption_enabled && !state.viewOnceConsumedByThisSession;
 }
 
+// Bumped at the top of every startApp() call — lets a *stale* invocation
+// recognize, once its own slow refreshFiles()/_refreshComments() awaits
+// finally resolve, that a newer navigation has since superseded it (the
+// user navigated again before this one finished starting up).
+// teardownRealtimeSession() clears state.scrollSaveTimer for whichever
+// invocation is current *when it runs* — a stale invocation that hasn't
+// reached its own `state.scrollSaveTimer = setInterval(...)` line yet at
+// that point has nothing for it to clear, and resuming afterward to
+// install its own interval would silently overwrite the *new* invocation's
+// already-installed handle, leaking the new one running forever with no
+// handle left to ever clear it. Checked immediately before that line below.
+let _roomSessionGeneration = 0;
+
 function _showQuarantinedScreen(room) {
   UI.setInfoScreen({
     title: 'Room unavailable',
@@ -373,6 +386,19 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
     return;
   }
 
+  // Cleared as soon as the loaded room is known to be encrypted — before
+  // the passcode gate below, not after it. A room protected by both a
+  // passcode *and* encryption would otherwise leave a pre-encryption
+  // fingerprint sitting in localStorage until someone actually enters the
+  // correct passcode, even though encryption_enabled is already known from
+  // this room row regardless of whether the passcode has been solved yet.
+  // This device may have last seen the room while it was still
+  // unencrypted (offline or simply absent when some other device turned
+  // encryption on) — neither the local enable path (panels.js) nor the
+  // live remote-transition path elsewhere runs for a device that missed
+  // the change entirely and only discovers it here, on its next cold load.
+  if (state.room.encryption_enabled) clearScrollOffset(roomId);
+
   if (state.room.passcode_hash) {
     UI.showScreen('passcode');
     const badge = document.getElementById('passcode-room-badge');
@@ -381,15 +407,6 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
   }
 
   if (state.room.encryption_enabled) {
-    // This device may have last seen this room while it was still
-    // unencrypted (offline or simply absent when some other device turned
-    // encryption on) — neither the local enable path (panels.js) nor the
-    // live remote-transition path below runs for a device that missed the
-    // change entirely and only discovers it here, on its next cold load.
-    // Same residue this whole gate exists to avoid, just via a third way of
-    // reaching "encrypted now, wasn't when this device last recorded a
-    // position."
-    clearScrollOffset(roomId);
     UI.showScreen('encryption');
     const badge = document.getElementById('encryption-room-badge');
     if (badge) badge.textContent = roomId;
@@ -429,7 +446,8 @@ export async function onPasscodeSubmit() {
   if (!ok) { UI.showPasscodeError('Incorrect passcode. Please try again.'); return; }
 
   if (state.room.encryption_enabled) {
-    clearScrollOffset(state.roomId); // see joinRoom()'s matching gate for why
+    // Already cleared in joinRoom(), before this passcode gate even showed
+    // — see its own comment for why that ordering matters.
     UI.showScreen('encryption');
     const badge = document.getElementById('encryption-room-badge');
     if (badge) badge.textContent = state.roomId;
@@ -470,6 +488,7 @@ export async function onEncryptionSubmit() {
 // ── Start app ─────────────────────────────────────────────────────────────────
 
 async function startApp(isNewRoom = false) {
+  const _myRoomSession = ++_roomSessionGeneration;
   UI.setLoadingMessage('Starting…');
   UI.showScreen('loading');
 
@@ -871,11 +890,17 @@ async function startApp(isNewRoom = false) {
   // teardownRealtimeSession() for the matching cleanup and the final flush
   // on leaving this room. Skipped for an encrypted room or a consumed
   // view-once room — see _shouldPersistScrollMemory()'s own comment for why.
-  state.scrollSaveTimer = setInterval(() => {
-    if (!_shouldPersistScrollMemory()) return;
-    const offset = _captureTopOffset(state.markdownMode);
-    if (offset != null) saveScrollOffset(state.roomId, UI.getEditorValue(), offset);
-  }, 2000);
+  //
+  // Only installed if this is still the current room session — see
+  // _roomSessionGeneration's own comment for why a stale invocation
+  // resuming here must not overwrite a newer one's already-installed timer.
+  if (_myRoomSession === _roomSessionGeneration) {
+    state.scrollSaveTimer = setInterval(() => {
+      if (!_shouldPersistScrollMemory()) return;
+      const offset = _captureTopOffset(state.markdownMode);
+      if (offset != null) saveScrollOffset(state.roomId, UI.getEditorValue(), offset);
+    }, 2000);
+  }
 
   // ── View-once: consume AFTER the note is visible to the user ───────────────
   // Set state.consumingViewOnce so the subscribeToRoom postgres echo of our own

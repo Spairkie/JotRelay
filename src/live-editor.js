@@ -1600,6 +1600,20 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
     }),
     parent: container,
   });
+  // Cancels any in-flight off-screen heading-jump correction the moment the
+  // user takes over navigation directly on this surface — the rail
+  // adapter's own setScrollTop() already does this for a thumb drag/track
+  // click (see its own comment), but a mouse wheel, touchpad, or touch
+  // scroll goes straight to the browser's native scrolling and never calls
+  // that adapter method at all, so without this the correction's 'scroll'
+  // listener stayed armed through the *most common* way of scrolling and
+  // could still fire later and yank the view back to the abandoned target.
+  // 'wheel'/'touchstart' rather than 'scroll' because both are
+  // unambiguously user-initiated — our own programmatic scrolls (smooth or
+  // instant) never dispatch synthetic wheel/touch events, so this can't
+  // misfire on an echo the way a generic scroll listener could.
+  _view.scrollDOM.addEventListener('wheel', _cancelPendingCorrection, { passive: true });
+  _view.scrollDOM.addEventListener('touchstart', _cancelPendingCorrection, { passive: true });
 }
 
 // CM6's drawSelection() extension hides the native caret and draws its own
