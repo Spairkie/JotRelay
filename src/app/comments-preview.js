@@ -311,6 +311,16 @@ export function _captureTopOffset(mode) {
     const editor = document.getElementById('note-editor');
     return editor ? UI.getWriteOffsetAtTop() : null;
   }
+  // Split shows both surfaces at once — with Sync scroll on (the default)
+  // they track the same source position anyway, so which one this reads
+  // from doesn't matter. With it off, they can be at genuinely unrelated
+  // positions, and the Write textarea is the one actually focused whenever
+  // the user is reading/editing there rather than in Live — falling back to
+  // always reading Live regardless would silently persist the *other*
+  // pane's position for room-lifecycle.js's periodic/teardown save.
+  if (mode === 'split' && document.activeElement?.id === 'note-editor') {
+    return UI.getWriteOffsetAtTop();
+  }
   return LiveEditor.isMounted() ? LiveEditor.getOffsetAtTop() : null;
 }
 

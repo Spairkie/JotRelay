@@ -501,6 +501,19 @@ const _checklistProgressField = StateField.define({
 // a newer jump (e.g. a rapid second heading click) has already taken over.
 let _scrollNavToken = 0;
 let _pendingCorrection = null; // { scroller, onScroll } for the in-flight off-screen smooth jump, if any
+
+// Invalidates any in-flight off-screen-jump correction and bumps the token
+// that guards it — shared by every place something supersedes it: a newer
+// _scrollPosIntoView() call, the view being torn down, and (see the rail
+// adapter's setScrollTop() below) the user taking over navigation manually.
+function _cancelPendingCorrection() {
+  _scrollNavToken++;
+  if (_pendingCorrection) {
+    _pendingCorrection.scroller.removeEventListener('scroll', _pendingCorrection.onScroll);
+    _pendingCorrection = null;
+  }
+}
+
 function _scrollPosIntoView(view, pos, { center = true, smooth = false, flush = false } = {}) {
   const scroller = view.scrollDOM;
   const clampedPos = Math.min(pos, view.state.doc.length);
@@ -540,12 +553,8 @@ function _scrollPosIntoView(view, pos, { center = true, smooth = false, flush = 
   // events (driven by this second jump) happened to bring the first
   // click's target into view.viewport, its stale listener would fire and
   // override the second jump's destination.
-  _scrollNavToken++;
+  _cancelPendingCorrection();
   const myToken = _scrollNavToken;
-  if (_pendingCorrection) {
-    _pendingCorrection.scroller.removeEventListener('scroll', _pendingCorrection.onScroll);
-    _pendingCorrection = null;
-  }
 
   // A target already inside the drawn viewport is already accurately
   // measured — one clean scroll, no pre-jump or correction needed either way.
@@ -818,7 +827,23 @@ class _RailPlugin {
       },
       setScrollTop: (top, { smooth } = {}) => {
         if (smooth) runSmoothScroll(view.scrollDOM, top);
-        else view.scrollDOM.scrollTop = top;
+        else {
+          // A direct (non-smooth) scrollTop write only ever comes from the
+          // user manually dragging the rail thumb or clicking its bare
+          // track — real, explicit takeover of navigation. It cancels any
+          // native smooth animation already in flight (assigning scrollTop
+          // does that on its own), but an off-screen heading jump's own
+          // 'scroll' listener (_pendingCorrection, from _scrollPosIntoView)
+          // doesn't care what caused the scroll event — left armed, it can
+          // fire once this drag happens to pass through the *old* jump's
+          // target and yank the view back there, fighting the drag the user
+          // is actively mid-way through. Cancelling here is what a manual
+          // scroll-into-viewport branch inside _scrollPosIntoView itself
+          // can't be, since this scrollTop write never goes through that
+          // function at all.
+          _cancelPendingCorrection();
+          view.scrollDOM.scrollTop = top;
+        }
       },
       jumpToHeading: (h) => {
         const pos = Math.min(h.pos, view.state.doc.length);
@@ -1606,11 +1631,7 @@ export function destroy() {
   // leaving it to whatever the next mount's first jump happens to do) means
   // a stale listener from a closed room can never fire against a next
   // room's freshly mounted scroller by coincidentally sharing a scrollTop.
-  _scrollNavToken++;
-  if (_pendingCorrection) {
-    _pendingCorrection.scroller.removeEventListener('scroll', _pendingCorrection.onScroll);
-    _pendingCorrection = null;
-  }
+  _cancelPendingCorrection();
   _view?.destroy();
   _view = null;
   _onChange = null;

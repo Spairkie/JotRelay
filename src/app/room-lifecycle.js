@@ -719,6 +719,18 @@ async function startApp(isNewRoom = false) {
   };
   if (believedOffline) UI.showOfflineBanner();
 
+  // The plain Write textarea is a single persistent DOM element reused
+  // across an in-app join to a *different* room (no full page reload) — CM6
+  // gets a brand-new view per room (mount() always destroy()s the old one
+  // first, see live-editor.js), but the textarea's own scrollTop is not
+  // reset by a plain .value assignment (confirmed live: assigning shorter
+  // content does not itself clamp/reset scrollTop until a later real layout
+  // pass touches it). Without this, a never-visited room joined right after
+  // scrolling deep into a previous long room would silently inherit that
+  // stale pixel position as its own "current" scroll below, rather than
+  // genuinely starting at the top.
+  UI.scrollWriteOffsetToTop(0);
+
   // Captured *before* focusing below — a textarea/CM6 view auto-scrolls to
   // keep its own caret visible the instant it's focused, which (confirmed
   // live) can silently jump to wherever the caret happens to sit (typically

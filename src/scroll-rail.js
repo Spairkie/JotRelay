@@ -54,6 +54,16 @@ const _TICK_PROXIMITY_RADIUS_PX = 56;
 const _pendingScrolls = new WeakMap(); // el -> { token, cancel() }
 let _scrollTokenSeq = 0;
 
+// Registered by wireProportionalScrollSync()/wireOffsetScrollSync() below so
+// that a deliberate runSmoothScroll() on one pane of a synced Split-mode pair
+// can supersede a smooth scroll still in flight on its *paired* pane — see
+// runSmoothScroll()'s own use of this for why.
+const _syncedSibling = new WeakMap(); // el -> paired el
+function _registerSyncedSiblings(elA, elB) {
+  _syncedSibling.set(elA, elB);
+  _syncedSibling.set(elB, elA);
+}
+
 export function isProgrammaticSmoothScroll(el) {
   return _pendingScrolls.has(el);
 }
@@ -70,6 +80,18 @@ export function isProgrammaticSmoothScroll(el) {
  */
 export function runSmoothScroll(el, top) {
   _pendingScrolls.get(el)?.cancel();
+  // Also cancel a still-in-flight smooth scroll on el's synced pane partner,
+  // if any: both wireProportionalScrollSync() and wireOffsetScrollSync()
+  // skip a sync write into any element that isProgrammaticSmoothScroll(), so
+  // two independent deliberate jumps landing on both panes in quick
+  // succession (one rail tick per pane) would otherwise leave *both*
+  // directions of sync suppressed until one animation happens to finish on
+  // its own — letting whichever settles first silently pull the other pane
+  // back toward it, or leaving the two apart with no further scroll event to
+  // reconcile them. The newest deliberate jump, on either pane, should
+  // always be the one that wins.
+  const sibling = _syncedSibling.get(el);
+  if (sibling) _pendingScrolls.get(sibling)?.cancel();
   const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   if (reduceMotion) {
     el.scrollTop = top;
@@ -130,6 +152,7 @@ export function runSmoothScroll(el, top) {
  * @returns {() => void} unwire
  */
 export function wireProportionalScrollSync(elA, elB) {
+  _registerSyncedSiblings(elA, elB);
   const propagate = (from, to) => {
     if (isProgrammaticSmoothScroll(to)) return;
     const maxFrom = from.scrollHeight - from.clientHeight;
@@ -178,6 +201,7 @@ export function wireProportionalScrollSync(elA, elB) {
  * @returns {() => void} unwire
  */
 export function wireOffsetScrollSync(adapterA, adapterB) {
+  _registerSyncedSiblings(adapterA.el, adapterB.el);
   let seq = 0;
   const schedule = (from, to) => {
     const mySeq = ++seq;
