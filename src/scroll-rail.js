@@ -712,9 +712,10 @@ function _lineIsWrapped({ lineStarts, tops, lineHeight }, lineIndex) {
   return (tops[lineIndex + 1] - tops[lineIndex]) > lineHeight * 1.5;
 }
 
-/** Pixel top of a single arbitrary character offset — the same technique as
- *  measureTextareaHeadingTops(), generalized to any offset (used for mode-
- *  switch/Split-sync scroll-position transfer, not just heading ticks). */
+/** Pixel top of a single arbitrary character offset — used for mode-switch/
+ *  Split-sync scroll-position transfer, not just heading ticks (see
+ *  measureTextareaHeadingTops() above for that narrower case, kept as its
+ *  own simpler function since it always measures whole logical lines). */
 export function measureTextareaOffsetTop(textarea, offset) {
   if (!textarea.value.length) return 0;
   const index = _getLineTopIndex(textarea);
@@ -725,7 +726,44 @@ export function measureTextareaOffsetTop(textarea, offset) {
     if (lineStarts[mid] <= offset) lo = mid; else hi = mid - 1;
   }
   if (!_lineIsWrapped(index, lo)) return tops[lo];
-  return _withTextareaMirror(textarea, (measureTop) => measureTop(offset));
+  // Measured with the line's full text present, not measureTop(offset)'s
+  // old text.slice(0, offset) truncation — where a soft-wrapped line
+  // breaks can depend on text *after* offset (a whole word that doesn't
+  // fit at the end of a row moves entirely to the next one, even though
+  // its truncated prefix up to offset might still have fit on the row
+  // before), so measuring only the prefix could put the result one row
+  // early. lineTopAt() below builds the mirror with the complete line once
+  // and reads a collapsed Range's position within it instead.
+  const text = textarea.value;
+  const lineStart = lineStarts[lo];
+  const lineEnd = lo + 1 < lineStarts.length ? lineStarts[lo + 1] - 1 : text.length;
+  return _measureWrappedLineOffsetTop(textarea, text, lineStart, lineEnd, offset, tops[lo]);
+}
+
+// Shared by measureTextareaOffsetTop() above and _binarySearchWrappedLineTop()
+// below — both need a single wrapped line's full text present in the mirror
+// (never just a truncated prefix, see the caller's own comment for why) and
+// a way to read an arbitrary character's row position within it via a
+// collapsed Range, normalized against the line's own first row rather than
+// the mirror's border box (see _binarySearchWrappedLineTop()'s own comment
+// on why border-box-relative was wrong under Typewriter mode's padding).
+function _measureWrappedLineOffsetTop(textarea, text, lineStart, lineEnd, targetOffset, lineAbsoluteTop) {
+  const mirror = _createTextareaMirror(textarea);
+  try {
+    const textNode = document.createTextNode(text.slice(lineStart, lineEnd));
+    mirror.appendChild(textNode);
+    const range = document.createRange();
+    const rectTop = (charIndex) => {
+      range.setStart(textNode, charIndex);
+      range.collapse(true);
+      return range.getBoundingClientRect().top;
+    };
+    const firstRowTop = rectTop(0);
+    const localOffset = Math.max(0, Math.min(targetOffset - lineStart, lineEnd - lineStart));
+    return lineAbsoluteTop + (rectTop(localOffset) - firstRowTop);
+  } finally {
+    mirror.remove();
+  }
 }
 
 /**

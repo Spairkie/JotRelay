@@ -60,9 +60,9 @@ async function _emptyContentForCurrentEncryption() {
   return state.encKey ? await encryptContent('', state.encKey) : '';
 }
 
-// Shared gate for every read/write of the persisted last-scroll-position
-// (src/scroll-memory.js) — restoring on load, the periodic save, and the
-// teardown/page-exit flush all defer to this.
+// Whether the persisted last-scroll-position (src/scroll-memory.js) is
+// blocked for this room/session at all, regardless of timing — shared by
+// both the read side (the initial restore) and the write side below.
 //
 // Never for an encrypted room: scroll-memory.js's fingerprint is a fast,
 // unsalted hash of the *decrypted* text, persisted in plain localStorage —
@@ -75,26 +75,52 @@ async function _emptyContentForCurrentEncryption() {
 // entered for yet, which would otherwise let the exact leak this guards
 // against slip through while locked.
 //
-// Never once a view-once room has been consumed by this tab either: the
-// server/draft are already cleared at that point, but the plaintext
+// Never once a view-once room has been consumed by this tab, or this
+// device's own join is what hit the room's device limit, either: in both
+// cases the server/draft are already cleared, but the plaintext
 // intentionally stays visible in the editor until the user leaves — the
 // same "content is gone but a guess-verification fingerprint survives it"
 // concern the encryption gate exists for, just without encryption being
 // the reason this content is meant to be ephemeral.
+function _scrollMemoryBlocked() {
+  return !!state.room?.encryption_enabled || state.viewOnceConsumedByThisSession || state.deviceLimitClearedByThisSession;
+}
+
+// Whether the initial *restore* (reading a previously-saved position) may
+// run — only the blocked-or-not question above; by the time this read
+// happens (inside startApp(), after content is already set for the current
+// room) there's no room-identity or restore-ordering race left to guard
+// against, unlike the write side below.
+function _shouldReadScrollMemory() {
+  return !_scrollMemoryBlocked();
+}
+
+// Whether a *write* (the periodic save or a teardown/page-exit flush) may
+// run. Two timing gates on top of the same blocked-or-not question,
+// both required:
 //
-// Never while _roomContentReady is false either: joinRoom() assigns
-// state.roomId to the *new* room synchronously, before the awaited
-// loadRoom() resolves and state.room/the editor's content catch up to it —
-// during that window the shared textarea still holds the *previous* room's
-// text (or, on this session's very first join, nothing meaningful yet), so
-// a page-hidden/exit flush landing in that gap would otherwise save stale
-// or wrong-room content under the new room's key. Flipped true only once
-// startApp() has actually populated the editor for state.roomId (see the
-// call sites below) and back to false the moment joinRoom() starts pointing
-// state.roomId at a new target.
+// _roomContentReady: joinRoom() assigns state.roomId to the *new* room
+// synchronously, before the awaited loadRoom() resolves and state.room/the
+// editor's content catch up to it — during that window the shared textarea
+// still holds the *previous* room's text (or, on this session's very first
+// join, nothing meaningful yet), so a flush landing in that gap would
+// otherwise save stale or wrong-room content under the new room's key.
+// Flipped true only once startApp() has actually populated the editor for
+// state.roomId, false the moment joinRoom() starts pointing state.roomId at
+// a new target.
+//
+// _roomRestoreComplete: content being *correct* isn't enough on its own —
+// between that point and the moment startApp() actually applies (or
+// deliberately skips) the restored/fallback position, the editor sits at a
+// temporary, usually-top position. A flush landing in *that* narrower
+// window would silently overwrite a real, previously-saved deep position
+// with this temporary one — the startup restore only ever reads it once,
+// earlier, so nothing corrects it back afterward. Flipped true only once
+// that restore decision has actually been made, whichever way it went.
 let _roomContentReady = false;
-function _shouldPersistScrollMemory() {
-  return _roomContentReady && !state.room?.encryption_enabled && !state.viewOnceConsumedByThisSession;
+let _roomRestoreComplete = false;
+function _shouldWriteScrollMemory() {
+  return _roomContentReady && _roomRestoreComplete && !_scrollMemoryBlocked();
 }
 
 // Bumped by teardownRealtimeSession() at the top of every joinRoom() call
@@ -318,8 +344,10 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
 
   teardownRealtimeSession();
   _roomContentReady = false;
+  _roomRestoreComplete = false;
   state.roomId = roomId;
   state.viewOnceConsumedByThisSession = false;
+  state.deviceLimitClearedByThisSession = false;
   UI.setLoadingMessage('Loading room…');
 
   try {
@@ -505,14 +533,31 @@ async function startApp(isNewRoom = false) {
 
   // ── Expiration check ───────────────────────────────────────────────────────
   if (state.room.expires_at && new Date(state.room.expires_at) <= new Date()) {
-    await handleExpiration(state.roomId, state.room, await _emptyContentForCurrentEncryption());
-    state.room = await loadRoom(state.roomId);
-    // Expiration is an authoritative content reset like any other — a
-    // remembered position saved against the old (now-cleared) content
-    // would otherwise sit in localStorage until it happens to fail the
-    // fingerprint check on some later visit, exactly the residue every
-    // other reset path already clears this for.
-    clearScrollOffset(state.roomId);
+    // Captured before the awaits below, not read from state.roomId
+    // afterward — if the user navigates to a different room while either
+    // request is in flight, state.roomId already points at that new room
+    // by the time this continuation resumes (same _roomSessionGeneration
+    // race as the scrollSaveTimer install further down), and this cleanup
+    // must land on the room it was actually about, not whatever the shared
+    // state has since moved on to.
+    const _expiringRoomId = state.roomId;
+    const didClear = await handleExpiration(_expiringRoomId, state.room, await _emptyContentForCurrentEncryption());
+    if (_myRoomSession === _roomSessionGeneration) {
+      state.room = await loadRoom(_expiringRoomId);
+      // Only when the reset actually succeeded — handleExpiration() returns
+      // false for a locked room or a network/RLS failure, leaving the
+      // content (and any real remembered position for it) untouched; this
+      // ran unconditionally in an earlier version and could delete a still-
+      // valid position for a room whose expiration reset silently failed.
+      if (didClear) {
+        // Expiration is an authoritative content reset like any other — a
+        // remembered position saved against the old (now-cleared) content
+        // would otherwise sit in localStorage until it happens to fail the
+        // fingerprint check on some later visit, exactly the residue every
+        // other reset path already clears this for.
+        clearScrollOffset(_expiringRoomId);
+      }
+    }
   }
 
   // ── Decrypt content for display ────────────────────────────────────────────
@@ -540,7 +585,16 @@ async function startApp(isNewRoom = false) {
   if (state.room.device_limit && !isCreator) {
     try {
       const result = await recordRoomDeviceView(state.roomId, deviceId);
-      if (result.expired) state.room = await loadRoom(state.roomId);
+      if (result.expired) {
+        state.room = await loadRoom(state.roomId);
+        // Same reasoning as view-once's own flag: this device's join is
+        // what hit the limit and cleared the room server-side, but the
+        // plaintext this device already had stays visible locally — a
+        // scroll-memory record would keep exposing its fingerprint after
+        // the content itself is gone, exactly the residue
+        // _scrollMemoryBlocked() already exists to avoid.
+        state.deviceLimitClearedByThisSession = true;
+      }
     } catch { /* non-fatal — see comment above */ }
   }
 
@@ -631,8 +685,9 @@ async function startApp(isNewRoom = false) {
   // instead of just the stale carry-over this exists to fix.
   UI.scrollWriteOffsetToTop(0);
   // The editor now genuinely holds state.roomId's own content — see
-  // _shouldPersistScrollMemory()'s own comment for why every scroll-memory
-  // read/write is gated on this.
+  // _shouldWriteScrollMemory()'s own comment for why every scroll-memory
+  // write is gated on this (not just this + encryption/view-once/device-
+  // limit — see _roomRestoreComplete for the other half).
   _roomContentReady = true;
 
   // Apply the user's remembered editor mode now that real content exists —
@@ -882,8 +937,8 @@ async function startApp(isNewRoom = false) {
     // lets this have the final say regardless of what focusing just did.
     //
     // Never for an encrypted room or a view-once room this tab has already
-    // consumed — see _shouldPersistScrollMemory()'s own comment for why.
-    const _restoreOffset = _shouldPersistScrollMemory() ? loadScrollOffset(state.roomId, UI.getEditorValue()) : null;
+    // consumed — see _scrollMemoryBlocked()'s own comment for why.
+    const _restoreOffset = _shouldReadScrollMemory() ? loadScrollOffset(state.roomId, UI.getEditorValue()) : null;
     const _finalOffset = _restoreOffset != null ? _restoreOffset : _preFocusOffset;
     if (_finalOffset != null) {
       if (_initialMode === 'write' || _initialMode === 'split') UI.scrollWriteOffsetToTop(_finalOffset);
@@ -892,6 +947,11 @@ async function startApp(isNewRoom = false) {
       }
     }
   }
+  // The startup restore decision above has now been made either way
+  // (applied or deliberately skipped for _userInteractedDuringStartup) —
+  // see _roomRestoreComplete's own comment for why writes were blocked
+  // until this exact point, not just _roomContentReady.
+  _roomRestoreComplete = true;
   // Periodic save while this room stays open, so returning later restores
   // roughly where the user left off — reuses _applyMarkdownMode()'s own
   // "what's at the top of whichever surface is visible" capture rather
@@ -900,14 +960,14 @@ async function startApp(isNewRoom = false) {
   // a live sync, so it doesn't need to react to every scroll — see
   // teardownRealtimeSession() for the matching cleanup and the final flush
   // on leaving this room. Skipped for an encrypted room or a consumed
-  // view-once room — see _shouldPersistScrollMemory()'s own comment for why.
+  // view-once room — see _scrollMemoryBlocked()'s own comment for why.
   //
   // Only installed if this is still the current room session — see
   // _roomSessionGeneration's own comment for why a stale invocation
   // resuming here must not overwrite a newer one's already-installed timer.
   if (_myRoomSession === _roomSessionGeneration) {
     state.scrollSaveTimer = setInterval(() => {
-      if (!_shouldPersistScrollMemory()) return;
+      if (!_shouldWriteScrollMemory()) return;
       const offset = _captureTopOffset(state.markdownMode);
       if (offset != null) saveScrollOffset(state.roomId, UI.getEditorValue(), offset);
     }, 2000);
@@ -924,7 +984,7 @@ async function startApp(isNewRoom = false) {
         state.room = await loadRoom(state.roomId);
         state.viewOnceConsumedByThisSession = true;
         clearDraft(state.roomId);
-        // _shouldPersistScrollMemory() only gates *future* reads/writes —
+        // _scrollMemoryBlocked() only gates *future* reads/writes —
         // an entry already saved during an earlier non-consuming visit, or
         // written by the periodic timer while this consume request was
         // still in flight, would otherwise keep the consumed plaintext's
@@ -1277,11 +1337,12 @@ async function _reconcileAndFlush() {
  * teardownRealtimeSession() (in-app navigation away) and the page-exit
  * cleanup in editor-behavior.js (tab close/reload/back-forward, which never
  * runs teardownRealtimeSession() at all) — see that call site for why both
- * need their own hook into this. No-op for an encrypted room or a consumed
- * view-once room — see _shouldPersistScrollMemory()'s own comment for why.
+ * need their own hook into this. No-op for an encrypted room, a consumed
+ * view-once room, or before this room's own startup has actually finished
+ * — see _shouldWriteScrollMemory()'s own comment for why.
  */
 export function flushScrollPosition() {
-  if (!state.roomId || !_shouldPersistScrollMemory()) return;
+  if (!state.roomId || !_shouldWriteScrollMemory()) return;
   const offset = _captureTopOffset(state.markdownMode);
   if (offset != null) saveScrollOffset(state.roomId, UI.getEditorValue(), offset);
 }

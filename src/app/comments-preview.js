@@ -337,6 +337,17 @@ function _enteringSurfaces(fromMode, toMode) {
 // room-lifecycle.js's teardownRealtimeSession()) since a stale value from
 // a previous room could otherwise pick the wrong initial pane before either
 // surface has been interacted with at all in the new one.
+// Also updated on 'focusin', not just wheel/touch/rail interaction — a
+// wheel-scroll on Live, followed by clicking into Write and continuing to
+// type with no *further* wheel/touch/rail event on either surface, left
+// the tracker stuck on 'live' even though Write is now genuinely the
+// active surface. Focus is a reasonable proxy for "actively editing here"
+// on its own (unlike for the *initial* pick in _captureTopOffset() below,
+// where it's only a fallback — focusing can trigger a native scroll-to-
+// caret independent of where the user's attention actually is, per
+// startApp()'s own _preFocusOffset dance) precisely because this only
+// updates the tracker going forward, never overrides an already-resolved
+// capture the way a focus-first policy would there.
 let _lastScrolledSplitSurface = null; // 'write' | 'live' | null
 let _writeInteractionTrackerWired = false;
 function _wireSplitPaneTracking(liveScroller) {
@@ -346,11 +357,13 @@ function _wireSplitPaneTracking(liveScroller) {
     const editor = document.getElementById('note-editor');
     editor?.addEventListener('wheel', markWrite, { passive: true });
     editor?.addEventListener('touchstart', markWrite, { passive: true });
+    editor?.addEventListener('focusin', markWrite);
     document.querySelector('.scroll-rail-write')?.addEventListener('pointerdown', markWrite);
     _writeInteractionTrackerWired = true;
   }
   liveScroller?.addEventListener('wheel', markLive, { passive: true });
   liveScroller?.addEventListener('touchstart', markLive, { passive: true });
+  liveScroller?.addEventListener('focusin', markLive);
   document.querySelector('.scroll-rail-live')?.addEventListener('pointerdown', markLive);
 }
 export function _resetSplitPaneTracking() {

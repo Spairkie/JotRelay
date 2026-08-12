@@ -26,6 +26,7 @@ export const state = {
   eventsWired: false, // v1: guard against double-wiring
   consumingViewOnce: false, // v1: short-circuit own view-once clear echo
   viewOnceConsumedByThisSession: false, // session-local allowlist for first consumer view
+  deviceLimitClearedByThisSession: false, // this device's own join is what hit the device-limit clear — content stays visible locally even though the server copy is already wiped
   isReadOnly: false, // ?mode=read or /share/:token (UI/UX convention, not server-enforced — see joinRoom())
   shareToken: null,
   markdownMode: 'write', // 'write' | 'preview' | 'split'
