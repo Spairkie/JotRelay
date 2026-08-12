@@ -577,6 +577,7 @@ async function startApp(isNewRoom = false) {
       cancelPendingTypingBroadcast();
       cancelPendingLiveContentBroadcast();
       clearDraft(state.roomId);
+      clearScrollOffset(state.roomId);
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
@@ -745,7 +746,21 @@ async function startApp(isNewRoom = false) {
   // before focus," not "let focus's own native caret-scroll decide."
   // Running after _focusActiveEditorSurface() above, not before, is what
   // lets this have the final say regardless of what focusing just did.
-  const _restoreOffset = loadScrollOffset(state.roomId, UI.getEditorValue());
+  //
+  // Never for an encrypted room: scroll-memory.js's fingerprint is a fast,
+  // unsalted hash of the *decrypted* text, persisted in plain localStorage
+  // — for a short or predictable note, that's an offline-verifiable oracle
+  // for guessing content without ever knowing the room passphrase, unlike
+  // offline.js's drafts (encrypted at rest for exactly this reason). Not
+  // worth adding a parallel encrypted-fingerprint scheme for a "remember
+  // where I scrolled" nicety, so encrypted rooms just don't get this
+  // feature — the mode-transfer/_preFocusOffset behavior is untouched.
+  // Gated on the room's own encryption_enabled flag, not state.encKey —
+  // encKey is only *this device's currently-unlocked* key and is null both
+  // for a genuinely unencrypted room and for an encrypted one the
+  // passphrase hasn't been entered for yet, which would otherwise let the
+  // exact leak this guards against slip through while locked.
+  const _restoreOffset = state.room?.encryption_enabled ? null : loadScrollOffset(state.roomId, UI.getEditorValue());
   const _finalOffset = _restoreOffset != null ? _restoreOffset : _preFocusOffset;
   if (_finalOffset != null) {
     if (_initialMode === 'write' || _initialMode === 'split') UI.scrollWriteOffsetToTop(_finalOffset);
@@ -760,8 +775,10 @@ async function startApp(isNewRoom = false) {
   // listener) deliberately: this is a "remember for next time" feature, not
   // a live sync, so it doesn't need to react to every scroll — see
   // teardownRealtimeSession() for the matching cleanup and the final flush
-  // on leaving this room.
+  // on leaving this room. Skipped entirely for an encrypted room — see the
+  // restore side's own comment above for why.
   state.scrollSaveTimer = setInterval(() => {
+    if (state.room?.encryption_enabled) return;
     const offset = _captureTopOffset(state.markdownMode);
     if (offset != null) saveScrollOffset(state.roomId, UI.getEditorValue(), offset);
   }, 2000);
@@ -930,6 +947,7 @@ async function _handleRoomStateTransition(prev, newRoom) {
     cancelPendingTypingBroadcast();
     cancelPendingLiveContentBroadcast();
     clearDraft(state.roomId);
+    clearScrollOffset(state.roomId);
     setContentNoSave('');
     UI.updateWordCount('');
     UI.hideExpirationBar();
@@ -949,6 +967,7 @@ async function _handleRoomStateTransition(prev, newRoom) {
       cancelPendingSave();
       cancelPendingTypingBroadcast();
       cancelPendingLiveContentBroadcast();
+      clearScrollOffset(state.roomId);
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
@@ -968,6 +987,7 @@ async function _handleRoomStateTransition(prev, newRoom) {
       cancelPendingSave();
       cancelPendingTypingBroadcast();
       cancelPendingLiveContentBroadcast();
+      clearScrollOffset(state.roomId);
       setContentNoSave('');
       UI.updateWordCount('');
       _refreshPreviewIfActive();
@@ -1010,6 +1030,7 @@ function _updateViewOnceConsumedUI() {
         await snapshotBeforeDestructiveChange();
         await resetViewOnceNote(state.roomId, await _emptyContentForCurrentEncryption(), true);
         clearDraft(state.roomId);
+        clearScrollOffset(state.roomId);
         state.room = await loadRoom(state.roomId);
         state.viewOnceConsumedByThisSession = false;
         setContentNoSave('');
@@ -1045,6 +1066,7 @@ export function setupExpirationTimer() {
       void (async () => {
         const didClear = await handleExpiration(state.roomId, state.room, await _emptyContentForCurrentEncryption());
         if (didClear) {
+          clearScrollOffset(state.roomId);
           setContentNoSave('');
           UI.updateWordCount('');
           UI.hideExpirationBar();
@@ -1103,18 +1125,30 @@ async function _reconcileAndFlush() {
   await reconcileAfterReconnect(fresh);
 }
 
+/**
+ * Final, synchronous flush of the persisted scroll position (scroll-
+ * memory.js) for whichever room is currently open — the periodic save in
+ * startApp() only runs every 2s, so without an explicit flush the last
+ * couple seconds of scrolling before leaving would be lost. Shared by
+ * teardownRealtimeSession() (in-app navigation away) and the page-exit
+ * cleanup in editor-behavior.js (tab close/reload/back-forward, which never
+ * runs teardownRealtimeSession() at all) — see that call site for why both
+ * need their own hook into this. No-op for an encrypted room; see the
+ * restore-side comment in startApp() for why that combination is skipped
+ * entirely.
+ */
+export function flushScrollPosition() {
+  if (!state.roomId || state.room?.encryption_enabled) return;
+  const offset = _captureTopOffset(state.markdownMode);
+  if (offset != null) saveScrollOffset(state.roomId, UI.getEditorValue(), offset);
+}
+
 export function teardownRealtimeSession() {
-  // Final flush of the persisted scroll position (scroll-memory.js) — the
-  // periodic save below only runs every 2s, so without this the last couple
-  // seconds of scrolling before navigating away would be lost. Must read
-  // state.roomId/markdownMode/editor value *before* anything below resets
-  // them for the next room.
+  // Must run before anything below resets state.roomId/markdownMode/encKey
+  // for the next room.
   clearInterval(state.scrollSaveTimer);
   state.scrollSaveTimer = null;
-  if (state.roomId) {
-    const _offset = _captureTopOffset(state.markdownMode);
-    if (_offset != null) saveScrollOffset(state.roomId, UI.getEditorValue(), _offset);
-  }
+  flushScrollPosition();
   try { state.unsubRoom?.(); } catch {}
   try { state.unsubFiles?.(); } catch {}
   try { state.unsubComments?.(); } catch {}
@@ -1236,6 +1270,7 @@ export async function doClearNote() {
   try {
     await snapshotBeforeDestructiveChange();
     await clearRoomContent(state.roomId, 'manual', await _emptyContentForCurrentEncryption());
+    clearScrollOffset(state.roomId);
     setContentNoSave('');
     UI.updateWordCount('');
     _refreshPreviewIfActive();

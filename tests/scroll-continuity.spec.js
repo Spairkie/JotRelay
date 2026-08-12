@@ -112,16 +112,22 @@ test.describe('Persisted last-scroll-position', () => {
     const roomId = await createRoom(page);
     await typeInEditor(page, DOC);
     await expect(page.locator('#status-text')).toHaveText('Saved', { timeout: 5000 });
-    // Cleared right before reload, not before typing: typing this much text
-    // takes long enough for the app's own periodic scroll-position save
-    // (every 2s — see room-lifecycle.js) to have already fired at least
-    // once *during* typing, when the view was naturally scrolled to follow
-    // the caret near the end — legitimately saving a real, non-top
-    // position. Clearing right before reload is what actually tests "never
-    // visited" rather than "visited, but its own save got cleared earlier".
+    // Navigated away rather than reloaded in place: leaving the room fires
+    // its own teardown flush (see room-lifecycle.js's teardownRealtimeSession
+    // -> flushScrollPosition, and editor-behavior.js's beforeunload/pagehide
+    // handlers for the reload case) which re-saves whatever the *real*
+    // current position is — near the end here, since typing this much text
+    // leaves the caret (and view) scrolled there. Clearing localStorage
+    // and then reloading in place would just race that flush: the handler
+    // fires during the reload's own unload phase and rewrites the entry
+    // right back, after this test's removeItem() but before the fresh load
+    // reads it. Going through a real navigation away first lets that flush
+    // land normally (matching, harmless) while nothing else is running, so
+    // clearing afterward — from outside the room — actually sticks.
+    await page.goto('/JotRelay/app/');
     await page.evaluate((id) => localStorage.removeItem('syncpad_scroll_' + id), roomId);
 
-    await page.reload();
+    await page.goto(`/JotRelay/${roomId}`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15000 });
     await ensureWriteMode(page);
     await page.waitForTimeout(500);
@@ -161,6 +167,15 @@ test.describe('Persisted last-scroll-position', () => {
     await typeInEditor(page, DOC);
     await expect(page.locator('#status-text')).toHaveText('Saved', { timeout: 5000 });
 
+    // Navigated away first, same reasoning as the "fresh room" test above:
+    // this device's own teardown flush would otherwise immediately re-save
+    // a *matching* offset over the deliberately-stale fixture seeded below,
+    // since as far as this live session is concerned the content never
+    // actually changed. Leaving the room lets that flush land normally
+    // first; the fixture is then seeded from outside, with nothing left
+    // running to clobber it.
+    await page.goto('/JotRelay/app/');
+
     // Seeded against content that does NOT match what's actually in the
     // room — simulates a remote edit landing between visits, which must
     // invalidate the saved position (fingerprint mismatch).
@@ -169,7 +184,7 @@ test.describe('Persisted last-scroll-position', () => {
       mod.saveScrollOffset(roomId, 'completely different stale content', 500);
     }, roomId);
 
-    await page.reload();
+    await page.goto(`/JotRelay/${roomId}`);
     await page.waitForSelector('#app-screen:not(.hidden)', { timeout: 15000 });
     await ensureWriteMode(page);
     await page.waitForTimeout(500);

@@ -18,6 +18,7 @@ import { _currentSelectionRange, _openFloatingCommentComposer, _refreshFloatingC
 import { _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedRefreshFloatingComments, _debouncedPruneDeletedCommentAnchors } from './comments-preview.js';
 import { _uploadAndInsertImages } from './files-panel.js';
 import { _openTemplatesModalFresh } from './panels.js';
+import { flushScrollPosition } from './room-lifecycle.js';
 
 // Custom templates are already capped at BODY_MAX (templates.js), but nothing
 // stopped the editor itself from exceeding it — via typing past it, a native
@@ -332,6 +333,12 @@ export function _wireEditorToolbarAndLifecycle() {
     // visibilitychange handles tab-hide; these handle close/navigate.
     setTyping(false);
     flushSave();
+    // A real tab close/reload/back-forward never runs
+    // teardownRealtimeSession() (that's only for *in-app* room navigation),
+    // so its own final scroll-position flush would otherwise never fire for
+    // this, the actually-common way a session ends — only the 2s periodic
+    // save in startApp() would have run, losing up to that much scrolling.
+    flushScrollPosition();
     destroyPresence();
   };
   window.addEventListener('beforeunload', _cleanupOnLeave);
@@ -339,6 +346,7 @@ export function _wireEditorToolbarAndLifecycle() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       flushSave();
+      flushScrollPosition();
       setTyping(false);
       setCursorLine(null);
     }

@@ -505,14 +505,25 @@ function _scrollPosIntoView(view, pos, { center = true, smooth = false, flush = 
   const scroller = view.scrollDOM;
   const clampedPos = Math.min(pos, view.state.doc.length);
   const computeTop = () => {
-    const block = view.lineBlockAt(clampedPos);
-    // flush: exactly block.top, no margin — used by scrollOffsetToTop(),
-    // which needs round-trip consistency with getOffsetAtTop() (posAtCoords
-    // at the scroller's literal top edge) for mode-switch transfer and
+    // lineBlockAt() only knows about *logical* (unwrapped source) lines —
+    // for a long line that wraps into several visual rows, block.top is
+    // the top of the row the line *starts* on, not the row clampedPos
+    // itself falls on, however far into the wrap that is. coordsAtPos()
+    // resolves the actual rendered row (correctly wrap-aware) but only for
+    // a position that's currently drawn, so it's used when available and
+    // lineBlockAt() stays as the off-screen estimate — corrected once the
+    // estimate-then-correct dance below actually renders the destination,
+    // same as it always was for the "estimate is wrong at all" case.
+    const coords = view.coordsAtPos(clampedPos);
+    const rawTop = coords ? coords.top - scroller.getBoundingClientRect().top + scroller.scrollTop
+      : view.lineBlockAt(clampedPos).top;
+    // flush: exactly rawTop, no margin — used by scrollOffsetToTop(), which
+    // needs round-trip consistency with getOffsetAtTop() (posAtCoords at
+    // the scroller's literal top edge) for mode-switch transfer and
     // Split-sync to agree on what "at the top" means. center/the -40
     // fallback are for a jump whose point is being *revealed*, not being
     // used as a scroll-position anchor in their own right.
-    const target = flush ? block.top : center ? block.top - scroller.clientHeight / 2 : block.top - 40;
+    const target = flush ? rawTop : center ? rawTop - scroller.clientHeight / 2 : rawTop - 40;
     return Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
   };
   const reduceMotion = smooth && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -1344,7 +1355,14 @@ export function isMounted() { return !!_view; }
  */
 export function refreshLayout(scrollOffsetToTop) {
   if (!_view) return;
-  _view.requestMeasure();
+  // Captured now, not re-read from the module-global _view inside the
+  // delayed callback below — a fast room switch (destroy() then a fresh
+  // mount()) within this 50ms window would otherwise apply this offset to
+  // the *new* room's CM6 instance instead of the one this call was
+  // actually about, since _view would have moved on by the time the
+  // callback runs.
+  const view = _view;
+  view.requestMeasure();
   // requestMeasure() alone isn't enough: confirmed live that immediately
   // after a hidden-container mount is unhidden, .cm-scroller's real
   // scrollHeight (27000+ for a long test doc) still read back as just its
@@ -1363,9 +1381,9 @@ export function refreshLayout(scrollOffsetToTop) {
   // broken. setTimeout still runs in the background (Chrome only clamps its
   // minimum delay there, it doesn't suspend it outright).
   setTimeout(() => {
-    if (!_view) return;
-    if (Number.isFinite(scrollOffsetToTop)) _scrollPosIntoView(_view, scrollOffsetToTop, { flush: true });
-    _railInstance?.rebuild(_view);
+    if (_view !== view) return; // this view was torn down/replaced before the delay elapsed
+    if (Number.isFinite(scrollOffsetToTop)) _scrollPosIntoView(view, scrollOffsetToTop, { flush: true });
+    _railInstance?.rebuild(view);
   }, 50);
 }
 

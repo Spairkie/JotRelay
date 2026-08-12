@@ -148,22 +148,6 @@ export function wireProportionalScrollSync(elA, elB) {
   };
 }
 
-// Runs `fn` at most once per animation frame — extra calls before the next
-// frame are dropped, not queued, since only the most recent scroll position
-// matters. Browsers already coalesce native 'scroll' events to roughly once
-// per frame in practice, but this is an explicit, defensive guarantee rather
-// than relying on that: wireOffsetScrollSync's per-call cost (a Write-side
-// mirror-div binary search) is real enough that an uncoalesced burst of
-// events (e.g. a fast trackpad fling) would otherwise be worth avoiding.
-function _rafThrottle(fn) {
-  let scheduled = false;
-  return (...args) => {
-    if (scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(() => { scheduled = false; fn(...args); });
-  };
-}
-
 /**
  * Wire bidirectional scroll sync between two panes by matching *source
  * position*, not scroll percentage — "whatever's at the top of A's viewport
@@ -172,24 +156,44 @@ function _rafThrottle(fn) {
  * More accurate than wireProportionalScrollSync() at every point (not just at
  * a one-shot transfer), at the cost of a real per-call computation on
  * whichever adapter's getOffsetAtTop() has to do a Write-side mirror-div
- * search — see _rafThrottle above for how that's kept bounded.
+ * search.
+ *
+ * A single shared sequence number — not two independently-throttled ones —
+ * guards every scheduled propagation, in either direction: scheduling a new
+ * one immediately invalidates any earlier one still pending, whichever
+ * direction it was headed. Two separate per-direction throttles (an earlier
+ * version of this) can't see each other, so a delayed A->B echo scheduled a
+ * frame or two ago can fire *after* A has kept moving in the meantime (a
+ * fast continuous trackpad scroll produces several native 'scroll' events
+ * across a few frames), writing B's stale, already-superseded position back
+ * into A and visibly tugging the pane the user is actively scrolling
+ * backward. Sharing one counter across both directions means a fresher
+ * scroll — on *either* pane — always supersedes anything still pending, and
+ * naturally reproduces the old throttle's "coalesce a burst down to one
+ * call" behavior as a side effect (every scheduled call but the last one
+ * scheduled before its own animation frame arrives finds itself stale).
  *
  * @param {{ el: HTMLElement, getOffsetAtTop: () => number, scrollToOffset: (offset: number) => void }} adapterA
  * @param {{ el: HTMLElement, getOffsetAtTop: () => number, scrollToOffset: (offset: number) => void }} adapterB
  * @returns {() => void} unwire
  */
 export function wireOffsetScrollSync(adapterA, adapterB) {
-  const propagate = (from, to) => {
-    if (isProgrammaticSmoothScroll(to.el)) return;
-    const offset = from.getOffsetAtTop();
-    // Skip a write that's already correct — an echo from the last write
-    // would otherwise compute back to (approximately) the same offset and
-    // bounce forever between the two panes.
-    if (to.getOffsetAtTop() === offset) return;
-    to.scrollToOffset(offset);
+  let seq = 0;
+  const schedule = (from, to) => {
+    const mySeq = ++seq;
+    requestAnimationFrame(() => {
+      if (seq !== mySeq) return; // superseded by a later scroll, either direction
+      if (isProgrammaticSmoothScroll(to.el)) return;
+      const offset = from.getOffsetAtTop();
+      // Skip a write that's already correct — an echo from the last write
+      // would otherwise compute back to (approximately) the same offset and
+      // bounce forever between the two panes.
+      if (to.getOffsetAtTop() === offset) return;
+      to.scrollToOffset(offset);
+    });
   };
-  const onA = _rafThrottle(() => propagate(adapterA, adapterB));
-  const onB = _rafThrottle(() => propagate(adapterB, adapterA));
+  const onA = () => schedule(adapterA, adapterB);
+  const onB = () => schedule(adapterB, adapterA);
   adapterA.el.addEventListener('scroll', onA);
   adapterB.el.addEventListener('scroll', onB);
   return () => {
@@ -553,10 +557,65 @@ export function measureTextareaHeadingTops(textarea, headings) {
   return _withTextareaMirror(textarea, (measureTop) => headings.map((h) => measureTop(h.offset)));
 }
 
+// Per-textarea index of each logical (unwrapped source) line's start offset
+// and measured top, rebuilt only when the content or wrapping width/font
+// actually changes — not on every call. getTextareaOffsetAtTop() drives a
+// mirror-based binary search from Split-mode's continuous scroll sync, once
+// per animation frame; without this cache, every one of the search's ~16
+// probes reassigns the mirror's full textContent and forces a synchronous
+// layout read, at BODY_MAX (50,000 chars) real enough to visibly jank an
+// ordinary fast scroll. Caching line starts/tops turns a repeat lookup into
+// a fast in-memory binary search over (typically a few hundred) lines with
+// no DOM work at all — a probe only needs the mirror at all for a line
+// that's demonstrably wrapped into more than one visual row (see the
+// row-span check in both functions below), which is the uncommon case.
+const _lineTopIndexCache = new WeakMap(); // textarea -> { text, key, lineStarts, tops, lineHeight }
+
+function _getLineTopIndex(textarea) {
+  const text = textarea.value;
+  const style = getComputedStyle(textarea);
+  // Width alone isn't enough to invalidate on — a font/size change (e.g.
+  // the monospace toggle) reflows every line without touching clientWidth.
+  const key = `${textarea.clientWidth}|${style.fontFamily}|${style.fontSize}`;
+  const cached = _lineTopIndexCache.get(textarea);
+  if (cached && cached.text === text && cached.key === key) return cached;
+
+  const lineStarts = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10) lineStarts.push(i + 1); // '\n'
+  }
+  const tops = text.length ? _withTextareaMirror(textarea, (measureTop) => lineStarts.map((offset) => measureTop(offset))) : [0];
+  const lineHeight = parseFloat(style.lineHeight) || 0;
+  const index = { text, key, lineStarts, tops, lineHeight };
+  _lineTopIndexCache.set(textarea, index);
+  return index;
+}
+
+// True when logical line `lineIndex` rendered as more than one visual row
+// (i.e. it wrapped) — the one case where every character on the line does
+// *not* share the same measured top, so the cached line-start/top pair
+// alone isn't precise enough and a caller needs to fall back to a real
+// mirror measurement. Conservatively true for the last line (no next
+// line's top to diff against) and whenever lineHeight itself couldn't be
+// determined, rather than risk silently returning an imprecise answer.
+function _lineIsWrapped({ lineStarts, tops, lineHeight }, lineIndex) {
+  if (!lineHeight || lineIndex === lineStarts.length - 1) return true;
+  return (tops[lineIndex + 1] - tops[lineIndex]) > lineHeight * 1.5;
+}
+
 /** Pixel top of a single arbitrary character offset — the same technique as
  *  measureTextareaHeadingTops(), generalized to any offset (used for mode-
  *  switch/Split-sync scroll-position transfer, not just heading ticks). */
 export function measureTextareaOffsetTop(textarea, offset) {
+  if (!textarea.value.length) return 0;
+  const index = _getLineTopIndex(textarea);
+  const { lineStarts, tops } = index;
+  let lo = 0, hi = lineStarts.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (lineStarts[mid] <= offset) lo = mid; else hi = mid - 1;
+  }
+  if (!_lineIsWrapped(index, lo)) return tops[lo];
   return _withTextareaMirror(textarea, (measureTop) => measureTop(offset));
 }
 
@@ -566,19 +625,34 @@ export function measureTextareaOffsetTop(textarea, offset) {
  * "what's at the top of the viewport right now"). A character's measured
  * top is monotonically non-decreasing as offset increases (text only ever
  * flows forward/downward), so this binary-searches for the largest offset
- * whose line starts at or above targetTop — O(log n) mirror measurements
- * rather than one per character.
+ * whose line starts at or above targetTop.
  */
 export function getTextareaOffsetAtTop(textarea, targetTop) {
   const text = textarea.value;
   if (!text.length) return 0;
+  const index = _getLineTopIndex(textarea);
+  const { lineStarts, tops } = index;
+
+  let lo = 0, hi = lineStarts.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (tops[mid] <= targetTop) lo = mid; else hi = mid - 1;
+  }
+  const lineStart = lineStarts[lo];
+  if (!_lineIsWrapped(index, lo)) return lineStart;
+
+  // This line wrapped into multiple visual rows — a bounded fine search
+  // within just its own character range (never the whole document) pins
+  // down the exact wrapped row targetTop falls on.
+  const lineEnd = lo + 1 < lineStarts.length ? lineStarts[lo + 1] - 1 : text.length;
+  if (lineEnd === lineStart) return lineStart;
   return _withTextareaMirror(textarea, (measureTop) => {
-    let lo = 0, hi = text.length;
-    while (lo < hi) {
-      const mid = Math.ceil((lo + hi) / 2);
-      if (measureTop(mid) <= targetTop) lo = mid; else hi = mid - 1;
+    let a = lineStart, b = lineEnd;
+    while (a < b) {
+      const mid = Math.ceil((a + b) / 2);
+      if (measureTop(mid) <= targetTop) a = mid; else b = mid - 1;
     }
-    return lo;
+    return a;
   });
 }
 
