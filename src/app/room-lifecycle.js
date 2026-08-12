@@ -81,8 +81,20 @@ async function _emptyContentForCurrentEncryption() {
 // same "content is gone but a guess-verification fingerprint survives it"
 // concern the encryption gate exists for, just without encryption being
 // the reason this content is meant to be ephemeral.
+//
+// Never while _roomContentReady is false either: joinRoom() assigns
+// state.roomId to the *new* room synchronously, before the awaited
+// loadRoom() resolves and state.room/the editor's content catch up to it —
+// during that window the shared textarea still holds the *previous* room's
+// text (or, on this session's very first join, nothing meaningful yet), so
+// a page-hidden/exit flush landing in that gap would otherwise save stale
+// or wrong-room content under the new room's key. Flipped true only once
+// startApp() has actually populated the editor for state.roomId (see the
+// call sites below) and back to false the moment joinRoom() starts pointing
+// state.roomId at a new target.
+let _roomContentReady = false;
 function _shouldPersistScrollMemory() {
-  return !state.room?.encryption_enabled && !state.viewOnceConsumedByThisSession;
+  return _roomContentReady && !state.room?.encryption_enabled && !state.viewOnceConsumedByThisSession;
 }
 
 function _showQuarantinedScreen(room) {
@@ -291,6 +303,7 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
   const forcedReadOnly = state.isReadOnly;
 
   teardownRealtimeSession();
+  _roomContentReady = false;
   state.roomId = roomId;
   state.viewOnceConsumedByThisSession = false;
   UI.setLoadingMessage('Loading room…');
@@ -368,6 +381,15 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
   }
 
   if (state.room.encryption_enabled) {
+    // This device may have last seen this room while it was still
+    // unencrypted (offline or simply absent when some other device turned
+    // encryption on) — neither the local enable path (panels.js) nor the
+    // live remote-transition path below runs for a device that missed the
+    // change entirely and only discovers it here, on its next cold load.
+    // Same residue this whole gate exists to avoid, just via a third way of
+    // reaching "encrypted now, wasn't when this device last recorded a
+    // position."
+    clearScrollOffset(roomId);
     UI.showScreen('encryption');
     const badge = document.getElementById('encryption-room-badge');
     if (badge) badge.textContent = roomId;
@@ -407,6 +429,7 @@ export async function onPasscodeSubmit() {
   if (!ok) { UI.showPasscodeError('Incorrect passcode. Please try again.'); return; }
 
   if (state.room.encryption_enabled) {
+    clearScrollOffset(state.roomId); // see joinRoom()'s matching gate for why
     UI.showScreen('encryption');
     const badge = document.getElementById('encryption-room-badge');
     if (badge) badge.textContent = state.roomId;
@@ -577,6 +600,10 @@ async function startApp(isNewRoom = false) {
   // those would clobber any real scrolling the user did during that window
   // instead of just the stale carry-over this exists to fix.
   UI.scrollWriteOffsetToTop(0);
+  // The editor now genuinely holds state.roomId's own content — see
+  // _shouldPersistScrollMemory()'s own comment for why every scroll-memory
+  // read/write is gated on this.
+  _roomContentReady = true;
 
   // Apply the user's remembered editor mode now that real content exists —
   // Preview/Split mount the live surface against the current editor value,
@@ -584,6 +611,24 @@ async function startApp(isNewRoom = false) {
   // 'write' placeholder set earlier for the loading screen.
   const _initialMode = _resolveInitialEditorMode();
   if (_initialMode !== 'write') _applyMarkdownMode(_initialMode);
+
+  // The editor is visible and interactive from here on, but the actual
+  // scroll-position restore below can't run until *after* focus (several
+  // lines down) — see its own comment for why. Several awaited operations
+  // (refreshFiles(), _refreshComments(), etc.) run in between, during which
+  // a real user, especially on a slow connection, could already be
+  // scrolling — applying a persisted/fallback position afterward would
+  // otherwise clobber that regardless of which one it picked. A snapshot
+  // taken here (content/mode already settled, nothing has focused anything
+  // yet) and compared again right before focus is what detects that,
+  // without conflating it with focus's *own* native scroll-to-caret effect
+  // — which is a separate, already-handled case (see _preFocusOffset
+  // below). Live may not be mounted yet if _initialMode is 'write' —
+  // harmless null either way.
+  const _startupWriteEl = document.getElementById('note-editor');
+  const _startupLiveEl = document.querySelector('#note-live .cm-scroller');
+  const _startupBaselineWriteTop = _startupWriteEl?.scrollTop ?? null;
+  const _startupBaselineLiveTop = _startupLiveEl?.scrollTop ?? null;
 
   initBroadcast(state.roomId, {
     onRemoteTyping: async (payload) => {
@@ -763,42 +808,58 @@ async function startApp(isNewRoom = false) {
   };
   if (believedOffline) UI.showOfflineBanner();
 
-  // Captured *before* focusing below — a textarea/CM6 view auto-scrolls to
-  // keep its own caret visible the instant it's focused, which (confirmed
-  // live) can silently jump to wherever the caret happens to sit (typically
-  // the very end of the document, from whatever the initial content
-  // assignment left it at) — completely independent of any scroll-position
-  // write already made, and not something that goes through a normal
-  // scrollTop assignment this code could otherwise just run after. This is
-  // "the position before that native behavior gets a chance to interfere,"
-  // used as the fallback below when there's no remembered position to
-  // restore, so focusing never gets the last word on scroll position by
-  // simply defaulting to wherever it wants.
-  const _preFocusOffset = _captureTopOffset(_initialMode);
+  // If the user already scrolled during the awaited operations above (see
+  // the baseline snapshot's own comment), both the automatic focus below
+  // and the restore/fallback that would normally follow it are skipped
+  // entirely — focusing would trigger the very native scroll-to-caret
+  // effect this mechanism exists to counteract, undoing the position the
+  // user just landed on with nothing left to correct it back afterward,
+  // and applying any offset (persisted or fallback) on top of that would
+  // just be a second, different way of clobbering the same real scroll.
+  const _startupWriteElNow = document.getElementById('note-editor');
+  const _startupLiveElNow = document.querySelector('#note-live .cm-scroller');
+  const _userInteractedDuringStartup =
+    (_startupBaselineWriteTop != null && _startupWriteElNow && _startupWriteElNow.scrollTop !== _startupBaselineWriteTop) ||
+    (_startupBaselineLiveTop != null && _startupLiveElNow && _startupLiveElNow.scrollTop !== _startupBaselineLiveTop);
 
-  // Preview is now a possible starting mode (see _resolveInitialEditorMode()
-  // above), where the plain textarea is hidden — UI.focusEditor() would
-  // silently focus an invisible element and leave no visible caret anywhere.
-  if (!isMobile() && !state.isReadOnly) _focusActiveEditorSurface();
+  if (!_userInteractedDuringStartup) {
+    // Captured *before* focusing below — a textarea/CM6 view auto-scrolls to
+    // keep its own caret visible the instant it's focused, which (confirmed
+    // live) can silently jump to wherever the caret happens to sit (typically
+    // the very end of the document, from whatever the initial content
+    // assignment left it at) — completely independent of any scroll-position
+    // write already made, and not something that goes through a normal
+    // scrollTop assignment this code could otherwise just run after. This is
+    // "the position before that native behavior gets a chance to interfere,"
+    // used as the fallback below when there's no remembered position to
+    // restore, so focusing never gets the last word on scroll position by
+    // simply defaulting to wherever it wants.
+    const _preFocusOffset = _captureTopOffset(_initialMode);
 
-  // Remembered scroll position (local-only, per room — see scroll-memory.js)
-  // takes over from wherever things have landed so far, falling back to
-  // _preFocusOffset (not simply doing nothing) when there's nothing to
-  // restore — loadScrollOffset() returns null for a first-ever visit or
-  // when the content's fingerprint doesn't match what was saved, and
-  // either way the right behavior is "stay where this load already had it
-  // before focus," not "let focus's own native caret-scroll decide."
-  // Running after _focusActiveEditorSurface() above, not before, is what
-  // lets this have the final say regardless of what focusing just did.
-  //
-  // Never for an encrypted room or a view-once room this tab has already
-  // consumed — see _shouldPersistScrollMemory()'s own comment for why.
-  const _restoreOffset = _shouldPersistScrollMemory() ? loadScrollOffset(state.roomId, UI.getEditorValue()) : null;
-  const _finalOffset = _restoreOffset != null ? _restoreOffset : _preFocusOffset;
-  if (_finalOffset != null) {
-    if (_initialMode === 'write' || _initialMode === 'split') UI.scrollWriteOffsetToTop(_finalOffset);
-    if ((_initialMode === 'preview' || _initialMode === 'split') && LiveEditor.isMounted()) {
-      LiveEditor.refreshLayout(_finalOffset);
+    // Preview is now a possible starting mode (see _resolveInitialEditorMode()
+    // above), where the plain textarea is hidden — UI.focusEditor() would
+    // silently focus an invisible element and leave no visible caret anywhere.
+    if (!isMobile() && !state.isReadOnly) _focusActiveEditorSurface();
+
+    // Remembered scroll position (local-only, per room — see scroll-memory.js)
+    // takes over from wherever things have landed so far, falling back to
+    // _preFocusOffset (not simply doing nothing) when there's nothing to
+    // restore — loadScrollOffset() returns null for a first-ever visit or
+    // when the content's fingerprint doesn't match what was saved, and
+    // either way the right behavior is "stay where this load already had it
+    // before focus," not "let focus's own native caret-scroll decide."
+    // Running after _focusActiveEditorSurface() above, not before, is what
+    // lets this have the final say regardless of what focusing just did.
+    //
+    // Never for an encrypted room or a view-once room this tab has already
+    // consumed — see _shouldPersistScrollMemory()'s own comment for why.
+    const _restoreOffset = _shouldPersistScrollMemory() ? loadScrollOffset(state.roomId, UI.getEditorValue()) : null;
+    const _finalOffset = _restoreOffset != null ? _restoreOffset : _preFocusOffset;
+    if (_finalOffset != null) {
+      if (_initialMode === 'write' || _initialMode === 'split') UI.scrollWriteOffsetToTop(_finalOffset);
+      if ((_initialMode === 'preview' || _initialMode === 'split') && LiveEditor.isMounted()) {
+        LiveEditor.refreshLayout(_finalOffset);
+      }
     }
   }
   // Periodic save while this room stays open, so returning later restores
@@ -827,6 +888,13 @@ async function startApp(isNewRoom = false) {
         state.room = await loadRoom(state.roomId);
         state.viewOnceConsumedByThisSession = true;
         clearDraft(state.roomId);
+        // _shouldPersistScrollMemory() only gates *future* reads/writes —
+        // an entry already saved during an earlier non-consuming visit, or
+        // written by the periodic timer while this consume request was
+        // still in flight, would otherwise keep the consumed plaintext's
+        // length/hash in localStorage indefinitely. Same reasoning as the
+        // encryption-enable path clearing its own equivalent residue.
+        clearScrollOffset(state.roomId);
         _updatePermissionContext();
         broadcastViewOnceCleared();
         UI.showToast(
