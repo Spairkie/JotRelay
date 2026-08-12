@@ -577,6 +577,15 @@ export function _wireSettings() {
       try {
         const { salt, key } = await enableEncryption(state.roomId, UI.getEditorValue(), pp);
         state.encKey = key; state.encSalt = salt;
+        // Marked encrypted in memory immediately — before the awaited
+        // loadRoom() below resolves (or forever, if it fails), state.room
+        // still describes the room as unencrypted, which is exactly what
+        // _scrollMemoryBlocked() checks. Deleting the existing scroll-
+        // memory record below isn't enough on its own if the periodic save
+        // or a visibility-change flush can still write a fresh plaintext
+        // fingerprint right back during that same window, before the real
+        // reload catches up.
+        if (state.room) state.room = { ...state.room, encryption_enabled: true };
         // Any remembered scroll position saved while this room was still
         // unencrypted (src/scroll-memory.js) is a plaintext length + a
         // deterministic hash of the plaintext, sitting in plain localStorage

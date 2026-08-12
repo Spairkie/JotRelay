@@ -349,22 +349,33 @@ function _enteringSurfaces(fromMode, toMode) {
 // updates the tracker going forward, never overrides an already-resolved
 // capture the way a focus-first policy would there.
 let _lastScrolledSplitSurface = null; // 'write' | 'live' | null
-let _writeInteractionTrackerWired = false;
+// Write's own half is wired separately, from ui/editor.js's
+// mountWriteScrollRail() (via _wireWritePaneTracking() below) rather than
+// from here — on a first visit that opens directly into Preview or Split
+// mode (the actual default, see _resolveInitialEditorMode()), Live mounts
+// and calls this function *before* wireEvents() has created the Write
+// rail at all, so querying for '.scroll-rail-write' here would find
+// nothing — and since this only runs once (Live only mounts once total,
+// guarded in _applyMarkdownMode()), there's no later retry that would ever
+// pick it up. Wiring from the Write rail's own, always-fresh mount point
+// instead sidesteps the ordering question entirely.
 function _wireSplitPaneTracking(liveScroller) {
-  const markWrite = () => { _lastScrolledSplitSurface = 'write'; };
   const markLive = () => { _lastScrolledSplitSurface = 'live'; };
-  if (!_writeInteractionTrackerWired) {
-    const editor = document.getElementById('note-editor');
-    editor?.addEventListener('wheel', markWrite, { passive: true });
-    editor?.addEventListener('touchstart', markWrite, { passive: true });
-    editor?.addEventListener('focusin', markWrite);
-    document.querySelector('.scroll-rail-write')?.addEventListener('pointerdown', markWrite);
-    _writeInteractionTrackerWired = true;
-  }
   liveScroller?.addEventListener('wheel', markLive, { passive: true });
   liveScroller?.addEventListener('touchstart', markLive, { passive: true });
   liveScroller?.addEventListener('focusin', markLive);
   document.querySelector('.scroll-rail-live')?.addEventListener('pointerdown', markLive);
+}
+// Called once from mountWriteScrollRail() (ui/editor.js), which only ever
+// runs once per page lifetime and is guaranteed to run after the Write
+// rail itself (this.dom) exists — see this function's sibling above for
+// why that guarantee matters and _wireSplitPaneTracking() can't provide it.
+export function _wireWritePaneTracking(editor, railDom) {
+  const markWrite = () => { _lastScrolledSplitSurface = 'write'; };
+  editor?.addEventListener('wheel', markWrite, { passive: true });
+  editor?.addEventListener('touchstart', markWrite, { passive: true });
+  editor?.addEventListener('focusin', markWrite);
+  railDom?.addEventListener('pointerdown', markWrite);
 }
 export function _resetSplitPaneTracking() {
   _lastScrolledSplitSurface = null;

@@ -14,7 +14,7 @@ import * as LiveEditor from '../live-editor.js';
 import * as UI from '../ui.js';
 import { copyToClipboard } from '../utils.js';
 import { state, SLASH_MENU_ITEMS, _STRIP_PASTE_KEY, _SMART_PUNCT_KEY, _FOCUS_MODE_KEY, _TYPEWRITER_MODE_KEY, _HIDE_PRESENCE_KEY, _SYNC_SCROLL_KEY, _CODE_LINE_NUMBERS_KEY } from './state.js';
-import { _currentSelectionRange, _openFloatingCommentComposer, _refreshFloatingComments, _updateScrollSyncWiring } from './comments-preview.js';
+import { _currentSelectionRange, _openFloatingCommentComposer, _refreshFloatingComments, _updateScrollSyncWiring, _wireWritePaneTracking } from './comments-preview.js';
 import { _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedRefreshFloatingComments, _debouncedPruneDeletedCommentAnchors } from './comments-preview.js';
 import { _uploadAndInsertImages } from './files-panel.js';
 import { _openTemplatesModalFresh } from './panels.js';
@@ -38,6 +38,13 @@ export function _enforceBodyMax() {
 export function _wireEditorCore() {
   const editor = document.getElementById('note-editor');
   UI.mountWriteScrollRail();
+  // Runs exactly once per page lifetime, right after the Write rail's own
+  // DOM element is guaranteed to exist (mountWriteScrollRail() creates and
+  // appends it synchronously before returning) — see
+  // _wireWritePaneTracking()'s own comment for why relying on Live's mount
+  // path to find '.scroll-rail-write' instead couldn't provide that
+  // guarantee for a first visit that opens directly into Preview/Split.
+  _wireWritePaneTracking(editor, document.querySelector('.scroll-rail-write'));
 
   editor?.addEventListener('input', () => {
     if (!canEdit()) return;

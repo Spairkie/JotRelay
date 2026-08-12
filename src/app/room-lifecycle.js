@@ -542,21 +542,29 @@ async function startApp(isNewRoom = false) {
     // state has since moved on to.
     const _expiringRoomId = state.roomId;
     const didClear = await handleExpiration(_expiringRoomId, state.room, await _emptyContentForCurrentEncryption());
+    // Only when the reset actually succeeded — handleExpiration() returns
+    // false for a locked room or a network/RLS failure, leaving the
+    // content (and any real remembered position for it) untouched; this
+    // ran unconditionally in an earlier version and could delete a still-
+    // valid position for a room whose expiration reset silently failed.
+    //
+    // Run immediately, outside the session-generation guard below: unlike
+    // the state.room mutation, this is keyed to the captured
+    // _expiringRoomId rather than any shared state, so it's safe (and
+    // necessary) regardless of whether a newer navigation has since
+    // superseded this invocation — a still-pending loadRoom() failing
+    // afterward, or a superseding navigation, must not skip clearing a
+    // reset that already genuinely happened.
+    if (didClear) {
+      // Expiration is an authoritative content reset like any other — a
+      // remembered position saved against the old (now-cleared) content
+      // would otherwise sit in localStorage until it happens to fail the
+      // fingerprint check on some later visit, exactly the residue every
+      // other reset path already clears this for.
+      clearScrollOffset(_expiringRoomId);
+    }
     if (_myRoomSession === _roomSessionGeneration) {
       state.room = await loadRoom(_expiringRoomId);
-      // Only when the reset actually succeeded — handleExpiration() returns
-      // false for a locked room or a network/RLS failure, leaving the
-      // content (and any real remembered position for it) untouched; this
-      // ran unconditionally in an earlier version and could delete a still-
-      // valid position for a room whose expiration reset silently failed.
-      if (didClear) {
-        // Expiration is an authoritative content reset like any other — a
-        // remembered position saved against the old (now-cleared) content
-        // would otherwise sit in localStorage until it happens to fail the
-        // fingerprint check on some later visit, exactly the residue every
-        // other reset path already clears this for.
-        clearScrollOffset(_expiringRoomId);
-      }
     }
   }
 
@@ -586,14 +594,19 @@ async function startApp(isNewRoom = false) {
     try {
       const result = await recordRoomDeviceView(state.roomId, deviceId);
       if (result.expired) {
-        state.room = await loadRoom(state.roomId);
-        // Same reasoning as view-once's own flag: this device's join is
-        // what hit the limit and cleared the room server-side, but the
-        // plaintext this device already had stays visible locally — a
+        // Set — and the record cleared — immediately once result.expired is
+        // known, before the awaited reload below, which can itself fail
+        // (network). Same reasoning as view-once's own flag: this device's
+        // join is what hit the limit and cleared the room server-side, but
+        // the plaintext this device already had stays visible locally — a
         // scroll-memory record would keep exposing its fingerprint after
         // the content itself is gone, exactly the residue
-        // _scrollMemoryBlocked() already exists to avoid.
+        // _scrollMemoryBlocked() already exists to avoid. A reload failure
+        // here would otherwise leave this flag (and the stale record)
+        // unset even though the server-side clear already happened.
         state.deviceLimitClearedByThisSession = true;
+        clearScrollOffset(state.roomId);
+        state.room = await loadRoom(state.roomId);
       }
     } catch { /* non-fatal — see comment above */ }
   }
@@ -950,8 +963,15 @@ async function startApp(isNewRoom = false) {
   // The startup restore decision above has now been made either way
   // (applied or deliberately skipped for _userInteractedDuringStartup) —
   // see _roomRestoreComplete's own comment for why writes were blocked
-  // until this exact point, not just _roomContentReady.
-  _roomRestoreComplete = true;
+  // until this exact point, not just _roomContentReady. Guarded by session
+  // generation same as the scrollSaveTimer install just below: a *stale*
+  // startApp() invocation resuming here (room A, superseded by room B
+  // while A was awaiting refreshFiles()/_refreshComments()) must not set
+  // this shared flag on B's behalf — B already reset it via
+  // teardownRealtimeSession(), and A opening the write gate early would
+  // let a flush overwrite B's still-unapplied saved position with B's own
+  // temporary startup one, the exact bug this flag exists to prevent.
+  if (_myRoomSession === _roomSessionGeneration) _roomRestoreComplete = true;
   // Periodic save while this room stays open, so returning later restores
   // roughly where the user left off — reuses _applyMarkdownMode()'s own
   // "what's at the top of whichever surface is visible" capture rather
@@ -1267,10 +1287,18 @@ export function setupExpirationTimer() {
     if (!state.room?.expires_at) return;
     const remaining = new Date(state.room.expires_at) - Date.now();
     if (remaining <= 0) {
+      // Captured before the awaits below, not read from state.roomId
+      // afterward — if the user navigates to a different room while this
+      // is in flight, state.roomId already points at that new room by the
+      // time this continuation resumes, and clearScrollOffset() must land
+      // on the room that actually expired, not whatever the shared state
+      // has since moved on to (same reasoning as the startup-expiration
+      // path above).
+      const _expiringRoomId = state.roomId;
       void (async () => {
-        const didClear = await handleExpiration(state.roomId, state.room, await _emptyContentForCurrentEncryption());
+        const didClear = await handleExpiration(_expiringRoomId, state.room, await _emptyContentForCurrentEncryption());
         if (didClear) {
-          clearScrollOffset(state.roomId);
+          clearScrollOffset(_expiringRoomId);
           setContentNoSave('');
           UI.updateWordCount('');
           UI.hideExpirationBar();
