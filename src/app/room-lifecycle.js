@@ -50,7 +50,7 @@ import {
   _suppressNextResume,
 } from './routing.js';
 import { refreshFiles, openFileDeepLink } from './files-panel.js';
-import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedPruneDeletedCommentAnchors, _pruneDeletedCommentAnchors, _captureTopOffset } from './comments-preview.js';
+import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedPruneDeletedCommentAnchors, _pruneDeletedCommentAnchors, _captureTopOffset, _resetSplitPaneTracking } from './comments-preview.js';
 import { _closeSlashMenu, _focusActiveEditorSurface } from './editor-behavior.js';
 import { _selectExpirationPreset } from './panels.js';
 import { wireEvents } from './wiring.js';
@@ -925,6 +925,13 @@ async function _handleRoomStateTransition(prev, newRoom) {
     // be ignored so ciphertext can never render in the editor.
     _enterEncryptedNoKeyMode(newRoom, { showToast: !wasEnc && !isOwnWrite });
     shouldApplyRemoteContent = false;
+    // Same reasoning as panels.js's own local enable-encryption path: a
+    // scroll-memory record saved while this room was still unencrypted is a
+    // plaintext length + hash sitting in this device's localStorage, and
+    // that path only ever runs on whichever device *initiates* the change —
+    // every other already-connected peer only ever observes it here, via
+    // this transition, so the record has to be cleared on this path too.
+    if (!wasEnc) clearScrollOffset(state.roomId);
   } else if (wasEnc && !nowEnc) {
     // Encryption just got turned off. Switch sync.js back to plaintext BEFORE
     // applying the new room content, because newRoom.content is now plaintext.
@@ -1168,6 +1175,7 @@ export function teardownRealtimeSession() {
   clearInterval(state.scrollSaveTimer);
   state.scrollSaveTimer = null;
   flushScrollPosition();
+  _resetSplitPaneTracking();
   try { state.unsubRoom?.(); } catch {}
   try { state.unsubFiles?.(); } catch {}
   try { state.unsubComments?.(); } catch {}

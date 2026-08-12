@@ -200,6 +200,10 @@ export function wireProportionalScrollSync(elA, elB) {
  * @param {{ el: HTMLElement, getOffsetAtTop: () => number, scrollToOffset: (offset: number) => void }} adapterB
  * @returns {() => void} unwire
  */
+// Elements with a to.scrollToOffset() write still pending its own 'scroll'
+// event — see wireOffsetScrollSync() below for why this exists.
+const _suppressNextScrollEcho = new WeakSet();
+
 export function wireOffsetScrollSync(adapterA, adapterB) {
   _registerSyncedSiblings(adapterA.el, adapterB.el);
   let seq = 0;
@@ -213,11 +217,30 @@ export function wireOffsetScrollSync(adapterA, adapterB) {
       // would otherwise compute back to (approximately) the same offset and
       // bounce forever between the two panes.
       if (to.getOffsetAtTop() === offset) return;
+      // A 'scroll' event fires *asynchronously* after a scrollTop write, not
+      // within this same task — so the event this write is about to cause on
+      // `to` can still arrive after a genuinely newer user scroll on `from`
+      // has already scheduled its own, later propagation. Without marking it
+      // as self-caused, that delayed echo reaches to's own listener, gets
+      // treated as fresh user input, and schedules a from<-to write that
+      // invalidates (via the shared `seq`) the newer, still-pending
+      // from->to one — silently overwriting where the user just scrolled
+      // *from* with to's older position. Ordering the callbacks by `seq`
+      // alone can't distinguish "a newer real scroll" from "an echo of our
+      // own last write"; this does, by suppressing the echo outright before
+      // it ever reaches schedule().
+      _suppressNextScrollEcho.add(to.el);
       to.scrollToOffset(offset);
     });
   };
-  const onA = () => schedule(adapterA, adapterB);
-  const onB = () => schedule(adapterB, adapterA);
+  const onA = () => {
+    if (_suppressNextScrollEcho.delete(adapterA.el)) return;
+    schedule(adapterA, adapterB);
+  };
+  const onB = () => {
+    if (_suppressNextScrollEcho.delete(adapterB.el)) return;
+    schedule(adapterB, adapterA);
+  };
   adapterA.el.addEventListener('scroll', onA);
   adapterB.el.addEventListener('scroll', onB);
   return () => {
@@ -711,14 +734,45 @@ export function getTextareaOffsetAtTop(textarea, targetTop) {
   // down the exact wrapped row targetTop falls on.
   const lineEnd = lo + 1 < lineStarts.length ? lineStarts[lo + 1] - 1 : text.length;
   if (lineEnd === lineStart) return lineStart;
-  return _withTextareaMirror(textarea, (measureTop) => {
-    let a = lineStart, b = lineEnd;
+  return _binarySearchWrappedLineTop(textarea, text, lineStart, lineEnd, targetTop);
+}
+
+// Same binary search as getTextareaOffsetAtTop()'s old wrapped-line fallback,
+// but measured with Range.getBoundingClientRect() against a mirror whose
+// content is set *once* up front, rather than _withTextareaMirror()'s
+// measureTop() (which mutates the mirror's textContent — an ever-larger
+// prefix — on every probe). A single long wrapped line/no-newline document
+// (a minified blob, a huge pasted JSON value) can span nearly the entire
+// document, so "bounded to just this line" doesn't bound the *document*
+// size the old approach still had to re-render into the mirror on each of
+// the search's ~16 probes: a plain textContent assignment forces a fresh
+// synchronous layout every time. A collapsed Range's bounding rect forces a
+// layout too, but only for the *first* one — every later read in this same
+// search, with no DOM mutation in between, is served from that one already-
+// computed layout for free, the same "one layout pass" idea as
+// _measureLineTopsInOnePass() above, applied within a single wrapped line's
+// own character range instead of across a whole document's lines.
+function _binarySearchWrappedLineTop(textarea, text, lineStart, lineEnd, targetTop) {
+  const mirror = _createTextareaMirror(textarea);
+  try {
+    const textNode = document.createTextNode(text.slice(lineStart, lineEnd));
+    mirror.appendChild(textNode);
+    const mirrorTop = mirror.getBoundingClientRect().top;
+    const range = document.createRange();
+    const rowTop = (charIndex) => {
+      range.setStart(textNode, charIndex);
+      range.collapse(true);
+      return range.getBoundingClientRect().top - mirrorTop;
+    };
+    let a = 0, b = lineEnd - lineStart;
     while (a < b) {
       const mid = Math.ceil((a + b) / 2);
-      if (measureTop(mid) <= targetTop) a = mid; else b = mid - 1;
+      if (rowTop(mid) <= targetTop) a = mid; else b = mid - 1;
     }
-    return a;
-  });
+    return lineStart + a;
+  } finally {
+    mirror.remove();
+  }
 }
 
 /** Build a { el, getOffsetAtTop, scrollToOffset } adapter for a plain
