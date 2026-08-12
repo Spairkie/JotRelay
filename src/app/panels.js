@@ -577,13 +577,6 @@ export function _wireSettings() {
       try {
         const { salt, key } = await enableEncryption(state.roomId, UI.getEditorValue(), pp);
         state.encKey = key; state.encSalt = salt;
-        // v1: switch sync.js to encrypted lane immediately.
-        setEncryption(
-          (pt) => encryptContent(pt, state.encKey),
-          (ct) => decryptContent(ct, state.encKey),
-        );
-        state.room   = await loadRoom(state.roomId);
-        clearDraft(state.roomId);
         // Any remembered scroll position saved while this room was still
         // unencrypted (src/scroll-memory.js) is a plaintext length + a
         // deterministic hash of the plaintext, sitting in plain localStorage
@@ -595,7 +588,19 @@ export function _wireSettings() {
         // for an encrypted room in the first place — just needs clearing
         // retroactively here, the one path that flips a room from
         // unencrypted to encrypted without otherwise resetting its content.
+        // Done immediately once enableEncryption() itself succeeds (the
+        // server-side flip is already irreversible at that point), not
+        // after the awaited loadRoom() below — that call can still throw
+        // (network blip) and jump to the catch block, which would otherwise
+        // skip this even though the room is already encrypted server-side.
         clearScrollOffset(state.roomId);
+        // v1: switch sync.js to encrypted lane immediately.
+        setEncryption(
+          (pt) => encryptContent(pt, state.encKey),
+          (ct) => decryptContent(ct, state.encKey),
+        );
+        state.room   = await loadRoom(state.roomId);
+        clearDraft(state.roomId);
         _updatePermissionContext();
         _renderRoomHeader();
         UI.renderSettingsPanel(state.room);

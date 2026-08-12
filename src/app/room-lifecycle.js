@@ -507,6 +507,12 @@ async function startApp(isNewRoom = false) {
   if (state.room.expires_at && new Date(state.room.expires_at) <= new Date()) {
     await handleExpiration(state.roomId, state.room, await _emptyContentForCurrentEncryption());
     state.room = await loadRoom(state.roomId);
+    // Expiration is an authoritative content reset like any other — a
+    // remembered position saved against the old (now-cleared) content
+    // would otherwise sit in localStorage until it happens to fail the
+    // fingerprint check on some later visit, exactly the residue every
+    // other reset path already clears this for.
+    clearScrollOffset(state.roomId);
   }
 
   // ── Decrypt content for display ────────────────────────────────────────────

@@ -313,26 +313,45 @@ function _enteringSurfaces(fromMode, toMode) {
 // scroll rail (whose handlers call preventDefault(), so they never move
 // focus either), don't change document.activeElement at all — so a plain
 // activeElement check misses the common "scrolled without ever clicking
-// into it" case. A raw 'scroll' listener on each surface tracks this
-// directly instead: Write's textarea is static in the DOM for the app's
-// whole lifetime (wired once, below), Live's CM6 scroller is recreated
-// per mount so it's wired alongside the *other* one-time-mount listener in
+// into it" case.
+//
+// Tracked via 'wheel'/'touchstart' on each surface, not a plain 'scroll'
+// listener (an earlier version of this) — a *content* edit in one surface
+// can shift the *other* surface's scrollTop too (typing in Write calls
+// LiveEditor.syncFromText(), which can make CM6 adjust/clamp its own
+// scrollTop while the user is actually editing Write), and a 'scroll'
+// listener can't tell that reflow-driven change apart from the user
+// actually scrolling that pane — wrongly crediting whichever surface just
+// happened to reflow. Wheel/touchstart are unambiguous: nothing this app
+// does ever dispatches synthetic wheel or touch events, so these only ever
+// fire from genuine user input. 'pointerdown' on each surface's own rail
+// covers the two other ways of scrolling that never touch the surface
+// itself at all — a thumb drag or a bare-track/tick click (see
+// scroll-rail.js's own handlers, which preventDefault() specifically so
+// these don't move focus either).
+//
+// Write's textarea/rail are static in the DOM for the app's whole lifetime
+// (wired once, below); Live's CM6 scroller/rail are recreated per mount so
+// they're wired alongside the *other* one-time-mount listener in
 // _applyMarkdownMode() further down. Reset on room navigation (see
 // room-lifecycle.js's teardownRealtimeSession()) since a stale value from
 // a previous room could otherwise pick the wrong initial pane before either
-// surface has been scrolled at all in the new one.
+// surface has been interacted with at all in the new one.
 let _lastScrolledSplitSurface = null; // 'write' | 'live' | null
-let _writeScrollTrackerWired = false;
+let _writeInteractionTrackerWired = false;
 function _wireSplitPaneTracking(liveScroller) {
-  if (!_writeScrollTrackerWired) {
-    document.getElementById('note-editor')?.addEventListener('scroll', () => {
-      _lastScrolledSplitSurface = 'write';
-    }, { passive: true });
-    _writeScrollTrackerWired = true;
+  const markWrite = () => { _lastScrolledSplitSurface = 'write'; };
+  const markLive = () => { _lastScrolledSplitSurface = 'live'; };
+  if (!_writeInteractionTrackerWired) {
+    const editor = document.getElementById('note-editor');
+    editor?.addEventListener('wheel', markWrite, { passive: true });
+    editor?.addEventListener('touchstart', markWrite, { passive: true });
+    document.querySelector('.scroll-rail-write')?.addEventListener('pointerdown', markWrite);
+    _writeInteractionTrackerWired = true;
   }
-  liveScroller?.addEventListener('scroll', () => {
-    _lastScrolledSplitSurface = 'live';
-  }, { passive: true });
+  liveScroller?.addEventListener('wheel', markLive, { passive: true });
+  liveScroller?.addEventListener('touchstart', markLive, { passive: true });
+  document.querySelector('.scroll-rail-live')?.addEventListener('pointerdown', markLive);
 }
 export function _resetSplitPaneTracking() {
   _lastScrolledSplitSurface = null;
