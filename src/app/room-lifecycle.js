@@ -60,6 +60,31 @@ async function _emptyContentForCurrentEncryption() {
   return state.encKey ? await encryptContent('', state.encKey) : '';
 }
 
+// Shared gate for every read/write of the persisted last-scroll-position
+// (src/scroll-memory.js) — restoring on load, the periodic save, and the
+// teardown/page-exit flush all defer to this.
+//
+// Never for an encrypted room: scroll-memory.js's fingerprint is a fast,
+// unsalted hash of the *decrypted* text, persisted in plain localStorage —
+// for a short or predictable note, that's an offline-verifiable oracle for
+// guessing content without ever knowing the room passphrase, unlike
+// offline.js's drafts (encrypted at rest for exactly this reason). Gated on
+// the room's own encryption_enabled flag, not state.encKey — encKey is only
+// *this device's currently-unlocked* key and is null both for a genuinely
+// unencrypted room and for an encrypted one the passphrase hasn't been
+// entered for yet, which would otherwise let the exact leak this guards
+// against slip through while locked.
+//
+// Never once a view-once room has been consumed by this tab either: the
+// server/draft are already cleared at that point, but the plaintext
+// intentionally stays visible in the editor until the user leaves — the
+// same "content is gone but a guess-verification fingerprint survives it"
+// concern the encryption gate exists for, just without encryption being
+// the reason this content is meant to be ephemeral.
+function _shouldPersistScrollMemory() {
+  return !state.room?.encryption_enabled && !state.viewOnceConsumedByThisSession;
+}
+
 function _showQuarantinedScreen(room) {
   UI.setInfoScreen({
     title: 'Room unavailable',
@@ -766,20 +791,9 @@ async function startApp(isNewRoom = false) {
   // Running after _focusActiveEditorSurface() above, not before, is what
   // lets this have the final say regardless of what focusing just did.
   //
-  // Never for an encrypted room: scroll-memory.js's fingerprint is a fast,
-  // unsalted hash of the *decrypted* text, persisted in plain localStorage
-  // — for a short or predictable note, that's an offline-verifiable oracle
-  // for guessing content without ever knowing the room passphrase, unlike
-  // offline.js's drafts (encrypted at rest for exactly this reason). Not
-  // worth adding a parallel encrypted-fingerprint scheme for a "remember
-  // where I scrolled" nicety, so encrypted rooms just don't get this
-  // feature — the mode-transfer/_preFocusOffset behavior is untouched.
-  // Gated on the room's own encryption_enabled flag, not state.encKey —
-  // encKey is only *this device's currently-unlocked* key and is null both
-  // for a genuinely unencrypted room and for an encrypted one the
-  // passphrase hasn't been entered for yet, which would otherwise let the
-  // exact leak this guards against slip through while locked.
-  const _restoreOffset = state.room?.encryption_enabled ? null : loadScrollOffset(state.roomId, UI.getEditorValue());
+  // Never for an encrypted room or a view-once room this tab has already
+  // consumed — see _shouldPersistScrollMemory()'s own comment for why.
+  const _restoreOffset = _shouldPersistScrollMemory() ? loadScrollOffset(state.roomId, UI.getEditorValue()) : null;
   const _finalOffset = _restoreOffset != null ? _restoreOffset : _preFocusOffset;
   if (_finalOffset != null) {
     if (_initialMode === 'write' || _initialMode === 'split') UI.scrollWriteOffsetToTop(_finalOffset);
@@ -794,10 +808,10 @@ async function startApp(isNewRoom = false) {
   // listener) deliberately: this is a "remember for next time" feature, not
   // a live sync, so it doesn't need to react to every scroll — see
   // teardownRealtimeSession() for the matching cleanup and the final flush
-  // on leaving this room. Skipped entirely for an encrypted room — see the
-  // restore side's own comment above for why.
+  // on leaving this room. Skipped for an encrypted room or a consumed
+  // view-once room — see _shouldPersistScrollMemory()'s own comment for why.
   state.scrollSaveTimer = setInterval(() => {
-    if (state.room?.encryption_enabled) return;
+    if (!_shouldPersistScrollMemory()) return;
     const offset = _captureTopOffset(state.markdownMode);
     if (offset != null) saveScrollOffset(state.roomId, UI.getEditorValue(), offset);
   }, 2000);
@@ -1159,12 +1173,11 @@ async function _reconcileAndFlush() {
  * teardownRealtimeSession() (in-app navigation away) and the page-exit
  * cleanup in editor-behavior.js (tab close/reload/back-forward, which never
  * runs teardownRealtimeSession() at all) — see that call site for why both
- * need their own hook into this. No-op for an encrypted room; see the
- * restore-side comment in startApp() for why that combination is skipped
- * entirely.
+ * need their own hook into this. No-op for an encrypted room or a consumed
+ * view-once room — see _shouldPersistScrollMemory()'s own comment for why.
  */
 export function flushScrollPosition() {
-  if (!state.roomId || state.room?.encryption_enabled) return;
+  if (!state.roomId || !_shouldPersistScrollMemory()) return;
   const offset = _captureTopOffset(state.markdownMode);
   if (offset != null) saveScrollOffset(state.roomId, UI.getEditorValue(), offset);
 }

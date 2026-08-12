@@ -229,8 +229,17 @@ export function wireOffsetScrollSync(adapterA, adapterB) {
       // alone can't distinguish "a newer real scroll" from "an echo of our
       // own last write"; this does, by suppressing the echo outright before
       // it ever reaches schedule().
+      const beforeTop = to.el.scrollTop;
       _suppressNextScrollEcho.add(to.el);
       to.scrollToOffset(offset);
+      // Multiple character offsets can share one visual row's pixel top —
+      // in that case this write leaves scrollTop unchanged, which never
+      // fires a 'scroll' event at all, so the suppression flag just armed
+      // above would otherwise never get consumed and would wrongly swallow
+      // whatever the user's *next genuine* scroll on `to` turns out to be.
+      // scrollTop itself updates synchronously even though the resulting
+      // event dispatches later, so this can be checked immediately.
+      if (to.el.scrollTop === beforeTop) _suppressNextScrollEcho.delete(to.el);
     });
   };
   const onA = () => {
@@ -655,6 +664,18 @@ export function measureTextareaHeadingTops(textarea, headings) {
 // row-span check in both functions below), which is the uncommon case.
 const _lineTopIndexCache = new WeakMap(); // textarea -> { text, key, lineStarts, tops, lineHeight }
 
+// Bumped once JotRelay's own web fonts (DM Sans/DM Mono) finish loading and
+// folded into the cache key below — a lookup that runs before then measures
+// line tops against the browser's fallback font, and once the real font
+// swaps in and reflows the text, none of the key's other fields change
+// (clientWidth, the *declared* fontFamily string, fontSize, padding all stay
+// exactly as they were) to signal that the measurements it already cached
+// are now stale.
+let _fontGeneration = 0;
+if (typeof document !== 'undefined' && document.fonts) {
+  document.fonts.ready.then(() => { _fontGeneration++; });
+}
+
 function _getLineTopIndex(textarea) {
   const text = textarea.value;
   const style = getComputedStyle(textarea);
@@ -664,7 +685,7 @@ function _getLineTopIndex(textarea) {
   // sets top/bottom padding equal to half the editor's own viewport height
   // via --typewriter-pad, shifting every line's measured top without
   // touching clientWidth/fontFamily/fontSize either.
-  const key = `${textarea.clientWidth}|${style.fontFamily}|${style.fontSize}|${style.paddingTop}|${style.paddingBottom}`;
+  const key = `${textarea.clientWidth}|${style.fontFamily}|${style.fontSize}|${style.paddingTop}|${style.paddingBottom}|${_fontGeneration}`;
   const cached = _lineTopIndexCache.get(textarea);
   if (cached && cached.text === text && cached.key === key) return cached;
 
@@ -768,13 +789,24 @@ function _binarySearchWrappedLineTop(textarea, text, lineStart, lineEnd, targetT
   try {
     const textNode = document.createTextNode(text.slice(lineStart, lineEnd));
     mirror.appendChild(textNode);
-    const mirrorTop = mirror.getBoundingClientRect().top;
     const range = document.createRange();
-    const rowTop = (charIndex) => {
+    const rectTop = (charIndex) => {
       range.setStart(textNode, charIndex);
       range.collapse(true);
-      return range.getBoundingClientRect().top - mirrorTop;
+      return range.getBoundingClientRect().top;
     };
+    // Normalized against this line's own first row, not the mirror's own
+    // border box: _createTextareaMirror() clones the textarea's padding
+    // onto the mirror, so the mirror's getBoundingClientRect().top sits
+    // above the text by that padding — ordinarily a few px of harmless
+    // constant error, but Typewriter mode's padding is roughly half the
+    // editor's own viewport height, which was inflating every rowTop() by
+    // that same huge amount and collapsing the search to lineStart almost
+    // always. The caller already made targetTop relative to this line's own
+    // first row (0 there) — normalizing rowTop() the same way, instead of
+    // against the border box, is what actually keeps the two comparable.
+    const firstRowTop = rectTop(0);
+    const rowTop = (charIndex) => rectTop(charIndex) - firstRowTop;
     let a = 0, b = lineEnd - lineStart;
     while (a < b) {
       const mid = Math.ceil((a + b) / 2);
