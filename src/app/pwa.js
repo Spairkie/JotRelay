@@ -62,18 +62,25 @@ const INSTALL_DISMISSED_KEY = 'syncpad_install_dismissed';
 // covers desktop/Android installs; navigator.standalone is Safari's own
 // pre-standard equivalent for an iOS home-screen launch, which never gets a
 // 'display-mode' media feature at all. Checked once at startup (a page
-// already running standalone doesn't flip modes mid-session) and persisted
-// as an ordinary dismissal so a future non-standalone visit (e.g. the user
-// opens the plain browser tab instead of the installed app) doesn't get a
-// banner reoffered for a device that's already installed it once.
+// already running standalone doesn't flip modes mid-session) — see the
+// beforeinstallprompt handler below, which re-checks this live rather than
+// relying on a stored flag.
 function _isStandalone() {
   return !!(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true);
 }
 
-if (_isStandalone()) {
-  localStorage.setItem(INSTALL_DISMISSED_KEY, '1');
-  UI.hideInstallBar();
-}
+// Deliberately does NOT persist INSTALL_DISMISSED_KEY here — same reasoning
+// as 'appinstalled' below: standalone-ness is only true for as long as this
+// session is actually running installed, not a lasting fact about the
+// device. Persisting it as a dismissal would (confirmed by a second
+// automated review pass after the first round of fixes below) survive an
+// eventual uninstall in origin storage and permanently block a legitimate
+// future beforeinstallprompt on a plain browser visit, with no in-app way
+// to clear it. Hiding the bar for the current load is enough — a future
+// load that's actually still standalone gets caught by this same check
+// again, and the live re-check inside the handler below is what actually
+// suppresses a stray beforeinstallprompt while genuinely standalone.
+if (_isStandalone()) UI.hideInstallBar();
 
 let _deferredInstall = null;
 window.addEventListener('beforeinstallprompt', (e) => {

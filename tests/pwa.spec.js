@@ -171,7 +171,14 @@ test.describe('PWA install banner', () => {
     await goToLanding(page);
     await dispatchFakeInstallPrompt(page, 'accepted');
     await expect(page.locator('#pwa-install-bar')).not.toHaveClass(/visible/);
-    expect(await page.evaluate(() => localStorage.getItem('syncpad_install_dismissed'))).toBe('1');
+    // Not persisted — standalone-ness is only true for as long as this
+    // session is actually running installed, not a lasting fact about the
+    // device (see src/app/pwa.js's own comment on this check for why: it
+    // would otherwise survive an eventual uninstall in origin storage and
+    // permanently block a legitimate future beforeinstallprompt). The
+    // suppression above comes from the live _isStandalone() re-check inside
+    // the beforeinstallprompt handler itself, not from this flag.
+    expect(await page.evaluate(() => localStorage.getItem('syncpad_install_dismissed'))).toBeNull();
   });
 
   test('never shows the install banner when navigator.standalone is true (iOS home-screen launch)', async ({ page }) => {
