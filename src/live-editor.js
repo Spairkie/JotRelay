@@ -27,14 +27,14 @@ import { parseTableAlignments } from './markdown-table-utils.js';
 import { EMOJI_MAP } from './markdown-emoji-map.js';
 import { renderMarkdown } from './markdown.js';
 import { toggleFootnotePopover } from './footnote-popover.js';
-import { ScrollRail } from './scroll-rail.js';
+import { ScrollRail, runSmoothScroll, wireOffsetScrollSync, createTextareaOffsetAdapter } from './scroll-rail.js';
 
 let _view                = null;
 let _onChange            = null;
 let _onCursorActivity    = null;
 let _onImageFiles        = null;
 let _onCommentAnchorTap  = null;
-let _scrollSync          = null; // { editorEl, scrollEl, onEditorScroll, onSelfScroll }
+let _scrollSync          = null; // unwire() fn returned by wireOffsetScrollSync, or null
 const _readOnly = new Compartment();
 
 // Marks transactions applied from outside (textarea → CM6) so the update
@@ -489,44 +489,112 @@ const _checklistProgressField = StateField.define({
 // scrolling in the first place), so this uses view.lineBlockAt(pos).top,
 // which is based on CM6's own height map/oracle and works for undrawn
 // positions too — confirmed reliable via direct testing.
-// `smooth` defaults to false: this is also the mechanism the Split-mode
-// proportional sync handlers rely on indirectly (they set scrollTop
-// directly, not through here, but share the same scroller) — an animated
-// scroll here is fine since it's a one-off user-initiated jump, but callers
-// that want it (currently only the [TOC] widget's own click) must ask for
-// it explicitly rather than it being a blanket default.
-function _scrollPosIntoView(view, pos, { center = true, smooth = false } = {}) {
+// `smooth` defaults to false: an animated scroll is fine for a one-off
+// user-initiated jump, but callers that want it (heading ticks, [TOC]) must
+// ask for it explicitly rather than it being a blanket default.
+//
+// CM6 only has an *estimated* height for a position outside the currently-
+// drawn viewport (view.viewport) — real measurement happens when that
+// region actually renders, which (per CM6's own virtualization) happens
+// progressively as a scroll toward it proceeds. _navToken/_pendingCorrection
+// below guard the smooth, off-screen path's correction against landing after
+// a newer jump (e.g. a rapid second heading click) has already taken over.
+let _scrollNavToken = 0;
+let _pendingCorrection = null; // { scroller, onScroll } for the in-flight off-screen smooth jump, if any
+
+// Invalidates any in-flight off-screen-jump correction and bumps the token
+// that guards it — shared by every place something supersedes it: a newer
+// _scrollPosIntoView() call, the view being torn down, and (see the rail
+// adapter's setScrollTop() below) the user taking over navigation manually.
+function _cancelPendingCorrection() {
+  _scrollNavToken++;
+  if (_pendingCorrection) {
+    _pendingCorrection.scroller.removeEventListener('scroll', _pendingCorrection.onScroll);
+    _pendingCorrection = null;
+  }
+}
+
+function _scrollPosIntoView(view, pos, { center = true, smooth = false, flush = false } = {}) {
   const scroller = view.scrollDOM;
   const clampedPos = Math.min(pos, view.state.doc.length);
   const computeTop = () => {
-    const block = view.lineBlockAt(clampedPos);
-    const target = center ? block.top - scroller.clientHeight / 2 : block.top - 40;
+    // lineBlockAt() only knows about *logical* (unwrapped source) lines —
+    // for a long line that wraps into several visual rows, block.top is
+    // the top of the row the line *starts* on, not the row clampedPos
+    // itself falls on, however far into the wrap that is. coordsAtPos()
+    // resolves the actual rendered row (correctly wrap-aware) but only for
+    // a position that's currently drawn, so it's used when available and
+    // lineBlockAt() stays as the off-screen estimate — corrected once the
+    // estimate-then-correct dance below actually renders the destination,
+    // same as it always was for the "estimate is wrong at all" case.
+    const coords = view.coordsAtPos(clampedPos);
+    const rawTop = coords ? coords.top - scroller.getBoundingClientRect().top + scroller.scrollTop
+      : view.lineBlockAt(clampedPos).top;
+    // flush: exactly rawTop, no margin — used by scrollOffsetToTop(), which
+    // needs round-trip consistency with getOffsetAtTop() (posAtCoords at
+    // the scroller's literal top edge) for mode-switch transfer and
+    // Split-sync to agree on what "at the top" means. center/the -40
+    // fallback are for a jump whose point is being *revealed*, not being
+    // used as a scroll-position anchor in their own right.
+    const target = flush ? rawTop : center ? rawTop - scroller.clientHeight / 2 : rawTop - 40;
     return Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
   };
   const reduceMotion = smooth && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const doScroll = (top) => {
-    if (smooth && !reduceMotion) scroller.scrollTo({ top, behavior: 'smooth' });
-    else scroller.scrollTop = top;
-  };
+  const useSmooth = smooth && !reduceMotion;
 
-  // CM6 only has an *estimated* height for a position outside the currently
-  // -drawn viewport (view.viewport) — real measurement happens when that
-  // region actually renders. A smooth scroll commits to a fixed target the
-  // instant it's called and has no way to course-correct if the real
-  // height comes in mid-flight once the target region renders — that
-  // mismatch is what made a minimap/TOC jump to a distant, unvisited
-  // heading sometimes stop short of (or past) the actual heading instead
-  // of landing on it. Confirmed live: an instant jump first — forcing CM6
-  // to render and therefore measure that region — then recomputing the
-  // target from those now-real numbers lands accurately every time; a
-  // target already inside the drawn viewport is already accurately
-  // measured, so it skips straight to one clean scroll with no pre-jump.
+  // Every navigation call supersedes whatever came before it, regardless of
+  // which branch below it ends up taking — an earlier off-screen jump's
+  // still-listening correction (see the bottom of this function) must never
+  // survive to fire later and drag the view back toward its own, now-stale,
+  // target. Bumping the token here (not just inside the off-screen branch)
+  // is what closes that gap: without it, a second click landing in the
+  // *in-viewport* branch below returned early without invalidating the
+  // first click's pending correction, so if the scroller's own scroll
+  // events (driven by this second jump) happened to bring the first
+  // click's target into view.viewport, its stale listener would fire and
+  // override the second jump's destination.
+  _cancelPendingCorrection();
+  const myToken = _scrollNavToken;
+
+  // A target already inside the drawn viewport is already accurately
+  // measured — one clean scroll, no pre-jump or correction needed either way.
   if (clampedPos >= view.viewport.from && clampedPos <= view.viewport.to) {
-    doScroll(computeTop());
+    if (useSmooth) runSmoothScroll(scroller, computeTop());
+    else scroller.scrollTop = computeTop();
     return;
   }
-  scroller.scrollTop = computeTop();
-  requestAnimationFrame(() => doScroll(computeTop()));
+
+  if (!useSmooth) {
+    // No animation in flight to protect against a visible "jump, pause,
+    // slide" here — snap to the current estimate, then snap again once
+    // CM6 has rendered/measured the destination. Used by non-interactive
+    // callers (Follow mode's scrollToPos(), Find & Replace's setSelection()).
+    scroller.scrollTop = computeTop();
+    requestAnimationFrame(() => { scroller.scrollTop = computeTop(); });
+    return;
+  }
+
+  // Smooth + off-screen: teleporting to the estimate first (the old
+  // approach) forced CM6 to measure the destination, but a *second*,
+  // separately-animated correction scroll then visibly restarted the
+  // motion — "jump, pause, slide". Instead, begin the smooth movement
+  // toward the current best estimate immediately, and once CM6's viewport
+  // has grown to include `pos` (which happens progressively as this
+  // animation approaches it), retarget with one more runSmoothScroll() call
+  // — the browser blends a same-element retarget into the animation
+  // already in flight rather than restarting it, so this reads as one
+  // coherent movement rather than two. (myToken/_pendingCorrection's own
+  // prior entry were already invalidated above, before the branch split.)
+  runSmoothScroll(scroller, computeTop());
+  const onScroll = () => {
+    if (myToken !== _scrollNavToken) { scroller.removeEventListener('scroll', onScroll); _pendingCorrection = null; return; }
+    if (clampedPos < view.viewport.from || clampedPos > view.viewport.to) return;
+    scroller.removeEventListener('scroll', onScroll);
+    _pendingCorrection = null;
+    runSmoothScroll(scroller, computeTop());
+  };
+  scroller.addEventListener('scroll', onScroll, { passive: true });
+  _pendingCorrection = { scroller, onScroll };
 }
 
 // Typora-style [TOC] marker: a line containing only "[TOC]" gets a rendered
@@ -745,8 +813,9 @@ const _tocField = StateField.define({
 // proportionally to where it falls in the full scrollable document. Hidden
 // until hovered — see .scroll-rail's CSS — so it reads as "considered" chrome
 // rather than a permanent sidebar. The Write-mode textarea gets its own
-// independent instance of the same component (app/editor-behavior.js);
-// see scroll-rail.js's header comment for why they can't share one.
+// independent instance of the same component (ui/editor.js's
+// mountWriteScrollRail) — see scroll-rail.js's header comment for why they
+// can't share one, and for the shared mounting/positioning model both use.
 class _RailPlugin {
   constructor(view) {
     this.view = view;
@@ -757,8 +826,24 @@ class _RailPlugin {
         return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight };
       },
       setScrollTop: (top, { smooth } = {}) => {
-        if (smooth) view.scrollDOM.scrollTo({ top, behavior: 'smooth' });
-        else view.scrollDOM.scrollTop = top;
+        if (smooth) runSmoothScroll(view.scrollDOM, top);
+        else {
+          // A direct (non-smooth) scrollTop write only ever comes from the
+          // user manually dragging the rail thumb or clicking its bare
+          // track — real, explicit takeover of navigation. It cancels any
+          // native smooth animation already in flight (assigning scrollTop
+          // does that on its own), but an off-screen heading jump's own
+          // 'scroll' listener (_pendingCorrection, from _scrollPosIntoView)
+          // doesn't care what caused the scroll event — left armed, it can
+          // fire once this drag happens to pass through the *old* jump's
+          // target and yank the view back there, fighting the drag the user
+          // is actively mid-way through. Cancelling here is what a manual
+          // scroll-into-viewport branch inside _scrollPosIntoView itself
+          // can't be, since this scrollTop write never goes through that
+          // function at all.
+          _cancelPendingCorrection();
+          view.scrollDOM.scrollTop = top;
+        }
       },
       jumpToHeading: (h) => {
         const pos = Math.min(h.pos, view.state.doc.length);
@@ -767,11 +852,19 @@ class _RailPlugin {
         view.focus();
       },
     };
-    // Mounted on view.dom (.cm-editor), a sibling of view.scrollDOM
-    // (.cm-scroller) — see styles/editor.css for how .scroll-rail is
-    // positioned absolute over the scroller without becoming a descendant of
-    // it (a descendant would itself add to scrollHeight).
-    this.rail = new ScrollRail(view.dom, adapter);
+    // Mounted as a sibling of #note-live (view.dom's parent) inside the
+    // shared `.editor-wrap` card — NOT inside view.dom (.cm-editor), which
+    // is CodeMirror-owned internal DOM. Positioned from #note-live's own
+    // live rect (the represented *outer* surface), not view.dom/.cm-editor's
+    // — #note-live has responsive padding that wraps the CM6 DOM, so sizing
+    // off .cm-editor instead would put the rail at the wrong horizontal
+    // position on wide screens where that padding is largest. See
+    // ScrollRail's own _reposition()-equivalent (reposition()) for the
+    // shared geometry this and the Write rail both use.
+    const surfaceEl = view.dom.parentElement;
+    const wrapEl = surfaceEl?.closest('.editor-wrap') || surfaceEl;
+    this.rail = new ScrollRail(wrapEl, adapter, surfaceEl);
+    this.rail.dom.classList.add('scroll-rail-live');
     _railInstance = this;
     // A native 'scroll' event, not CM6's own update()/viewportChanged: pure
     // scrolling (no doc change) doesn't reliably dispatch a CM6 transaction,
@@ -821,6 +914,14 @@ class _RailPlugin {
       this._positioned = positioned;
       this.rail.updateHeadings(positioned);
     }
+    // Explicit, not left to ScrollRail's own ResizeObserver alone — see
+    // reposition()'s own comment for why a mode switch's hidden→visible
+    // flip needs this called directly rather than trusting the observer to
+    // fire in time for the very first paint. rebuild() already runs on
+    // every doc/geometry/viewport change (this update()'s own condition
+    // above) and from refreshLayout() right after a mode switch reveals
+    // #note-live, so this covers both without extra wiring.
+    this.rail.reposition();
     this.rail.updateMetrics();
   }
   destroy() {
@@ -1270,9 +1371,23 @@ export function isMounted() { return !!_view; }
 // right after the container is actually shown (see setMarkdownMode's own
 // trailing call into ui/editor.js's write-mode equivalent, _positionWriteRail/
 // _refreshWriteScrollRail, for the same fix on the other surface).
-export function refreshLayout() {
+/**
+ * @param {number} [scrollOffsetToTop] - if given, scroll (instantly, no
+ *   animation) so this source char-offset ends up at the exact top of the
+ *   viewport once layout has settled — the mode-switch/Split-sync transfer
+ *   case, which needs this to happen *after* the same re-measure this
+ *   function already forces for a freshly-revealed container, not before.
+ */
+export function refreshLayout(scrollOffsetToTop) {
   if (!_view) return;
-  _view.requestMeasure();
+  // Captured now, not re-read from the module-global _view inside the
+  // delayed callback below — a fast room switch (destroy() then a fresh
+  // mount()) within this 50ms window would otherwise apply this offset to
+  // the *new* room's CM6 instance instead of the one this call was
+  // actually about, since _view would have moved on by the time the
+  // callback runs.
+  const view = _view;
+  view.requestMeasure();
   // requestMeasure() alone isn't enough: confirmed live that immediately
   // after a hidden-container mount is unhidden, .cm-scroller's real
   // scrollHeight (27000+ for a long test doc) still read back as just its
@@ -1290,7 +1405,38 @@ export function refreshLayout() {
   // is a completely ordinary thing to do, not an edge case worth leaving
   // broken. setTimeout still runs in the background (Chrome only clamps its
   // minimum delay there, it doesn't suspend it outright).
-  setTimeout(() => _railInstance?.rebuild(_view), 50);
+  setTimeout(() => {
+    if (_view !== view) return; // this view was torn down/replaced before the delay elapsed
+    if (Number.isFinite(scrollOffsetToTop)) _scrollPosIntoView(view, scrollOffsetToTop, { flush: true });
+    _railInstance?.rebuild(view);
+  }, 50);
+}
+
+/**
+ * The source char-offset currently at the exact top of the viewport — the
+ * CM6-side half of the shared "top-visible-offset" anchor used for mode-
+ * switch scroll transfer, Split-sync, and persisted last-position (see
+ * scroll-rail.js's textarea equivalents). posAtCoords() resolves the actual
+ * rendered position at that pixel, which CM6 always has for whatever's
+ * currently drawn — unlike lineBlockAt(), it doesn't need an offset to
+ * start from. Returns 0 when unmounted or nothing is resolvable (an empty
+ * document, or scrolled to a boundary posAtCoords can't place).
+ */
+export function getOffsetAtTop() {
+  if (!_view) return 0;
+  const rect = _view.scrollDOM.getBoundingClientRect();
+  const pos = _view.posAtCoords({ x: rect.left + 1, y: rect.top + 1 });
+  return pos ?? 0;
+}
+
+/** The inverse of getOffsetAtTop(): scroll so `offset` ends up at the exact
+ *  top of the viewport. `smooth` is only for a deliberate, user-visible
+ *  jump (there is currently no such caller — mode-switch transfer and
+ *  Split-sync both want this instant, so the view is already correct the
+ *  moment it's revealed/the other pane moves, not visibly catching up). */
+export function scrollOffsetToTop(offset, { smooth = false } = {}) {
+  if (!_view) return;
+  _scrollPosIntoView(_view, offset, { flush: true, smooth });
 }
 
 /**
@@ -1454,6 +1600,20 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
     }),
     parent: container,
   });
+  // Cancels any in-flight off-screen heading-jump correction the moment the
+  // user takes over navigation directly on this surface — the rail
+  // adapter's own setScrollTop() already does this for a thumb drag/track
+  // click (see its own comment), but a mouse wheel, touchpad, or touch
+  // scroll goes straight to the browser's native scrolling and never calls
+  // that adapter method at all, so without this the correction's 'scroll'
+  // listener stayed armed through the *most common* way of scrolling and
+  // could still fire later and yank the view back to the abandoned target.
+  // 'wheel'/'touchstart' rather than 'scroll' because both are
+  // unambiguously user-initiated — our own programmatic scrolls (smooth or
+  // instant) never dispatch synthetic wheel/touch events, so this can't
+  // misfire on an echo the way a generic scroll listener could.
+  _view.scrollDOM.addEventListener('wheel', _cancelPendingCorrection, { passive: true });
+  _view.scrollDOM.addEventListener('touchstart', _cancelPendingCorrection, { passive: true });
 }
 
 // CM6's drawSelection() extension hides the native caret and draws its own
@@ -1479,6 +1639,13 @@ if (typeof window !== 'undefined') {
 
 export function destroy() {
   unwireScrollSync();
+  // A pending off-screen heading-jump correction (_scrollPosIntoView) holds
+  // a 'scroll' listener on the about-to-be-destroyed view's own scrollDOM —
+  // harmless once unreachable, but bumping the token here (rather than
+  // leaving it to whatever the next mount's first jump happens to do) means
+  // a stale listener from a closed room can never fire against a next
+  // room's freshly mounted scroller by coincidentally sharing a scrollTop.
+  _cancelPendingCorrection();
   _view?.destroy();
   _view = null;
   _onChange = null;
@@ -1509,54 +1676,38 @@ export function scrollCaretIntoView() {
 
 // ── Split-mode scroll sync ───────────────────────────────────────────────────
 //
-// Proportional (percent-of-scrollable-range) sync between the Write textarea
-// and this surface's own scroller, mirroring the sync the old rendered pane
-// had. Rewired on every mount() since CM6's scrollDOM is a fresh element
-// each time the view is (re)created, unlike the old #note-preview div.
-
-// Guarding re-entrancy with a boolean "lock" cleared on the next animation
-// frame (the original approach here) is a timing race, not a real guard:
-// a scrollTop assignment's resulting 'scroll' event is dispatched
-// asynchronously by the browser, on a schedule this code doesn't control —
-// if that echo arrives even one tick after the lock already cleared, it's
-// treated as a fresh user scroll and bounced back to the other pane. That
-// round trip is the "phantom scroll": two panes visibly correcting each
-// other by a few pixels after every real scroll (and, since the same
-// listeners fire on any 'scroll' event regardless of cause, after every
-// content reflow while typing too). Fixed by comparing actual positions
-// instead of guessing about timing: skip the write entirely when the
-// target pane is already within a hair of where the math says it should
-// be. A real user scroll still produces a real cross-pane update; an echo
-// from that update computes back to (approximately) where the source pane
-// already sits and becomes a no-op, so the loop has nothing left to chase.
+// Source-position-anchored sync between the Write textarea and this
+// surface's own scroller: "whatever's at the top of one pane's viewport
+// should also be at the top of the other's," matched by character offset
+// rather than scroll percentage — the same anchor mode-switch transfer uses
+// (see comments-preview.js's _applyMarkdownMode), so Split's continuous
+// sync and a one-shot mode switch agree on what "the same place" means
+// instead of using two different mechanisms. Rewired on every mount() since
+// CM6's scrollDOM is a fresh element each time the view is (re)created,
+// unlike the old #note-preview div.
+//
+// wireOffsetScrollSync() (src/scroll-rail.js) does the actual work,
+// including the "don't fight a deliberate smooth scroll" fix (skipping a
+// write into whichever pane is currently mid runSmoothScroll() — see that
+// function's own comment) and an rAF throttle (this offset mapping is a
+// real per-call cost on the Write side — a mirror-div binary search — unlike
+// the older percentage math's free arithmetic). ui/editor.js's own
+// textarea<->rendered-preview Split *fallback* sync stays on the older
+// wireProportionalScrollSync() — the static rendered-HTML pane has no
+// offset-mapping of its own to anchor to (that would need markdown.js to
+// tag every rendered block with its source position, which it doesn't).
 export function wireScrollSync(editorEl) {
   unwireScrollSync();
   if (!_view || !editorEl) return;
-  const scrollEl = _view.scrollDOM;
-  const onEditorScroll = () => {
-    const maxScroll = editorEl.scrollHeight - editorEl.clientHeight;
-    const ratio = maxScroll > 0 ? editorEl.scrollTop / maxScroll : 0;
-    const target = ratio * (scrollEl.scrollHeight - scrollEl.clientHeight);
-    if (Math.abs(scrollEl.scrollTop - target) < 1) return;
-    scrollEl.scrollTop = target;
-  };
-  const onSelfScroll = () => {
-    const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
-    const ratio = maxScroll > 0 ? scrollEl.scrollTop / maxScroll : 0;
-    const target = ratio * (editorEl.scrollHeight - editorEl.clientHeight);
-    if (Math.abs(editorEl.scrollTop - target) < 1) return;
-    editorEl.scrollTop = target;
-  };
-  editorEl.addEventListener('scroll', onEditorScroll);
-  scrollEl.addEventListener('scroll', onSelfScroll);
-  _scrollSync = { editorEl, scrollEl, onEditorScroll, onSelfScroll };
+  _scrollSync = wireOffsetScrollSync(
+    createTextareaOffsetAdapter(editorEl),
+    { el: _view.scrollDOM, getOffsetAtTop, scrollToOffset: scrollOffsetToTop },
+  );
 }
 
 export function unwireScrollSync() {
   if (!_scrollSync) return;
-  const { editorEl, scrollEl, onEditorScroll, onSelfScroll } = _scrollSync;
-  editorEl.removeEventListener('scroll', onEditorScroll);
-  scrollEl.removeEventListener('scroll', onSelfScroll);
+  _scrollSync();
   _scrollSync = null;
 }
 

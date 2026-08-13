@@ -558,18 +558,22 @@ pre.code-block:hover .code-block-copy-btn,
 
 /* Scroll rail (src/scroll-rail.js) — a single component merging a draggable
    scroll-position thumb with a heading-tick overview, replacing the native
-   scrollbar's *visual* chrome on both editor surfaces. Two mount points:
-   this bare .scroll-rail rule is the CM6 Live surface's own positioning
-   (absolute within .cm-editor, a sibling of .cm-scroller — see
-   live-editor.js's _RailPlugin); .scroll-rail-write below overrides it for
-   the plain textarea, which has no equivalent absolutely-positioned parent
-   of its own — see ui/editor.js's _positionWriteRail() for why its top/
-   height/right are computed from #note-editor's live bounding box instead
-   of being fixed CSS insets the way the CM6 variant's are (giving it its
-   own explicit CSS Grid placement instead, an earlier version of this rule,
-   fought #note-editor's *auto* placement for the same cell — confirmed live
-   it collapsed the intended row to 0px and shoved the textarea into an
-   unrelated implicit row).
+   scrollbar's *visual* chrome on both editor surfaces. Both the Write
+   (.scroll-rail-write) and Live/Preview (.scroll-rail-live) instances mount
+   as plain siblings of their surface inside the shared `.editor-wrap` card
+   — never inside the surface's own scrolling DOM, and in particular never
+   inside CM6's `.cm-editor`, which is CodeMirror-owned internal DOM — and
+   both get their top/height/right set inline by ScrollRail's own
+   reposition(), computed from their represented surface's live
+   getBoundingClientRect() (#note-editor for Write, #note-live for Live —
+   NOT .cm-editor, whose responsive padding would put the rail at the wrong
+   horizontal position on wide screens). This rule only supplies what's
+   common and static: box model, layer, and the touch/coarse-pointer hide —
+   never top/height/right, which JS always owns.
+   Visibility is derived from each surface's own .hidden class via the
+   sibling-combinator rules below, not a separate JS state machine — a mode
+   switch that shows/hides #note-editor or #note-live automatically shows/
+   hides its rail with it, so there's nothing to keep in sync by hand.
    Two different reveal rules for two different pieces, not one group
    opacity toggle: the thumb (a real scrollbar) stays ambiently visible at
    all times, like any other subtle scrollbar — see .scroll-rail-thumb —
@@ -583,7 +587,7 @@ pre.code-block:hover .code-block-copy-btn,
    native scrolling, untouched by any of this. */
 .scroll-rail {
   display: none;
-  position: absolute; top: 0; right: 9px; bottom: 0; width: 14px;
+  position: absolute; width: 14px;
   z-index: 5; pointer-events: auto;
 }
 /* This block must come after the bare .scroll-rail rule above — same
@@ -599,9 +603,17 @@ pre.code-block:hover .code-block-copy-btn,
   #note-editor, .note-live .cm-scroller { scrollbar-width: none; }
   #note-editor::-webkit-scrollbar, .note-live .cm-scroller::-webkit-scrollbar { display: none; }
 }
+/* Higher specificity than the bare/media rules above (an id + two classes),
+   so these win regardless of source order, in both directions: whichever
+   surface is currently hidden (write vs. live/preview — see
+   ui/editor.js's setMarkdownMode) hides its own rail right along with it,
+   even on a hover-capable device. Split mode shows both surfaces and
+   neither of these matches, so both rails stay visible, each already
+   positioned over its own column by reposition(). */
+#note-editor.hidden ~ .scroll-rail-write,
+#note-live.hidden ~ .scroll-rail-live { display: none; }
 .scroll-rail.is-unscrollable { pointer-events: none; }
 .scroll-rail.is-unscrollable .scroll-rail-thumb { display: none; }
-.scroll-rail-write { position: absolute; }
 
 .scroll-rail-thumb {
   position: absolute; right: 4px; width: 6px;
@@ -798,9 +810,18 @@ body.lock-mode .md-toolbar { opacity: 0.4; pointer-events: none; }
    full comment + Prev/Next/delete — see ui/collab.js's
    renderFloatingComments(). pointer-events:none on the layer, auto on the
    dots/bubble themselves, so the layer never blocks clicks/selection on the
-   editor beneath it. */
+   editor beneath it. Above .scroll-rail's z-index (5), not equal to it: the
+   rail is a sibling appended into .editor-wrap at runtime whenever CM6
+   mounts, later than this layer's own static markup, so equal z-index would
+   leave DOM/paint order deciding the tie — the rail winning and silently
+   swallowing clicks meant for a .comment-dot wherever the two happen to
+   overlap horizontally (a fine-pointer Live/Split surface with anchored
+   comments always has both in the same margin). An explicit lower z-index
+   for the rail would fix the same overlap, but comments should render above
+   the rail either way — it's chrome for navigating the document, not part
+   of its content. */
 .comment-margin-layer {
-  position: absolute; inset: 0; pointer-events: none; z-index: 5;
+  position: absolute; inset: 0; pointer-events: none; z-index: 6;
 }
 .comment-dot {
   position: absolute; right: 6px; width: 9px; height: 9px; border-radius: 50%;

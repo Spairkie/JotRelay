@@ -4,6 +4,7 @@
 // the rest of the suite does.
 
 import { test, expect } from '@playwright/test';
+import { goToLanding } from './helpers.js';
 
 // playwright.config.js sets serviceWorkers: 'block' globally so app-logic
 // tests can't be disrupted by clients.claim() mid-evaluate() — but that
@@ -130,5 +131,103 @@ test.describe('Offline behavior', () => {
     // always-present cached index.html shell underneath it.
     await expect(page.locator('#loading-retry-btn')).toBeVisible();
     await context.setOffline(false);
+  });
+});
+
+test.describe('PWA install banner', () => {
+  // beforeinstallprompt is a real Chromium event this app never has to
+  // dispatch itself — Chromium's own installability heuristics decide when
+  // it fires, which automated tests can't reliably trigger. Simulating it
+  // directly (a plain Event with prompt()/userChoice bolted on, matching
+  // the real BeforeInstallPromptEvent's shape) exercises src/app/pwa.js's
+  // own handler logic without depending on that heuristic.
+  function dispatchFakeInstallPrompt(page, outcome = 'dismissed') {
+    return page.evaluate((outcome) => {
+      const evt = new Event('beforeinstallprompt', { cancelable: true });
+      evt.prompt = () => {};
+      evt.userChoice = Promise.resolve({ outcome });
+      window.dispatchEvent(evt);
+    }, outcome);
+  }
+
+  test('shows the install banner on beforeinstallprompt in a normal (non-standalone) session', async ({ page }) => {
+    await goToLanding(page);
+    await page.evaluate(() => localStorage.removeItem('syncpad_install_dismissed'));
+    await dispatchFakeInstallPrompt(page);
+    await expect(page.locator('#pwa-install-bar')).toHaveClass(/visible/);
+  });
+
+  test('never shows the install banner when already running as an installed standalone PWA', async ({ page }) => {
+    // pwa.js's standalone check runs at module load time (before any test
+    // code gets a chance to touch the page), so the override must land via
+    // addInitScript — evaluated before every script on the page, including
+    // this app's own — not a plain page.evaluate() after goto().
+    await page.addInitScript(() => {
+      const real = window.matchMedia?.bind(window);
+      window.matchMedia = (query) => (
+        query.includes('display-mode: standalone') ? { matches: true, media: query } : real?.(query)
+      );
+    });
+    await goToLanding(page);
+    await dispatchFakeInstallPrompt(page, 'accepted');
+    await expect(page.locator('#pwa-install-bar')).not.toHaveClass(/visible/);
+    // Not persisted — standalone-ness is only true for as long as this
+    // session is actually running installed, not a lasting fact about the
+    // device (see src/app/pwa.js's own comment on this check for why: it
+    // would otherwise survive an eventual uninstall in origin storage and
+    // permanently block a legitimate future beforeinstallprompt). The
+    // suppression above comes from the live _isStandalone() re-check inside
+    // the beforeinstallprompt handler itself, not from this flag.
+    expect(await page.evaluate(() => localStorage.getItem('syncpad_install_dismissed'))).toBeNull();
+  });
+
+  test('never shows the install banner when navigator.standalone is true (iOS home-screen launch)', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window.navigator, 'standalone', { value: true, configurable: true });
+    });
+    await goToLanding(page);
+    await dispatchFakeInstallPrompt(page);
+    await expect(page.locator('#pwa-install-bar')).not.toHaveClass(/visible/);
+  });
+
+  test('a dismissed install banner does not reappear on a later beforeinstallprompt', async ({ page }) => {
+    await goToLanding(page);
+    await page.evaluate(() => localStorage.removeItem('syncpad_install_dismissed'));
+    await dispatchFakeInstallPrompt(page);
+    await expect(page.locator('#pwa-install-bar')).toHaveClass(/visible/);
+
+    await page.locator('#pwa-install-bar .dismiss').click();
+    await expect(page.locator('#pwa-install-bar')).not.toHaveClass(/visible/);
+
+    await dispatchFakeInstallPrompt(page);
+    await expect(page.locator('#pwa-install-bar')).not.toHaveClass(/visible/);
+  });
+
+  test('accepting the install prompt hides the banner without persisting a lasting dismissal', async ({ page }) => {
+    await goToLanding(page);
+    await page.evaluate(() => localStorage.removeItem('syncpad_install_dismissed'));
+    await dispatchFakeInstallPrompt(page, 'accepted');
+    await expect(page.locator('#pwa-install-bar')).toHaveClass(/visible/);
+
+    await page.locator('#pwa-install-bar .install').click();
+    await expect(page.locator('#pwa-install-bar')).not.toHaveClass(/visible/);
+    // Not persisted as a dismissal — "currently installed" and "user opted
+    // out" are different, differently-lived facts (see src/app/pwa.js's own
+    // comment on the 'appinstalled' listener for why: unlike a real "Not
+    // now" click, this must not survive an eventual uninstall+reinstall).
+    expect(await page.evaluate(() => localStorage.getItem('syncpad_install_dismissed'))).toBeNull();
+  });
+
+  test('appinstalled hides the banner, even if it was never shown, without persisting a lasting dismissal', async ({ page }) => {
+    await goToLanding(page);
+    await page.evaluate(() => {
+      localStorage.removeItem('syncpad_install_dismissed');
+      window.dispatchEvent(new Event('appinstalled'));
+    });
+    await expect(page.locator('#pwa-install-bar')).not.toHaveClass(/visible/);
+    // Same reasoning as the accepted-prompt test above: installed-ness is
+    // suppressed live (via _isStandalone()) on a future load that's
+    // actually still installed, not by a permanent flag set here.
+    expect(await page.evaluate(() => localStorage.getItem('syncpad_install_dismissed'))).toBeNull();
   });
 });

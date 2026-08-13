@@ -14,10 +14,11 @@ import * as LiveEditor from '../live-editor.js';
 import * as UI from '../ui.js';
 import { copyToClipboard } from '../utils.js';
 import { state, SLASH_MENU_ITEMS, _STRIP_PASTE_KEY, _SMART_PUNCT_KEY, _FOCUS_MODE_KEY, _TYPEWRITER_MODE_KEY, _HIDE_PRESENCE_KEY, _SYNC_SCROLL_KEY, _CODE_LINE_NUMBERS_KEY } from './state.js';
-import { _currentSelectionRange, _openFloatingCommentComposer, _refreshFloatingComments, _updateScrollSyncWiring } from './comments-preview.js';
+import { _currentSelectionRange, _openFloatingCommentComposer, _refreshFloatingComments, _updateScrollSyncWiring, _wireWritePaneTracking } from './comments-preview.js';
 import { _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedRefreshFloatingComments, _debouncedPruneDeletedCommentAnchors } from './comments-preview.js';
 import { _uploadAndInsertImages } from './files-panel.js';
 import { _openTemplatesModalFresh } from './panels.js';
+import { flushScrollPosition } from './room-lifecycle.js';
 
 // Custom templates are already capped at BODY_MAX (templates.js), but nothing
 // stopped the editor itself from exceeding it — via typing past it, a native
@@ -37,6 +38,13 @@ export function _enforceBodyMax() {
 export function _wireEditorCore() {
   const editor = document.getElementById('note-editor');
   UI.mountWriteScrollRail();
+  // Runs exactly once per page lifetime, right after the Write rail's own
+  // DOM element is guaranteed to exist (mountWriteScrollRail() creates and
+  // appends it synchronously before returning) — see
+  // _wireWritePaneTracking()'s own comment for why relying on Live's mount
+  // path to find '.scroll-rail-write' instead couldn't provide that
+  // guarantee for a first visit that opens directly into Preview/Split.
+  _wireWritePaneTracking(editor, document.querySelector('.scroll-rail-write'));
 
   editor?.addEventListener('input', () => {
     if (!canEdit()) return;
@@ -332,6 +340,12 @@ export function _wireEditorToolbarAndLifecycle() {
     // visibilitychange handles tab-hide; these handle close/navigate.
     setTyping(false);
     flushSave();
+    // A real tab close/reload/back-forward never runs
+    // teardownRealtimeSession() (that's only for *in-app* room navigation),
+    // so its own final scroll-position flush would otherwise never fire for
+    // this, the actually-common way a session ends — only the 2s periodic
+    // save in startApp() would have run, losing up to that much scrolling.
+    flushScrollPosition();
     destroyPresence();
   };
   window.addEventListener('beforeunload', _cleanupOnLeave);
@@ -339,6 +353,7 @@ export function _wireEditorToolbarAndLifecycle() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       flushSave();
+      flushScrollPosition();
       setTyping(false);
       setCursorLine(null);
     }

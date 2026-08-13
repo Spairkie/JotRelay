@@ -21,6 +21,7 @@ import {
 } from '../settings.js';
 import { flushSave, setEncryption, snapshotBeforeDestructiveChange } from '../sync.js';
 import { clearDraft } from '../offline.js';
+import { clearScrollOffset } from '../scroll-memory.js';
 import { listFiles } from '../files.js';
 import { broadcastSettingsChange, cancelPendingTypingBroadcast, cancelPendingLiveContentBroadcast } from '../live-broadcast.js';
 import { canEdit, canUseTemplates, canChangeSettings, canToggleLock, editBlockedReason } from '../permissions.js';
@@ -576,6 +577,32 @@ export function _wireSettings() {
       try {
         const { salt, key } = await enableEncryption(state.roomId, UI.getEditorValue(), pp);
         state.encKey = key; state.encSalt = salt;
+        // Marked encrypted in memory immediately — before the awaited
+        // loadRoom() below resolves (or forever, if it fails), state.room
+        // still describes the room as unencrypted, which is exactly what
+        // _scrollMemoryBlocked() checks. Deleting the existing scroll-
+        // memory record below isn't enough on its own if the periodic save
+        // or a visibility-change flush can still write a fresh plaintext
+        // fingerprint right back during that same window, before the real
+        // reload catches up.
+        if (state.room) state.room = { ...state.room, encryption_enabled: true };
+        // Any remembered scroll position saved while this room was still
+        // unencrypted (src/scroll-memory.js) is a plaintext length + a
+        // deterministic hash of the plaintext, sitting in plain localStorage
+        // — room-lifecycle.js's own encryption_enabled gate only stops
+        // *future* reads/writes to it, so a record already written before
+        // encryption was turned on would otherwise keep exposing that
+        // fingerprint indefinitely even though the room's content is now
+        // encrypted. Same leak this whole feature already refuses to touch
+        // for an encrypted room in the first place — just needs clearing
+        // retroactively here, the one path that flips a room from
+        // unencrypted to encrypted without otherwise resetting its content.
+        // Done immediately once enableEncryption() itself succeeds (the
+        // server-side flip is already irreversible at that point), not
+        // after the awaited loadRoom() below — that call can still throw
+        // (network blip) and jump to the catch block, which would otherwise
+        // skip this even though the room is already encrypted server-side.
+        clearScrollOffset(state.roomId);
         // v1: switch sync.js to encrypted lane immediately.
         setEncryption(
           (pt) => encryptContent(pt, state.encKey),

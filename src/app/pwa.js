@@ -55,15 +55,77 @@ if ('serviceWorker' in navigator) {
 }
 
 const INSTALL_DISMISSED_KEY = 'syncpad_install_dismissed';
+
+// A running installed PWA (desktop window, mobile home-screen launch) must
+// never offer to install itself — there's nothing left to install, and a
+// banner sitting there permanently reads as broken. display-mode:standalone
+// covers desktop/Android installs; navigator.standalone is Safari's own
+// pre-standard equivalent for an iOS home-screen launch, which never gets a
+// 'display-mode' media feature at all. Checked once at startup (a page
+// already running standalone doesn't flip modes mid-session) — see the
+// beforeinstallprompt handler below, which re-checks this live rather than
+// relying on a stored flag.
+function _isStandalone() {
+  return !!(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true);
+}
+
+// Deliberately does NOT persist INSTALL_DISMISSED_KEY here — same reasoning
+// as 'appinstalled' below: standalone-ness is only true for as long as this
+// session is actually running installed, not a lasting fact about the
+// device. Persisting it as a dismissal would (confirmed by a second
+// automated review pass after the first round of fixes below) survive an
+// eventual uninstall in origin storage and permanently block a legitimate
+// future beforeinstallprompt on a plain browser visit, with no in-app way
+// to clear it. Hiding the bar for the current load is enough — a future
+// load that's actually still standalone gets caught by this same check
+// again, and the live re-check inside the handler below is what actually
+// suppresses a stray beforeinstallprompt while genuinely standalone.
+if (_isStandalone()) UI.hideInstallBar();
+
 let _deferredInstall = null;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   _deferredInstall = e;
-  if (localStorage.getItem(INSTALL_DISMISSED_KEY) === '1') return;
+  if (_isStandalone() || localStorage.getItem(INSTALL_DISMISSED_KEY) === '1') return;
   UI.showInstallBar(
-    async () => { _deferredInstall?.prompt(); await _deferredInstall?.userChoice; _deferredInstall = null; },
+    async () => {
+      _deferredInstall?.prompt();
+      const choice = await _deferredInstall?.userChoice;
+      _deferredInstall = null;
+      // 'appinstalled' below also fires on acceptance and is the more
+      // reliable signal in general (a user can accept the native prompt and
+      // then dismiss the OS's own install confirmation, or the reverse), but
+      // acting on 'accepted' here too means the bar disappears immediately
+      // on the common path instead of waiting on a second event that can
+      // lag the prompt's own resolution by a moment.
+      // Not persisted as a dismissal — see 'appinstalled' below for why
+      // "currently installed" and "user doesn't want this" must stay two
+      // different, differently-lived facts.
+      if (choice?.outcome === 'accepted') UI.hideInstallBar();
+    },
     () => { localStorage.setItem(INSTALL_DISMISSED_KEY, '1'); }
   );
+});
+
+// Fires on every installation, regardless of which UI triggered it (this
+// app's own Install button, the browser's address-bar install icon, an
+// OS-level app-store-style install) — the one signal that's always right,
+// so it's the backstop even though the Install button's own onInstall
+// handler above already covers its own path.
+//
+// Deliberately does NOT persist INSTALL_DISMISSED_KEY here (unlike the
+// "Not now" dismiss handler above, which is a real lasting preference).
+// Installed-ness is a temporary fact, not a permanent one: origin storage
+// commonly survives a PWA uninstall (there's no browser event for that
+// either), so persisting a dismissal on install would permanently block a
+// perfectly legitimate future beforeinstallprompt after the user
+// uninstalls and later revisits, with no in-app way to ever clear it.
+// Hiding the bar for the current session is enough — a future load that's
+// actually still installed gets suppressed again by the live
+// _isStandalone() check above, not by this flag.
+window.addEventListener('appinstalled', () => {
+  _deferredInstall = null;
+  UI.hideInstallBar();
 });
 
 // ── Draft storage warning ─────────────────────────────────────────────────────
