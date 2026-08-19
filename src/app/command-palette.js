@@ -16,6 +16,7 @@ import { _toggleMonospace } from './editor-behavior.js';
 import { _openHistoryPanel } from './panels.js';
 import { _openCommentsPanel } from './comments-preview.js';
 import { _copyNoteToClipboard, closeMoreDropdown } from './header.js';
+import { _runAskAi } from './ask-ai.js';
 
 function _clickById(id) {
   return () => document.getElementById(id)?.click();
@@ -48,6 +49,7 @@ function _paletteCommands() {
     { id: 'clear-note',     label: 'Clear note for everyone…',        group: 'Room', keywords: ['delete', 'empty'], run: _clickById('tool-clear') },
     { id: 'report-room',    label: 'Report this room',                group: 'Room', run: _clickById('btn-report-room') },
 
+    { id: 'ask-ai',            label: 'Ask AI: transform selection…', group: 'Edit', keywords: ['gemini', 'rewrite', 'summarize', 'assistant'], run: () => _runAskAi() },
     { id: 'insert-timestamp', label: 'Insert timestamp',              group: 'Edit', shortcut: 'Alt Shift T', run: _clickById('btn-insert-ts') },
     { id: 'copy-note',        label: 'Copy note contents',            group: 'Edit', shortcut: 'Alt Shift C', run: () => _copyNoteToClipboard() },
     { id: 'import-text',       label: 'Import a text/Markdown file',  group: 'Edit', run: _clickById('tool-import') },
