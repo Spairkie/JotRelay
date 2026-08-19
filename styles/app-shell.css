@@ -99,7 +99,18 @@
 /* Share is the header's one inviting action rather than a view toggle, so it
    gets the accent treatment other icon buttons reserve for "active" state,
    plus a small icon lift — distinct enough to invite a click without being
-   loud. */
+   loud. Unlike every other .header-btn, it renders a text label alongside
+   its icon (see index.html), so it also needs its own width:auto + gap
+   override here — the shared .header-btn is a fixed 34px icon-only box, and
+   without this the "Share" label visibly overflows past that box while the
+   hover/focus background above only ever paints within it. Scoped to
+   #btn-share specifically rather than changed on .header-btn itself so
+   icon-only buttons keep their fixed square sizing. The <900px breakpoint
+   (styles/room-tools.css) hides the label and returns this to icon-only
+   sizing on narrow viewports, where the fixed box is correct again. */
+#btn-share {
+  width: auto; padding-inline: 10px; gap: 6px;
+}
 #btn-share:hover, #btn-share:focus-visible {
   background: var(--accent-dim); color: var(--accent);
 }

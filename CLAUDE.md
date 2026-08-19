@@ -63,6 +63,7 @@ Supabase credentials are injected into `index.html` as `window.SYNCPAD_CONFIG`. 
 | `src/templates.js` | 17 built-in templates + localStorage custom templates; `BODY_MAX = 50000` |
 | `src/theme.js` | CSS variable theme system — 10 themes, toggled via `data-theme` on `<html>` |
 | `src/shortcuts.js` | Keyboard shortcut handler |
+| `src/ask-ai.js` | "Ask AI" client — thin wrapper around the `ask-ai` Supabase Edge Function (`supabase/functions/ask-ai/`), which proxies a selected-text + instruction request to Gemini's free tier server-side. Selection-only by design (never the whole note). Selection/consent/UI flow lives in `src/app/ask-ai.js`. |
 | `src/admin.js` | Admin dashboard entry point (auth-state routing only) — Supabase Auth (`signInWithPassword`), RLS via `is_syncpad_admin()`. Dashboard shell + tabs live in `src/admin/*.js`; see `src/admin.js`'s header comment for the module map. |
 | `src/utils.js` | `escapeHtml()`, `formatFileSize()`, `countWords()` |
 | `src/icons.js` | SVG icon strings |
@@ -146,6 +147,8 @@ Transitions for background-color (0.22 s ease) are applied to `body`, panels, an
 - **`room_id` alone is a sufficient write credential; `?mode=read` and `/share/:token` are a UI/UX convention, not a server-enforced boundary.** A plain room link (typed, bookmarked, or shared) is directly editable — visiting a URL for a room that doesn't exist yet creates it, same as the landing page's Create Room button (see `joinRoom()`'s not-found fallback in `src/app/room-lifecycle.js`). `?mode=read` and `/share/:token` discourage editing in the app's own UI but don't stop a technical visitor from writing directly, since they necessarily learn `room_id` from viewing the room's content. For a genuine, server-enforced "nobody can edit this" guarantee, use the room lock feature (`editing_locked`) — it's enforced by a Postgres trigger regardless of how the write is attempted. See `supabase/migrations/0009_revert_edit_token_write_gating.sql` for the reasoning (this reverted an earlier edit-token requirement that turned out to cost more in lost-access lockouts and deployment fragility than it was worth for a project not meant to hold sensitive data).
 
 - **Admin route uses Supabase Auth.** The admin dashboard authenticates via `signInWithPassword` and relies on the `is_syncpad_admin()` RLS function. Anonymous users must not be able to reach admin data even if they manipulate the client.
+
+- **Passcode is a client-only UX gate, not a server-enforced boundary.** `checkPasscode()` (`src/settings.js`) compares against `passcode_hash`/`passcode_salt` entirely in the browser before the app shows the room's content — there is no Postgres RLS policy or trigger that checks the passcode server-side. Same underlying reasoning as the read-only-link caveat above (`room_id` alone is a sufficient write/read credential): a technical visitor who calls the Supabase REST API directly with a room's `room_id` bypasses the passcode screen entirely, regardless of whether one is set. The room lock feature (`editing_locked`) remains the only setting with a real server-side guarantee (a Postgres trigger). Don't present the passcode UI as blocking anything beyond the app's own screens.
 
 ---
 

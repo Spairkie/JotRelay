@@ -46,6 +46,18 @@
 }
 .prompt-modal-input { margin: 12px 0 4px; }
 
+/* Passcode modal — gives "set a passcode" the same visual weight as the
+   #passcode-screen auth-gate card (icon, heading, sub-copy) instead of the
+   bare single-field showPrompt() dialog it used to be, plus a confirm field
+   with inline mismatch validation. */
+.passcode-modal-inner { max-width: 360px; }
+.passcode-modal-title { font-size: 18px; font-weight: 600; text-align: center; margin: 0 0 6px; }
+.passcode-modal-sub { font-size: 13px; color: var(--text-secondary); text-align: center; margin: 0 0 18px; line-height: 1.5; }
+.passcode-modal-input + .passcode-modal-input { margin-top: 10px; }
+@media (max-width: 639px) {
+  .passcode-modal-inner { padding: 22px 18px; }
+}
+
 /* ══════════════════════════════════════════════════════════════
    SHARE MODAL (card redesign)
 ══════════════════════════════════════════════════════════════ */

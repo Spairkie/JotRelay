@@ -292,6 +292,14 @@ body.code-line-numbers .note-live .cm-md-codeblock-content::before {
 .note-live .cm-md-table th, .note-live .cm-md-table td { border: 1px solid var(--border); padding: 6px 12px; text-align: left; }
 .note-live .cm-md-table th { background: var(--bg-elevated); font-weight: 600; }
 .note-live .cm-md-table tbody tr:nth-child(even) td { background: var(--bg-elevated); opacity: 0.7; }
+/* Editable cell affordance — each cell is its own contenteditable island
+   (see live-editor.js's _TableWidget), so a focus ring is the only signal
+   a user gets that a cell is directly typeable. */
+.note-live .cm-md-table th[contenteditable="true"], .note-live .cm-md-table td[contenteditable="true"] { cursor: text; }
+.note-live .cm-md-table th[contenteditable="true"]:hover, .note-live .cm-md-table td[contenteditable="true"]:hover { background: var(--accent-dim); }
+.note-live .cm-md-table th[contenteditable="true"]:focus, .note-live .cm-md-table td[contenteditable="true"]:focus {
+  outline: 2px solid var(--accent); outline-offset: -2px; background: var(--bg-surface); opacity: 1;
+}
 
 /* GitHub-style alerts — > [!NOTE]/[!TIP]/[!IMPORTANT]/[!WARNING]/[!CAUTION].
    Matches .note-preview's .md-alert colours; the border lives on the line
@@ -359,7 +367,15 @@ body.code-line-numbers .note-live .cm-md-codeblock-content::before {
   font-size: 10px; font-weight: 600; line-height: 1.5;
   color: #fff; white-space: nowrap;
   pointer-events: none;
-  z-index: 5;
+  /* Must outrank every in-editor float it can render near/under: the
+     scroll rail and comment-margin layer (both z-index 5/6, see the
+     rationale comment on .comment-margin-layer below), and the
+     comment-fab/remote-notice overlays (19/20) — a remote collaborator's
+     name label is document-content chrome that should never be hidden
+     by chrome floating on top of the document. Stays well below the
+     panel/modal/toast tiers (120+) since it's still in-document, not a
+     global overlay. */
+  z-index: 21;
 }
 /* A remote collaborator's selected text range — background color set inline
    per-device (color-mix from colorForDevice()) since it's dynamic, same
@@ -788,17 +804,24 @@ body.lock-mode .md-toolbar { opacity: 0.4; pointer-events: none; }
    document length. Opens a floating composer at the current selection/
    caret — see ui/collab.js's openFloatingCommentComposer(). */
 .comment-fab {
-  position: absolute; right: 16px; bottom: 16px; z-index: 19;
+  /* --comment-fab-bottom-offset is set/cleared by UI.setCommentFabOffset()
+     (src/ui/panels.js) whenever the expiration bar's visibility toggles —
+     the bar is an in-flow footer element that doesn't reflow this
+     absolutely-positioned FAB on its own, so without the offset the two
+     collide on short mobile viewports. Defaults to 0 when the bar is
+     hidden. */
+  position: absolute; right: 16px;
+  bottom: calc(16px + var(--comment-fab-bottom-offset, 0px)); z-index: 19;
   width: 40px; height: 40px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: var(--accent); color: var(--text-inverse);
   box-shadow: var(--shadow-md);
-  transition: transform var(--transition), box-shadow var(--transition);
+  transition: transform var(--transition), box-shadow var(--transition), bottom var(--transition);
 }
 .comment-fab:hover { transform: scale(1.06); box-shadow: var(--shadow-lg); }
 .comment-fab:active { transform: scale(0.96); }
 @media (max-width: 639px) {
-  .comment-fab { right: 12px; bottom: 12px; width: 36px; height: 36px; }
+  .comment-fab { right: 12px; bottom: calc(12px + var(--comment-fab-bottom-offset, 0px)); width: 36px; height: 36px; }
 }
 
 /* Comment margin dots + expandable bubble — the merged cursor-chat +
