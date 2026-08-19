@@ -501,7 +501,7 @@ export function _wireSettings() {
         UI.showToast('Passcode removed.', 'success');
       } catch { UI.showToast('Could not remove passcode.', 'error'); }
     } else {
-      const pc = await UI.showPrompt('Set a new passcode:', { placeholder: 'Passcode…', confirmLabel: 'Set passcode' });
+      const pc = await UI.showPasscodeModal();
       if (!pc?.trim()) return;
       try {
         await setPasscode(state.roomId, pc);

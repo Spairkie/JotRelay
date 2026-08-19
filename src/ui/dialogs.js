@@ -244,3 +244,125 @@ function _ensurePromptModal() {
   document.body.appendChild(el);
 }
 
+// ── Passcode modal ────────────────────────────────────────────────────────────
+
+/**
+ * Show a dedicated "Set a passcode" dialog with passcode + confirm fields
+ * and inline mismatch validation — unlike showPrompt()'s single generic
+ * text field, this gives the security-relevant "set a passcode" action its
+ * own visual weight (matching the #passcode-screen auth-gate's card), a
+ * confirm field to catch typos, and a mobile-responsive layout.
+ *
+ * Returns a Promise<string|null> — the raw (untrimmed) passcode, or null if
+ * cancelled. Resolves only once both fields are non-blank and match.
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.confirmLabel='Set passcode']
+ * @param {string} [opts.cancelLabel='Cancel']
+ */
+export function showPasscodeModal({ confirmLabel = 'Set passcode', cancelLabel = 'Cancel' } = {}) {
+  return new Promise((resolve) => {
+    _ensurePasscodeModal();
+    const modal        = document.getElementById('sp-passcode-modal');
+    const passInput     = document.getElementById('sp-passcode-input');
+    const confirmInput  = document.getElementById('sp-passcode-confirm-input');
+    const errorEl       = document.getElementById('sp-passcode-error');
+    const okBtn         = document.getElementById('sp-passcode-ok');
+    const cancelBtn     = document.getElementById('sp-passcode-cancel');
+    if (!modal || !passInput || !confirmInput || !errorEl || !okBtn || !cancelBtn) { resolve(null); return; }
+
+    passInput.value = '';
+    confirmInput.value = '';
+    errorEl.textContent = '';
+    passInput.classList.remove('error');
+    confirmInput.classList.remove('error');
+    okBtn.textContent = confirmLabel;
+    cancelBtn.textContent = cancelLabel;
+
+    const cleanup = (result) => {
+      modal.classList.remove('visible');
+      okBtn.onclick       = null;
+      cancelBtn.onclick   = null;
+      modal.onclick       = null;
+      passInput.onkeydown = null;
+      confirmInput.onkeydown = null;
+      document.removeEventListener('keydown', _onKey);
+      resolve(result);
+    };
+
+    const trySubmit = () => {
+      const pc = passInput.value;
+      const confirmPc = confirmInput.value;
+      if (!pc.trim()) {
+        errorEl.textContent = 'Enter a passcode.';
+        passInput.classList.add('error');
+        passInput.focus();
+        return;
+      }
+      if (pc !== confirmPc) {
+        errorEl.textContent = 'Passcodes don’t match.';
+        confirmInput.classList.add('error');
+        confirmInput.focus();
+        return;
+      }
+      cleanup(pc);
+    };
+
+    const _onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); cleanup(null); }
+      // Focus trap — Tab cycles: passcode → confirm → cancelBtn → okBtn → passcode.
+      if (e.key === 'Tab') {
+        const focusables = [passInput, confirmInput, cancelBtn, okBtn].filter(el => !el.disabled);
+        const first = focusables[0];
+        const last  = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault(); first.focus();
+        }
+      }
+    };
+
+    const onFieldKeydown = (e) => {
+      errorEl.textContent = '';
+      passInput.classList.remove('error');
+      confirmInput.classList.remove('error');
+      if (e.key === 'Enter') { e.preventDefault(); trySubmit(); }
+    };
+    passInput.onkeydown = onFieldKeydown;
+    confirmInput.onkeydown = onFieldKeydown;
+
+    okBtn.onclick     = trySubmit;
+    cancelBtn.onclick = () => cleanup(null);
+    modal.onclick     = (e) => { if (e.target === modal) cleanup(null); };
+    document.addEventListener('keydown', _onKey);
+
+    modal.classList.add('visible');
+    requestAnimationFrame(() => passInput.focus());
+  });
+}
+
+function _ensurePasscodeModal() {
+  if (document.getElementById('sp-passcode-modal')) return;
+  const el = document.createElement('div');
+  el.id        = 'sp-passcode-modal';
+  el.className = 'modal-backdrop';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-modal', 'true');
+  el.setAttribute('aria-labelledby', 'sp-passcode-title');
+  el.innerHTML = `
+    <div class="modal confirm-modal-inner passcode-modal-inner">
+      <div class="auth-card-icon">🔒</div>
+      <h2 id="sp-passcode-title" class="passcode-modal-title">Set a passcode</h2>
+      <p class="passcode-modal-sub">Anyone opening this room's editable link will need this passcode.</p>
+      <input id="sp-passcode-input" class="auth-input passcode-modal-input" type="password" placeholder="Passcode" autocomplete="new-password" />
+      <input id="sp-passcode-confirm-input" class="auth-input passcode-modal-input" type="password" placeholder="Confirm passcode" autocomplete="new-password" />
+      <div id="sp-passcode-error" class="auth-error" role="alert" aria-live="assertive"></div>
+      <div class="modal-actions">
+        <button id="sp-passcode-cancel" class="modal-actions-btn modal-btn-cancel"></button>
+        <button id="sp-passcode-ok"     class="modal-actions-btn modal-btn-confirm"></button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+}
+
