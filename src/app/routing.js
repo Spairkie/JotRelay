@@ -130,7 +130,7 @@ window.addEventListener('popstate', () => {
   location.reload();
 });
 
-export const RESERVED_ROOM_PATHS = new Set(['admin', 'app', 'contact', 'privacy', 'terms', 'share', 'assets', 'src', 'styles', 'docs', 'presskit', 'scripts']);
+export const RESERVED_ROOM_PATHS = new Set(['admin', 'app', 'contact', 'privacy', 'terms', 'share', 'share-target', 'assets', 'src', 'styles', 'docs', 'presskit', 'scripts']);
 
 // A bare 6-character code from the short-code alphabet (see
 // supabase/migrations/0002_short_room_codes.sql) — distinct enough from
@@ -149,6 +149,20 @@ export function _parseRoute() {
   if (cleaned === 'privacy') return { type: 'privacy' };
   if (cleaned === 'terms') return { type: 'terms' };
   if (cleaned === 'admin') return { type: 'admin' };
+  // manifest.json's share_target — the OS/browser "Share to…" sheet GETs
+  // this path (only reachable when JotRelay is installed as a PWA) with the
+  // shared title/text/url as query params. Not a right-click "context menu"
+  // integration (no browser API exposes that for third-party apps) — this
+  // is the real mechanism behind "send to JotRelay" from another app.
+  if (cleaned === 'share-target') {
+    const params = new URLSearchParams(location.search);
+    return {
+      type: 'share-target',
+      title: params.get('title') || '',
+      text:  params.get('text')  || '',
+      url:   params.get('url')   || '',
+    };
+  }
   // The bare create/join screen — split out from the marketing landing page
   // at `/` so the root can be pure marketing copy with CTAs linking here.
   // Named 'app-landing' (not 'app') because showScreen('app') already means
