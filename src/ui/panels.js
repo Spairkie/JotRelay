@@ -480,6 +480,24 @@ export function renderHistoryScrubber(entries, onRestore) {
 
 let _expInterval = null;
 
+// The expiration bar is an in-flow footer element inside .editor-area, but
+// .comment-fab is absolutely positioned relative to that same container's
+// bottom edge — it doesn't reflow when the bar appears/disappears, so the
+// two can visually collide on short mobile viewports. Measuring the bar's
+// real rendered height (rather than a hardcoded constant) keeps this correct
+// across font-size/zoom/locale-driven text-wrapping changes.
+export function setCommentFabOffset(hasExpirationBar) {
+  const editorArea = document.querySelector('.editor-area');
+  if (!editorArea) return;
+  if (!hasExpirationBar) {
+    editorArea.style.removeProperty('--comment-fab-bottom-offset');
+    return;
+  }
+  const bar = document.getElementById('expiration-bar');
+  const height = bar && !bar.classList.contains('hidden') ? bar.getBoundingClientRect().height : 0;
+  editorArea.style.setProperty('--comment-fab-bottom-offset', `${height}px`);
+}
+
 export function showExpirationBar(expiresAt, onCancel) {
   const bar = document.getElementById('expiration-bar');
   if (!bar) return;
@@ -487,6 +505,7 @@ export function showExpirationBar(expiresAt, onCancel) {
   const cancelBtn = bar.querySelector('.exp-cancel');
   if (cancelBtn) cancelBtn.onclick = onCancel;
   clearInterval(_expInterval);
+  setCommentFabOffset(true);
 
   function update() {
     const remaining = new Date(expiresAt) - Date.now();
@@ -509,6 +528,7 @@ export function showExpirationBar(expiresAt, onCancel) {
 export function hideExpirationBar() {
   document.getElementById('expiration-bar')?.classList.add('hidden');
   clearInterval(_expInterval);
+  setCommentFabOffset(false);
 }
 
 // ── Encryption badge ──────────────────────────────────────────────────────────
@@ -540,7 +560,7 @@ export function setViewOnceConsumedPanel({
   title.textContent = 'View-once note already viewed';
   msg.textContent = readOnly
     ? 'This read-only note has already been viewed. Ask the editable room holder to reset it if needed.'
-    : 'This room’s view-once note has already been opened. You can reset this room to start a new note.';
+    : 'This room’s view-once note has already been opened. Resetting turns this into a regular room — it will no longer be view-once.';
 
   startBtn.classList.toggle('hidden', !!readOnly);
   startBtn.onclick = readOnly ? null : onStartNew;
