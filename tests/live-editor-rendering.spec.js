@@ -80,6 +80,99 @@ test.describe('Live/Split surface rendering', () => {
     await expect(page.locator('.note-live')).toContainText('| A | B |');
   });
 
+  // Mounts a standalone Live surface with a small table and moves CM6's own
+  // selection to the very end of the doc — same "escape the table's source
+  // range" step the existing table tests above use (see their comments):
+  // right after mount() the cursor defaults to position 0, which sits
+  // inside the table when it's the first thing in the doc, so the table
+  // would otherwise still be showing raw pipe syntax with no <td>/<th>
+  // elements to click at all.
+  async function _mountHarnessWithTable(page) {
+    await page.goto('/JotRelay/');
+    await page.evaluate(async () => {
+      const { mount } = await import('/JotRelay/src/live-editor.js');
+      // The landing page underneath (fixed-position marketing sections)
+      // otherwise intercepts real mouse clicks aimed at the harness — the
+      // other harness-based tests above never hit this because they only
+      // ever drive the module programmatically (syncFromText()), never a
+      // real click. This test needs an actual click to land inside a table
+      // cell, so clear it out of the way first.
+      document.body.innerHTML = '';
+      const container = document.createElement('div');
+      container.id = 'note-live-harness';
+      document.body.appendChild(container);
+      mount(container, '| A | B |\n|---|---|\n| 1 | 2 |\n', {});
+    });
+    await page.locator('#note-live-harness .cm-content').click();
+    await page.keyboard.press('Control+End');
+    await expect(page.locator('#note-live-harness table.cm-md-table')).toBeVisible();
+  }
+
+  test('table cells are directly editable — typing in a cell updates the underlying Markdown source', async ({ page }) => {
+    // Exercised directly against the module (no Supabase needed) per this
+    // repo's convention for browser-only module logic — see the [TOC]
+    // "programmatic sync" test above for the same pattern.
+    await _mountHarnessWithTable(page);
+
+    // Cell index order is header row first (0="A", 1="B"), then each body
+    // row left-to-right — index 3 is the body row's "B" column ("2").
+    const cellB = page.locator('#note-live-harness td[data-cell-index="3"]');
+    await cellB.click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type('edited');
+    // Commit via Tab rather than locator.blur() — the commit synchronously
+    // destroys and rebuilds the table's whole DOM (see _pendingTableFocus's
+    // comment in live-editor.js), and Playwright's own blur() waits on the
+    // element's actionability/stability first, which never quite settles
+    // against a node it's about to lose out from under itself. A real
+    // keyboard Tab goes through the same commit path without that race.
+    await page.keyboard.press('Tab');
+
+    const value = await page.evaluate(async () => {
+      const { getValue } = await import('/JotRelay/src/live-editor.js');
+      return getValue();
+    });
+    expect(value).toContain('edited');
+    expect(value).toContain('| 1 |');
+    // The table must still render as a real <table>, not have reverted to
+    // raw pipe syntax — clicking/typing in a cell must never touch CM6's
+    // own selection (see _TableWidget's ignoreEvent()).
+    await expect(page.locator('#note-live-harness table.cm-md-table')).toBeVisible();
+  });
+
+  test('Escape in a table cell reverts the edit without touching the document', async ({ page }) => {
+    await _mountHarnessWithTable(page);
+
+    // Index 2 is the body row's "A" column ("1") — see the previous test's
+    // comment for the full cell-index ordering.
+    const cellA = page.locator('#note-live-harness td[data-cell-index="2"]');
+    await cellA.click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type('discard me');
+    await page.keyboard.press('Escape');
+
+    const value = await page.evaluate(async () => {
+      const { getValue } = await import('/JotRelay/src/live-editor.js');
+      return getValue();
+    });
+    expect(value).not.toContain('discard me');
+    expect(value).toContain('| 1 |');
+  });
+
+  test('Tab in a table cell commits the edit and moves focus to the next cell', async ({ page }) => {
+    await _mountHarnessWithTable(page);
+
+    const cellHeaderA = page.locator('#note-live-harness th[data-cell-index="0"]');
+    await cellHeaderA.click();
+    await page.keyboard.press('Tab');
+
+    // Focus must land on the next cell (data-cell-index="1") in the
+    // freshly-rebuilt widget DOM — see _pendingTableFocus's own comment for
+    // why a commit destroys and rebuilds the whole table's DOM.
+    const focused = await page.evaluate(() => document.activeElement?.getAttribute('data-cell-index'));
+    expect(focused).toBe('1');
+  });
+
   test('reference-style link labels fold away like inline links do, but a definition keeps its label visible', async ({ page }) => {
     await createRoom(page);
     await typeInEditor(page,
