@@ -43,6 +43,22 @@ export function renderCommandPaletteResults(items, activeIndex, onRun) {
 
 // ── Share modal ───────────────────────────────────────────────────────────────
 
+/** "Expires in 3h" / "Expires in 2d" — a coarse, static label for the share
+ *  modal's security chips (not a live countdown like ui/panels.js's
+ *  showExpirationBar(), which re-renders every second for the in-editor
+ *  bar). Returns '' when there's nothing to show. */
+function _formatExpiresIn(expiresAt) {
+  if (!expiresAt) return '';
+  const remaining = new Date(expiresAt) - Date.now();
+  if (!isFinite(remaining) || remaining <= 0) return 'Expired';
+  const days = Math.floor(remaining / 86_400_000);
+  if (days >= 1) return `Expires in ${days}d`;
+  const hours = Math.floor(remaining / 3_600_000);
+  if (hours >= 1) return `Expires in ${hours}h`;
+  const minutes = Math.max(1, Math.floor(remaining / 60_000));
+  return `Expires in ${minutes}m`;
+}
+
 export function populateShareModal({
   editableUrl, readOnlyUrl, readOnlyError = false, hasPasscode, hasEncryption,
   roomPath = '', roomDisplayTitle = '', hasReadOnlyLink = false, isEditingLocked = false,
@@ -61,6 +77,10 @@ export function populateShareModal({
     const chips = [];
     if (hasPasscode) chips.push('<span class="share-security-chip">Passcode required</span>');
     if (hasEncryption) chips.push('<span class="share-security-chip">Encryption passphrase required</span>');
+    if (hasViewOnce) chips.push('<span class="share-security-chip">Clears after first view</span>');
+    if (isEditingLocked) chips.push('<span class="share-security-chip">Editing locked</span>');
+    const expiresIn = _formatExpiresIn(expiresAt);
+    if (expiresIn) chips.push(`<span class="share-security-chip">${escapeHtml(expiresIn)}</span>`);
     securityNotesEl.innerHTML = chips.join('');
     securityNotesEl.classList.toggle('hidden', chips.length === 0);
   }

@@ -128,7 +128,13 @@ export function _wireHeader() {
   document.addEventListener('click', (e) => {
     if (!moreDropdown?.contains(e.target) && e.target !== moreBtn) closeMoreDropdown();
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMoreDropdown(); UI.closeAllPanels(); UI.closeAllModals(); } });
+  // No separate global Escape listener here: shortcuts.js's document-level
+  // keydown handler already calls onForceClose() (wired in app/wiring.js) on
+  // every Escape press, which does the same closeMoreDropdown() +
+  // UI.closeAllPanels() + UI.closeAllModals() this used to duplicate here
+  // (plus _closeEditorContextMenu(), which this listener never covered) —
+  // having both fire on the same keypress was redundant, not two different
+  // behaviors.
 
   document.getElementById('btn-share')?.addEventListener('click', () => {
     _openShareModal();

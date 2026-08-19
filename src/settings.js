@@ -159,7 +159,7 @@ export async function enableViewOnce(roomId) {
 }
 
 export async function disableViewOnce(roomId) {
-  await updateRoomSettings(roomId, { view_once: false, viewed: false });
+  await updateRoomSettings(roomId, { view_once: false, viewed: false, cleared_reason: null });
 }
 
 /**
@@ -191,10 +191,16 @@ export async function consumeViewOnce(roomId, room, isCreator, replacementConten
   });
 }
 
-export async function resetViewOnceNote(roomId, replacementContent = '', keepViewOnce = true) {
+/**
+ * Reset a consumed view-once note: clear its content and turn it into a
+ * regular (non-view-once) room. There is deliberately no "keep view-once
+ * armed" option — once a view-once note has been viewed, the room always
+ * reverts to normal rather than offering to re-arm itself.
+ */
+export async function resetViewOnceNote(roomId, replacementContent = '') {
   await updateRoom(roomId, {
     content:           replacementContent,
-    view_once:         !!keepViewOnce,
+    view_once:         false,
     viewed:            false,
     cleared_reason:    null,
     updated_by_device: getDeviceId(),

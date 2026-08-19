@@ -34,6 +34,7 @@ import {
   resetViewOnceNote, consumeViewOnce,
 } from '../settings.js';
 import { encryptContent, decryptContent, looksEncrypted } from '../encryption.js';
+import { BODY_MAX } from '../templates.js';
 import { loadDraft, clearDraft, isDraftNewer } from '../offline.js';
 import { saveScrollOffset, loadScrollOffset, clearScrollOffset } from '../scroll-memory.js';
 import * as LiveEditor from '../live-editor.js';
@@ -288,6 +289,15 @@ export async function boot() {
     return;
   }
 
+  if (route.type === 'share-target') {
+    const roomId = generateRoomId();
+    history.replaceState(null, '', `${BASE}/${roomId}`);
+    await window.__supabaseReady;
+    await joinRoom(roomId, { isNewRoom: true });
+    _seedSharedContent(route.title, route.text, route.url);
+    return;
+  }
+
   const rawRoomId = redirectRoom || route.roomId || generateRoomId();
   const sanitizedRoomId = sanitizeRoomId(rawRoomId);
   const blockedRoom = RESERVED_ROOM_PATHS.has(sanitizedRoomId.toLowerCase());
@@ -300,6 +310,41 @@ export async function boot() {
 
   await window.__supabaseReady;
   await joinRoom(roomId);
+}
+
+/**
+ * Seed a freshly-created room's content from a Web Share Target payload
+ * (title/text/url query params, see routing.js's 'share-target' route).
+ * Composes a small Markdown body and writes it through the same
+ * setEditorValue()+dispatch('input') pipeline templates.js's
+ * _onTemplateChosen() uses — that single 'input' listener (editor-
+ * behavior.js's _wireEditorCore) is what enforces BODY_MAX, mirrors the
+ * text into the Live/CM6 surface, and queues the normal debounced save, so
+ * this reaches the same place a user pasting the same text would.
+ */
+function _seedSharedContent(title, text, url) {
+  const parts = [];
+  if (title.trim()) parts.push(`# ${title.trim()}`);
+  if (text.trim())  parts.push(text.trim());
+  if (url.trim())   parts.push(url.trim());
+  if (!parts.length) return;
+
+  // Strip control characters (besides newline/tab) a share payload could in
+  // principle carry — this becomes Markdown source text, not HTML, so no
+  // escapeHtml() call belongs here (src/markdown.js escapes at render time
+  // like any other room content), but raw control chars have no legitimate
+  // place in a note body either.
+  // eslint-disable-next-line no-control-regex
+  let body = parts.join('\n\n').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  if (body.length > BODY_MAX) {
+    body = body.slice(0, BODY_MAX);
+    UI.showToast(`Shared content trimmed to the ${BODY_MAX.toLocaleString()}-character limit.`, 'warning', 5000);
+  }
+
+  UI.setEditorValue(body);
+  document.getElementById('note-editor')?.dispatchEvent(new Event('input', { bubbles: true }));
+  UI.updateWordCount(UI.getEditorValue());
+  _refreshPreviewIfActive();
 }
 
 // ── Join flow ─────────────────────────────────────────────────────────────────
@@ -895,13 +940,47 @@ async function startApp(isNewRoom = false) {
     if (!believedOffline || !state.roomId) return;
     try { await loadRoom(state.roomId); applyOnline(); } catch { /* still offline */ }
   };
+  // probeIfBelievedOffline() above only ever resyncs when the app already
+  // *believes* it's offline (navigator.onLine went false, or a real
+  // 'offline' event fired) — but mobile browsers routinely background a tab
+  // for minutes without ever firing that event: the WebSocket is silently
+  // suspended by the OS while navigator.onLine stays true the whole time.
+  // Reopening the tab then hits probeIfBelievedOffline()'s early return and
+  // does nothing, leaving stale content on screen with no visible sign
+  // anything is wrong. This second, unconditional path resyncs on any real
+  // signal that the app regained focus/visibility, independent of whatever
+  // the browser's online/offline events did or didn't report — throttled so
+  // an ordinary quick alt-tab doesn't cause a resync flash on every switch.
+  const RESYNC_THROTTLE_MS = 15_000;
+  let lastVisibilityResyncAt = 0;
+  const resyncOnRegainedFocus = () => {
+    if (!state.roomId) return;
+    const now = Date.now();
+    if (now - lastVisibilityResyncAt < RESYNC_THROTTLE_MS) return;
+    lastVisibilityResyncAt = now;
+    _reconcileAndFlush();
+  };
   const cleanupOnlineEvent = onOnlineChange((online) => (online ? applyOnline() : applyOffline()));
-  const onVisibility = () => { if (document.visibilityState === 'visible') probeIfBelievedOffline(); };
+  const onVisibility = () => {
+    if (document.visibilityState !== 'visible') return;
+    probeIfBelievedOffline();
+    resyncOnRegainedFocus();
+  };
   document.addEventListener('visibilitychange', onVisibility);
+  const onFocus = () => resyncOnRegainedFocus();
+  window.addEventListener('focus', onFocus);
+  // bfcache restores (mobile back/forward navigation, some backgrounding
+  // scenarios) fire 'pageshow' with persisted:true instead of/in addition to
+  // 'visibilitychange' — cover it explicitly rather than assuming the other
+  // two always fire together.
+  const onPageShow = (e) => { if (e.persisted) resyncOnRegainedFocus(); };
+  window.addEventListener('pageshow', onPageShow);
   const offlinePollId = setInterval(probeIfBelievedOffline, 20_000);
   state.onlineCleanup = () => {
     cleanupOnlineEvent();
     document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('focus', onFocus);
+    window.removeEventListener('pageshow', onPageShow);
     clearInterval(offlinePollId);
   };
   if (believedOffline) UI.showOfflineBanner();
@@ -1252,7 +1331,7 @@ function _updateViewOnceConsumedUI() {
       if (state.isReadOnly) return;
       try {
         await snapshotBeforeDestructiveChange();
-        await resetViewOnceNote(state.roomId, await _emptyContentForCurrentEncryption(), true);
+        await resetViewOnceNote(state.roomId, await _emptyContentForCurrentEncryption());
         clearDraft(state.roomId);
         clearScrollOffset(state.roomId);
         state.room = await loadRoom(state.roomId);
@@ -1267,7 +1346,7 @@ function _updateViewOnceConsumedUI() {
         UI.setViewOnceBadge(!!state.room.view_once);
         broadcastSettingsChange();
         broadcastClear();
-        UI.showToast('Started a new view-once note.', 'success');
+        UI.showToast('Room reset to a normal room.', 'success');
       } catch {
         UI.showToast('Could not reset this view-once note.', 'error');
       }
