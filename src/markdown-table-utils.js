@@ -23,3 +23,17 @@ export function parseTableAlignments(delimiterRowText) {
     return null;
   });
 }
+
+/**
+ * Serialize plain cell text back into GFM pipe-table source: escape literal
+ * `|` (would otherwise be read back as a new column boundary) and collapse
+ * any newline into a space (a table cell is always a single source line).
+ * Used by live-editor.js's editable table cells when writing a cell edit
+ * back into the document — kept here alongside parseTableAlignments() as
+ * the shared, CM6-independent piece of table source-text handling.
+ * @param {string} text
+ * @returns {string}
+ */
+export function escapeTableCellText(text) {
+  return text.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|');
+}

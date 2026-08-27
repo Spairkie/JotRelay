@@ -23,7 +23,7 @@ import {
 } from '../vendor/codemirror.js';
 import { escapeHtml, colorForDevice } from './utils.js';
 import { highlightExtension } from './markdown-highlight-extension.js';
-import { parseTableAlignments } from './markdown-table-utils.js';
+import { parseTableAlignments, escapeTableCellText } from './markdown-table-utils.js';
 import { EMOJI_MAP } from './markdown-emoji-map.js';
 import { renderMarkdown } from './markdown.js';
 import { toggleFootnotePopover } from './footnote-popover.js';
@@ -308,20 +308,148 @@ class _FootnoteDefMarkerWidget extends WidgetType {
 //
 // The base markdown() config (via markdownLanguage) already parses GFM
 // tables into Table/TableHeader/TableRow/TableCell/TableDelimiter nodes —
-// same grammar that gives us TaskList/Strikethrough for free — but nothing
-// previously turned that tree into an actual <table>, so it just sat there
-// as literal pipe-delimited text. Rendered as a whole-block replace widget,
-// same "reveal raw source while the selection touches it" pattern as Image.
+// same grammar that gives us TaskList/Strikethrough for free. Rendered as a
+// whole-block replace widget, but — unlike Image/HorizontalRule's "reveal
+// raw source while the selection touches it" pattern — each cell is itself
+// a real contenteditable island wired straight back into the document via
+// view.dispatch(), the same bridge _CheckboxWidget uses for its `change`
+// event. Cell edits therefore never touch CM6's own selection at all (the
+// contenteditable DOM lives outside CM6's document model while focused),
+// so the table stays rendered as the pretty widget throughout editing —
+// clicking a cell no longer flips the whole table to raw pipe syntax the
+// way it used to. Row/column structure is still edited via raw syntax
+// (click the table's non-cell chrome, if any, or the surrounding text) —
+// only cell *text* is directly editable in this pass.
+//
+// A committed cell edit replaces that one cell's source range, which
+// CM6 re-renders through the normal StateField recompute below — that
+// destroys and rebuilds the *entire* table's DOM (CM6 has no cheaper path
+// for a block-replace widget), so a cell mid-edit cannot simply keep its
+// DOM node across a commit. _pendingTableFocus is how focus survives that:
+// set immediately before the commit's dispatch (keyed by tableFrom, stable
+// across the one dispatch since nothing before the table shifts) and
+// consumed by the freshly-built widget's toDOM() right after.
+let _pendingTableFocus = null; // { tableFrom, cellIndex } | null
+
 class _TableWidget extends WidgetType {
-  constructor(html) { super(); this.html = html; }
-  eq(other) { return other.html === this.html; }
-  toDOM() {
+  constructor(html, tableFrom) { super(); this.html = html; this.tableFrom = tableFrom; }
+  eq(other) { return other.html === this.html && other.tableFrom === this.tableFrom; }
+  toDOM(view) {
     const wrap = document.createElement('div');
     wrap.className = 'cm-md-table-wrap';
     wrap.innerHTML = this.html;
+    const tableFrom = this.tableFrom;
+    const cells = [...wrap.querySelectorAll('[data-cell-index]')];
+    const cellCount = cells.length;
+
+    if (view.state.readOnly) {
+      cells.forEach((cell) => { cell.contentEditable = 'false'; cell.removeAttribute('tabindex'); });
+    } else {
+      cells.forEach((cell) => {
+        cell.dataset.original = cell.textContent;
+        // A committed edit synchronously tears down and rebuilds this whole
+        // widget's DOM (see the class-level comment above). That removal can
+        // itself force a native 'blur' on the still-focused cell being
+        // committed — the Escape handler below already works around exactly
+        // this by resetting textContent before calling blur() so the reset
+        // reads as "no change". Tab's direct commit(focusNext) call has no
+        // such reset, so without this guard a forced blur firing during its
+        // own dispatch() would re-enter commit() with the same, by-then-
+        // stale from/to and re-dispatch a second change at coordinates the
+        // first dispatch already invalidated. One commit per cell, ever.
+        let _committed = false;
+        const commit = (focusNext) => {
+          if (_committed) return;
+          const from  = Number(cell.dataset.from);
+          const to    = Number(cell.dataset.to);
+          const text  = cell.textContent;
+          if (text !== cell.dataset.original) {
+            _committed = true;
+            if (typeof focusNext === 'number') _pendingTableFocus = { tableFrom, cellIndex: focusNext };
+            // cell.dataset.from/to span the cell's full source range, which
+            // includes the cosmetic single-space padding GFM tables
+            // conventionally have around each `|` — re-adding it here (the
+            // displayed/edited text itself is always the trimmed form) keeps
+            // a hand-edited cell looking like the rest of the table instead
+            // of collapsing to `|text|` with no padding at all.
+            view.dispatch({ changes: { from, to, insert: ` ${escapeTableCellText(text)} ` } });
+          } else if (typeof focusNext === 'number') {
+            // Nothing changed, so no re-render is coming to consume a
+            // pending-focus request — the target cell already exists in
+            // this same DOM, so just focus it directly instead.
+            const target = wrap.querySelector(`[data-cell-index="${focusNext}"]`);
+            if (target) { target.focus(); document.getSelection()?.selectAllChildren(target); }
+          }
+        };
+
+        // CM6 attaches its own editor-wide mousedown handling that, even
+        // with ignoreEvent() telling it not to reposition CM6's selection,
+        // still wins the browser's native "click gives focus" behavior for
+        // a target nested this deep inside its content DOM — confirmed live
+        // (a plain click alone left document.activeElement on .cm-content,
+        // never the cell). Forcing focus explicitly here, and keeping the
+        // mousedown from bubbling up to that handler at all, is what
+        // actually makes a click land the caret in the cell.
+        cell.addEventListener('mousedown', (e) => {
+          e.stopPropagation();
+          cell.focus();
+        });
+        cell.addEventListener('blur', () => commit());
+        cell.addEventListener('keydown', (e) => {
+          // Same reasoning as the mousedown listener above: CM6's own
+          // keymap (defaultKeymap/markdownKeymap — Mod-a select-all, Mod-b
+          // bold, arrow-key handling, etc.) still receives a bubbled
+          // keydown regardless of ignoreEvent(), and confirmed live to
+          // actively corrupt an in-progress cell edit — Mod-a moved CM6's
+          // *own* selection to cover the whole document, which made the
+          // table's decoration recompute as "selection touches it" and
+          // revert to raw pipe syntax out from under the cell being typed
+          // into. A table cell must be a fully isolated plain-text editing
+          // island: nothing typed here should ever reach CM6's keymap.
+          e.stopPropagation();
+          if (e.isComposing) return;
+          // Nested contenteditable regions don't reliably scope a native
+          // Ctrl/Cmd+A to just the nested element in every browser —
+          // confirmed live to sometimes select outside the cell into CM6's
+          // own rendered content, which then corrupts in unpredictable ways
+          // once typed over (CM6 doesn't know its DOM was touched outside
+          // its own transaction system). Select only this cell's own text
+          // explicitly rather than trusting the browser's default action.
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+            e.preventDefault();
+            document.getSelection()?.selectAllChildren(cell);
+            return;
+          }
+          if (e.key === 'Enter') { e.preventDefault(); cell.blur(); return; }
+          if (e.key === 'Escape') { e.preventDefault(); cell.textContent = cell.dataset.original; cell.blur(); return; }
+          if (e.key === 'Tab') {
+            e.preventDefault();
+            const index = Number(cell.dataset.cellIndex);
+            const next  = e.shiftKey ? index - 1 : index + 1;
+            if (next < 0 || next >= cellCount) { cell.blur(); return; }
+            commit(next);
+          }
+        });
+      });
+    }
+
+    if (_pendingTableFocus && _pendingTableFocus.tableFrom === tableFrom) {
+      const { cellIndex } = _pendingTableFocus;
+      _pendingTableFocus = null;
+      const target = wrap.querySelector(`[data-cell-index="${cellIndex}"]`);
+      if (target) requestAnimationFrame(() => { target.focus(); document.getSelection()?.selectAllChildren(target); });
+    }
+
     return wrap;
   }
-  ignoreEvent() { return true; }
+  // Only let CM6's own click-to-position handling run for clicks outside an
+  // editable cell (e.g. table padding/borders) — that's what reveals raw
+  // pipe syntax, still the only way to add/remove rows or columns in this
+  // pass. A click inside a cell must NOT be treated as a CM6 selection
+  // change, or every keystroke would immediately re-trigger that reveal.
+  ignoreEvent(event) {
+    return !!event.target?.closest?.('[contenteditable="true"]');
+  }
 }
 
 function _buildTableHtml(state, tableNode) {
@@ -333,7 +461,9 @@ function _buildTableHtml(state, tableNode) {
     } else if (child.name === 'TableHeader' || child.name === 'TableRow') {
       const cells = [];
       for (let cell = child.firstChild; cell; cell = cell.nextSibling) {
-        if (cell.name === 'TableCell') cells.push(state.doc.sliceString(cell.from, cell.to).trim());
+        if (cell.name === 'TableCell') {
+          cells.push({ text: state.doc.sliceString(cell.from, cell.to).trim(), from: cell.from, to: cell.to });
+        }
       }
       rows.push({ header: child.name === 'TableHeader', cells });
     }
@@ -341,13 +471,19 @@ function _buildTableHtml(state, tableNode) {
   const alignAttr = (i) => (alignments[i] ? ` style="text-align:${alignments[i]}"` : '');
   const headRow   = rows.find((r) => r.header);
   const bodyRows  = rows.filter((r) => !r.header);
+  let cellIndex = 0;
+  const cellAttrs = (cell) => {
+    const attrs = ` contenteditable="true" spellcheck="false" tabindex="0" data-cell-index="${cellIndex}" data-from="${cell.from}" data-to="${cell.to}"`;
+    cellIndex += 1;
+    return attrs;
+  };
   let html = '<table class="cm-md-table">';
   if (headRow) {
-    html += '<thead><tr>' + headRow.cells.map((c, i) => `<th${alignAttr(i)}>${escapeHtml(c)}</th>`).join('') + '</tr></thead>';
+    html += '<thead><tr>' + headRow.cells.map((c, i) => `<th${alignAttr(i)}${cellAttrs(c)}>${escapeHtml(c.text)}</th>`).join('') + '</tr></thead>';
   }
   if (bodyRows.length) {
     html += '<tbody>' + bodyRows.map((r) =>
-      '<tr>' + r.cells.map((c, i) => `<td${alignAttr(i)}>${escapeHtml(c)}</td>`).join('') + '</tr>',
+      '<tr>' + r.cells.map((c, i) => `<td${alignAttr(i)}${cellAttrs(c)}>${escapeHtml(c.text)}</td>`).join('') + '</tr>',
     ).join('') + '</tbody>';
   }
   return html + '</table>';
@@ -951,7 +1087,7 @@ function _computeTableDecorations(state) {
       if (nodeRef.name !== 'Table') return;
       if (_selectionTouches(state, nodeRef.from, nodeRef.to)) return;
       const html = _buildTableHtml(state, nodeRef.node);
-      ranges.push(Decoration.replace({ widget: new _TableWidget(html), block: true }).range(nodeRef.from, nodeRef.to));
+      ranges.push(Decoration.replace({ widget: new _TableWidget(html, nodeRef.from), block: true }).range(nodeRef.from, nodeRef.to));
     },
   });
   return Decoration.set(ranges, true);
@@ -1652,6 +1788,15 @@ export function destroy() {
   _onCursorActivity = null;
   _onImageFiles = null;
   _onCommentAnchorTap = null;
+  // Same class of bug as the scroll-correction token bumped above: a table
+  // cell's commit() sets this right before its dispatch, to be consumed by
+  // that same table's next toDOM() call (see _TableWidget's own comment). If
+  // this room is torn down before that render happens, a stale {tableFrom,
+  // cellIndex} would otherwise survive into the next room's mount and — if
+  // that room happens to render a table at the same source position (e.g.
+  // tableFrom 0, a table as the very first block) — silently steal focus
+  // into a cell nobody clicked.
+  _pendingTableFocus = null;
 }
 
 /**

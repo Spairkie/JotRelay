@@ -133,8 +133,11 @@ function _handleKeyDown(e) {
 
   // ── Ctrl/Cmd shortcuts ───────────────────────────────────────────────────
 
-  // Ctrl+S — force save
-  if (key === 's' && !shift) {
+  // Ctrl+S — force save. Matches both letter cases: with Caps Lock on and no
+  // real Shift press, browsers report e.key as the uppercase letter, so a
+  // lowercase-only check would silently stop matching (unlike the
+  // Ctrl+Shift combos below, which already check both cases).
+  if ((key === 's' || key === 'S') && !shift) {
     e.preventDefault();
     flushSave();
     return;
@@ -153,8 +156,8 @@ function _handleKeyDown(e) {
     return;
   }
 
-  // Ctrl+F — find in note
-  if (key === 'f' && !shift) {
+  // Ctrl+F — find in note (both letter cases — see the Caps Lock note above)
+  if ((key === 'f' || key === 'F') && !shift) {
     // Only intercept when editor is focused or no input is focused, to avoid
     // clobbering browser find-in-page when the user is in a settings input.
     if (inEditor || document.activeElement === document.body || document.activeElement === null) {
@@ -168,7 +171,7 @@ function _handleKeyDown(e) {
   // surface), Ctrl+K stays "insert markdown link" (below) — same key,
   // contextual like Ctrl+F above, so it never fights muscle memory for
   // either use.
-  if (key === 'k' && !shift && !inEditor) {
+  if ((key === 'k' || key === 'K') && !shift && !inEditor) {
     e.preventDefault();
     _onOpenCommandPalette?.();
     return;
@@ -186,9 +189,9 @@ function _handleKeyDown(e) {
   //    whichever one the user is actually looking at. ─────────────────────
   if (!inEditor || !canEdit()) return;
 
-  if (key === 'b' && !shift) { e.preventDefault(); _onApplyFormat?.('bold');   return; }
-  if (key === 'i' && !shift) { e.preventDefault(); _onApplyFormat?.('italic'); return; }
-  if (key === 'k' && !shift) { e.preventDefault(); _onApplyFormat?.('link');   return; }
+  if ((key === 'b' || key === 'B') && !shift) { e.preventDefault(); _onApplyFormat?.('bold');   return; }
+  if ((key === 'i' || key === 'I') && !shift) { e.preventDefault(); _onApplyFormat?.('italic'); return; }
+  if ((key === 'k' || key === 'K') && !shift) { e.preventDefault(); _onApplyFormat?.('link');   return; }
   if (key === '`' && !shift) { e.preventDefault(); _onApplyFormat?.('code');   return; }
 }
 
