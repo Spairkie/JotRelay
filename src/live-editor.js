@@ -347,12 +347,24 @@ class _TableWidget extends WidgetType {
     } else {
       cells.forEach((cell) => {
         cell.dataset.original = cell.textContent;
-
+        // A committed edit synchronously tears down and rebuilds this whole
+        // widget's DOM (see the class-level comment above). That removal can
+        // itself force a native 'blur' on the still-focused cell being
+        // committed — the Escape handler below already works around exactly
+        // this by resetting textContent before calling blur() so the reset
+        // reads as "no change". Tab's direct commit(focusNext) call has no
+        // such reset, so without this guard a forced blur firing during its
+        // own dispatch() would re-enter commit() with the same, by-then-
+        // stale from/to and re-dispatch a second change at coordinates the
+        // first dispatch already invalidated. One commit per cell, ever.
+        let _committed = false;
         const commit = (focusNext) => {
+          if (_committed) return;
           const from  = Number(cell.dataset.from);
           const to    = Number(cell.dataset.to);
           const text  = cell.textContent;
           if (text !== cell.dataset.original) {
+            _committed = true;
             if (typeof focusNext === 'number') _pendingTableFocus = { tableFrom, cellIndex: focusNext };
             // cell.dataset.from/to span the cell's full source range, which
             // includes the cosmetic single-space padding GFM tables
@@ -436,7 +448,7 @@ class _TableWidget extends WidgetType {
   // pass. A click inside a cell must NOT be treated as a CM6 selection
   // change, or every keystroke would immediately re-trigger that reveal.
   ignoreEvent(event) {
-    return !(event.target?.closest?.('[contenteditable="true"]'));
+    return !!event.target?.closest?.('[contenteditable="true"]');
   }
 }
 
@@ -1776,6 +1788,15 @@ export function destroy() {
   _onCursorActivity = null;
   _onImageFiles = null;
   _onCommentAnchorTap = null;
+  // Same class of bug as the scroll-correction token bumped above: a table
+  // cell's commit() sets this right before its dispatch, to be consumed by
+  // that same table's next toDOM() call (see _TableWidget's own comment). If
+  // this room is torn down before that render happens, a stale {tableFrom,
+  // cellIndex} would otherwise survive into the next room's mount and — if
+  // that room happens to render a table at the same source position (e.g.
+  // tableFrom 0, a table as the very first block) — silently steal focus
+  // into a cell nobody clicked.
+  _pendingTableFocus = null;
 }
 
 /**

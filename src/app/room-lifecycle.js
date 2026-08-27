@@ -963,8 +963,14 @@ async function startApp(isNewRoom = false) {
   const cleanupOnlineEvent = onOnlineChange((online) => (online ? applyOnline() : applyOffline()));
   const onVisibility = () => {
     if (document.visibilityState !== 'visible') return;
-    probeIfBelievedOffline();
-    resyncOnRegainedFocus();
+    // Mutually exclusive, not layered: probeIfBelievedOffline() already
+    // fully covers the believed-offline case (loadRoom() + applyOnline()).
+    // Running resyncOnRegainedFocus() too in that case would fire a second,
+    // concurrent loadRoom()-driven reconcile racing the first one for no
+    // reason — resyncOnRegainedFocus() exists specifically for the *other*
+    // case, where the app never realized it went offline in the first place.
+    if (believedOffline) probeIfBelievedOffline();
+    else resyncOnRegainedFocus();
   };
   document.addEventListener('visibilitychange', onVisibility);
   const onFocus = () => resyncOnRegainedFocus();

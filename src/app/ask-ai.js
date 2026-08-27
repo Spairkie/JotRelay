@@ -25,7 +25,18 @@ function _recordConsent() {
 // resolution — Preview mode targets the CM6 live proxy, otherwise the plain
 // textarea — but returns the current selection plus a replace() closure
 // instead of applying a fixed formatting action, since Ask AI's replacement
-// text isn't known until the network call returns.
+// text isn't known until the network call returns. Unlike the synchronous
+// formatting helper this mirrors, replace() here fires well after an async
+// gap (consent dialog + instruction prompt + the network round-trip to
+// Gemini) during which the document can change — locally, or via realtime
+// sync from another device. It must NOT capture the document text now and
+// reuse that stale copy later: LiveEditor.applyEdit() replaces the *whole*
+// document, so applying it against a snapshot taken before the await would
+// silently discard every edit made while the request was in flight. Reading
+// LiveEditor.getValue() fresh inside replace() (same "read the live value at
+// call time" approach UI.replaceEditorRange() already uses for the plain-
+// textarea branch below) keeps that window as small as the unavoidable
+// start/end position drift, instead of the whole document.
 function _activeSelection() {
   const useLive = LiveEditor.isMounted() && (state.markdownMode === 'preview' || LiveEditor.hasFocus());
   if (useLive) {
@@ -36,10 +47,9 @@ function _activeSelection() {
     return {
       text: proxy.value.slice(start, end),
       replace: (text) => {
-        proxy.value = proxy.value.slice(0, start) + text + proxy.value.slice(end);
-        proxy.selectionStart = start;
-        proxy.selectionEnd   = start + text.length;
-        proxy.dispatchEvent();
+        const base = LiveEditor.getValue() ?? '';
+        const newValue = base.slice(0, start) + text + base.slice(end);
+        LiveEditor.applyEdit(newValue, start, start + text.length);
       },
     };
   }
