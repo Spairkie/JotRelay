@@ -22,9 +22,22 @@ export async function askAi(text, instruction) {
     // it was never deployed to this Supabase project.
     const isUnreachable = error?.name === 'FunctionsFetchError'
       || /failed to send a request/i.test(error?.message || '');
-    throw new Error(isUnreachable
-      ? 'Ask AI isn\'t set up for this JotRelay instance yet (the ask-ai Edge Function hasn\'t been deployed).'
-      : (error.message || 'Ask AI request failed.'));
+    if (isUnreachable) {
+      throw new Error('Ask AI isn\'t set up for this JotRelay instance yet (the ask-ai Edge Function hasn\'t been deployed).');
+    }
+    // A non-2xx response comes back as a FunctionsHttpError whose own
+    // .message is just the generic "Edge Function returned a non-2xx status
+    // code" — not the actual reason. supabase-js attaches the raw Response
+    // as .context, which is exactly the JSON body ask-ai/index.ts sent
+    // ({ error: "..." } — e.g. a missing GEMINI_API_KEY secret, the rate
+    // limit, or Gemini's own error) — read that instead of surfacing the
+    // generic wrapper text to the user.
+    if (error?.context && typeof error.context.json === 'function') {
+      let detail = null;
+      try { detail = (await error.context.clone().json())?.error || null; } catch {}
+      if (detail) throw new Error(detail);
+    }
+    throw new Error(error.message || 'Ask AI request failed.');
   }
   if (data?.error) throw new Error(data.error);
   if (typeof data?.result !== 'string' || !data.result.trim()) throw new Error('Ask AI returned an empty result.');

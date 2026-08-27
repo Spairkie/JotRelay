@@ -18,6 +18,7 @@ import { _currentSelectionRange, _openFloatingCommentComposer, _refreshFloatingC
 import { _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedRefreshFloatingComments, _debouncedPruneDeletedCommentAnchors } from './comments-preview.js';
 import { _uploadAndInsertImages } from './files-panel.js';
 import { _openTemplatesModalFresh } from './panels.js';
+import { _runAskAi } from './ask-ai.js';
 import { flushScrollPosition } from './room-lifecycle.js';
 
 // Custom templates are already capped at BODY_MAX (templates.js), but nothing
@@ -255,6 +256,14 @@ export function _wireEditorToolbarAndLifecycle() {
     e.preventDefault(); // keep editor focus
     _applyFormatToActiveSurface(btn.dataset.mdAction);
   });
+  // Ask AI lives in the same toolbar row but isn't a synchronous formatting
+  // action (it awaits a consent dialog, an instruction prompt, and a network
+  // round-trip), so it's wired separately from the data-md-action delegate
+  // above rather than folded into _applyFormatToActiveSurface().
+  document.getElementById('tb-ask-ai')?.addEventListener('mousedown', (e) => {
+    e.preventDefault(); // keep editor focus (and its selection) through the click
+    _runAskAi();
+  });
 
   // Broadcast cursor line on selection/click (throttled in presence.js at 800ms).
   // selectionEnd is reported as the "head" (matches CM6's convention, and is
@@ -420,6 +429,7 @@ function _updateContextMenuAvailability(hasSelection) {
   setVisible('select-all', true);
   setVisible('delete',     editable && hasSelection && !usingRenderedFallback);
   setVisible('comment',    editable && hasSelection && !usingRenderedFallback);
+  setVisible('ask-ai',     editable && hasSelection && !usingRenderedFallback);
 
   const isVisibleItem = (el) => el.classList.contains('editor-context-item') && !el.classList.contains('hidden');
   const children = Array.from(menu.children);
@@ -481,6 +491,7 @@ export function _wireEditorContextMenu() {
 function _runContextMenuAction(action) {
   switch (action) {
     case 'comment':    _openFloatingCommentComposer(); return;
+    case 'ask-ai':     _runAskAi(); return;
     case 'cut':        _ctxCut(); return;
     case 'copy':       _ctxCopy(); return;
     case 'paste':      _ctxPaste(); return;

@@ -25,9 +25,10 @@
 //   Alt + Shift + S          Open share modal
 //   Alt + Shift + T          Insert timestamp
 //   Alt + Shift + C          Copy note
+//   Alt + Shift + A          Ask AI on the current selection
 //   Esc                      Close panel / modal / dropdown
 //
-// Why Alt+Shift for those last four: Ctrl/Cmd+Shift+<letter> collides with
+// Why Alt+Shift for P/S/T/C: Ctrl/Cmd+Shift+<letter> collides with
 // browser/OS chrome shortcuts that page JS cannot override no matter what
 // preventDefault() does — Shift+T reopens the last closed tab in every major
 // browser, Shift+C opens Chrome/Edge's "Inspect Element" picker, Shift+P
@@ -37,6 +38,14 @@
 // not claimed by any current major browser's page-level or DevTools
 // shortcuts, so it was picked as the replacement — same mnemonic letter,
 // different modifier.
+//
+// Ask AI (Alt+Shift+A) is new, not a rename, but placed in the same safe
+// modifier space deliberately: Ctrl/Cmd+K was the obvious mnemonic, but it's
+// already context-sensitive (insert-link inside the editor, command palette
+// outside it — see below) and Ask AI specifically needs to fire *while a
+// selection is active in the editor*, exactly the context where Ctrl/Cmd+K
+// means "insert link". Reusing it for a third meaning there would silently
+// shadow the link shortcut instead of adding a new one.
 
 import { flushSave } from './sync.js';
 import { canEdit }   from './permissions.js';
@@ -51,6 +60,7 @@ let _onOpenShortcuts  = null;
 let _onOpenShare      = null;
 let _onInsertTimestamp = null;
 let _onCopyNote       = null;
+let _onAskAi          = null;
 let _onAddComment     = null;
 let _onOpenCommandPalette = null;
 let _onApplyFormat    = null;  // (action: 'bold'|'italic'|'link'|'code') => void
@@ -68,6 +78,7 @@ let _editor = null;
  * @param {Function} handlers.onOpenSearch
  * @param {Function} handlers.onForceClose   – called for Esc when not in editor
  * @param {Function} handlers.onOpenShortcuts
+ * @param {Function} handlers.onAskAi        – Alt+Shift+A, Ask AI on the current selection
  * @param {Function} handlers.onApplyFormat  – (action) => void, surface-aware formatting
  * @param {Function} handlers.isLiveFocused  – () => boolean, is the CM6 live surface focused
  */
@@ -81,6 +92,7 @@ export function initShortcuts(handlers) {
   _onOpenShare       = handlers.onOpenShare;
   _onInsertTimestamp = handlers.onInsertTimestamp;
   _onCopyNote        = handlers.onCopyNote;
+  _onAskAi           = handlers.onAskAi;
   _onAddComment      = handlers.onAddComment;
   _onOpenCommandPalette = handlers.onOpenCommandPalette;
   _onApplyFormat     = handlers.onApplyFormat;
@@ -125,6 +137,7 @@ function _handleKeyDown(e) {
     if (key === 'S' || key === 's') { e.preventDefault(); _onOpenShare?.(); return; }
     if (key === 'T' || key === 't') { e.preventDefault(); if (canEdit()) _onInsertTimestamp?.(); return; }
     if (key === 'C' || key === 'c') { e.preventDefault(); _onCopyNote?.(); return; }
+    if (key === 'A' || key === 'a') { e.preventDefault(); _onAskAi?.(); return; }
     return;
   }
 

@@ -25,9 +25,11 @@ Set these yourself:
 
 ```bash
 supabase secrets set GEMINI_API_KEY="your-gemini-api-key"
-# Optional — defaults to gemini-2.0-flash if unset. Override if Google
-# renames/deprecates that model id without needing a code change.
-supabase secrets set GEMINI_MODEL="gemini-2.0-flash"
+# Optional — defaults to gemini-3.6-flash if unset. Override if Google
+# renames/deprecates that model id without needing a code change; setting
+# this secret takes effect immediately on an already-deployed function,
+# no redeploy required.
+supabase secrets set GEMINI_MODEL="gemini-3.6-flash"
 ```
 
 Get a free-tier Gemini API key at https://aistudio.google.com/apikey — no credit card required for the free tier as of this writing, but verify current terms/limits before relying on it in production.

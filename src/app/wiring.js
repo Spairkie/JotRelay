@@ -23,6 +23,7 @@ import { _wireFiles, _wireFilesSortOrder, _wireFilesBulkSelect } from './files-p
 import { _wireSettings, _wireSaveAsTemplate, _wireFindReplacePanel } from './panels.js';
 import { _wireExportModal } from './export.js';
 import { _openCommandPalette, _wireCommandPalette } from './command-palette.js';
+import { _runAskAi } from './ask-ai.js';
 
 function _wireShortcuts() {
   initShortcuts({
@@ -55,6 +56,7 @@ function _wireShortcuts() {
     },
     onCopyNote: () => _copyNoteToClipboard(),
     onAddComment: () => _openFloatingCommentComposer(),
+    onAskAi: () => _runAskAi(),
     onOpenCommandPalette: () => _openCommandPalette(),
     onApplyFormat: (action) => _applyFormatToActiveSurface(action),
     isLiveFocused: () => LiveEditor.isMounted() && LiveEditor.hasFocus(),

@@ -1028,6 +1028,10 @@
         <button class="md-tb-btn" data-md-action="toc" title="Table of contents" type="button" aria-label="Insert table of contents">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><line x1="4" y1="6" x2="4.01" y2="6"/><line x1="4" y1="12" x2="4.01" y2="12"/><line x1="4" y1="18" x2="4.01" y2="18"/></svg>
         </button>
+        <div class="md-tb-sep" aria-hidden="true"></div>
+        <button class="md-tb-btn" id="tb-ask-ai" title="Ask AI (Alt+Shift+A) — select text first" type="button" aria-label="Ask AI on selection">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.287 1.288L3 12l5.8 1.9a2 2 0 0 1 1.288 1.287L12 21l1.9-5.8a2 2 0 0 1 1.287-1.288L21 12l-5.8-1.9a2 2 0 0 1-1.288-1.287Z"/></svg>
+        </button>
       </div>
       <textarea id="note-editor"
                 placeholder="Start writing… Your note syncs live across devices."
@@ -1804,6 +1808,7 @@
         <div class="shortcut-row"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>S</kbd> <span>Share room</span></div>
         <div class="shortcut-row"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>T</kbd> <span>Insert timestamp</span></div>
         <div class="shortcut-row"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>C</kbd> <span>Copy note</span></div>
+        <div class="shortcut-row"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>A</kbd> <span>Ask AI on selection</span></div>
         <div class="shortcut-row"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>/</kbd> <span>Add a comment (any mode)</span></div>
       </div>
       <div class="shortcuts-group">
@@ -1906,6 +1911,10 @@
   <button class="editor-context-item" data-ctx-action="comment" role="menuitem">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
     Add comment
+  </button>
+  <button class="editor-context-item" data-ctx-action="ask-ai" role="menuitem">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.287 1.288L3 12l5.8 1.9a2 2 0 0 1 1.288 1.287L12 21l1.9-5.8a2 2 0 0 1 1.287-1.288L21 12l-5.8-1.9a2 2 0 0 1-1.288-1.287Z"/></svg>
+    Ask AI…
   </button>
 </div>
 
