@@ -16,10 +16,18 @@
      own panel-header/close button) rather than sliding in underneath it. */
   z-index: 140; display: flex; flex-direction: column;
   transform: translateX(100%);
-  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
-  box-shadow: var(--shadow-lg);
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s cubic-bezier(0.4,0,0.2,1);
 }
-.side-panel.open { transform: translateX(0); }
+/* Shadow only while actually on-screen — there are 7 of these panels in the
+   DOM at once (tools/files/history/comments/presence/settings/search), each
+   translateX(100%) off to the right when closed. A box-shadow's blur radius
+   (--shadow-lg is 40px) isn't clipped by the transform, so an unconditional
+   shadow here bled ~40px past each closed panel's left edge — which sits
+   exactly at the viewport's right edge — into the visible page. With all 7
+   stacked at that same off-screen position the effect compounded into a
+   permanent dark vertical band along the right edge of the window, visible
+   even with no panel open at all. */
+.side-panel.open { transform: translateX(0); box-shadow: var(--shadow-lg); }
 .panel-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;

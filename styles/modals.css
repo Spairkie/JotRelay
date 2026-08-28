@@ -396,9 +396,14 @@
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 1100;
   background: var(--bg-elevated); border-top: 1px solid var(--border);
   padding: 12px 20px; display: flex; align-items: center; gap: 12px;
-  box-shadow: var(--shadow-md); transform: translateY(100%); transition: transform 0.3s ease, bottom 0.15s ease;
+  transform: translateY(100%); transition: transform 0.3s ease, bottom 0.15s ease, box-shadow 0.3s ease;
 }
-.pwa-bar.visible { transform: translateY(0); bottom: var(--kb-inset, 0px); }
+/* Shadow only while visible — same fix as .side-panel (panels.css) and
+   .admin-drawer (admin.css): an unconditional box-shadow on a
+   translateY(100%)-hidden element bleeds past its edge regardless of the
+   transform, showing as a persistent line at the bottom of the viewport
+   even while this bar is fully off-screen. */
+.pwa-bar.visible { transform: translateY(0); bottom: var(--kb-inset, 0px); box-shadow: var(--shadow-md); }
 .pwa-bar-text { flex: 1; font-size: 13px; color: var(--text-secondary); }
 .pwa-bar-text strong { color: var(--text-primary); }
 .pwa-bar-btn { padding: 7px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; transition: opacity var(--transition); }
