@@ -20,7 +20,7 @@ import { _openShareModal } from './landing.js';
 import { _copyNoteToClipboard, closeMoreDropdown, _wireHeader, _wireSegmentedMarkdownControl, _wireMobileActionBar, _wireFooterQuickButtons } from './header.js';
 import { _wirePanelsAndModals, _wireTools, _wireKeyboardShortcutsModal } from './tools-and-modals.js';
 import { _wireFiles, _wireFilesSortOrder, _wireFilesBulkSelect } from './files-panel.js';
-import { _wireSettings, _wireSaveAsTemplate, _wireFindReplacePanel } from './panels.js';
+import { _wireSettings, _wireSaveAsTemplate, _wireFindReplacePanel, _wireHistoryTabs } from './panels.js';
 import { _wireExportModal } from './export.js';
 import { _openCommandPalette, _wireCommandPalette } from './command-palette.js';
 import { _runAskAi } from './ask-ai.js';
@@ -90,6 +90,7 @@ export function wireEvents() {
   _wireKeyboardShortcutsModal();
   _wireSaveAsTemplate();
   _wireFindReplacePanel();
+  _wireHistoryTabs();
   _wirePasteSanitization();
   _wireEditorPreferenceToggles();
   _wireCommandPalette();

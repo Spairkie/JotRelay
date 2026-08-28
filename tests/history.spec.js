@@ -96,6 +96,36 @@ test.describe('Version history', () => {
     await expect(page.locator('#history-scrubber')).toHaveClass(/hidden/);
   });
 
+  test('the Activity tab shows a merged timeline of versions and comments', async ({ page }) => {
+    await createFreshRoom(page);
+    await typeInEditor(page, 'Some content to snapshot.');
+
+    // Force a revision the same way the other tests do (Clear triggers an
+    // unthrottled snapshotBeforeDestructiveChange()).
+    const toolsPanel = page.locator('#tools-panel');
+    await page.locator('#btn-more').click();
+    await expect(page.locator('#more-dropdown')).toHaveClass(/open/, { timeout: 2000 });
+    await page.locator('#btn-tools').click();
+    await expect(toolsPanel).toHaveClass(/open/, { timeout: 3000 });
+    await page.locator('#tool-clear').click();
+    await page.waitForSelector('#sp-confirm-modal.visible', { timeout: 5000 });
+    await page.locator('#sp-confirm-ok').click();
+    await waitForToast(page, 'cleared');
+
+    await openHistoryPanel(page);
+    await page.locator('#history-tab-activity').click();
+    await expect(page.locator('#history-activity-view')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#history-versions-view')).toHaveClass(/hidden/);
+    const item = page.locator('#history-activity-list .history-activity-item').first();
+    await expect(item).toBeVisible();
+    await expect(item).toContainText('Saved a version');
+
+    // Switching back to Versions restores the original list/scrubber view.
+    await page.locator('#history-tab-versions').click();
+    await expect(page.locator('#history-versions-view')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#history-activity-view')).toHaveClass(/hidden/);
+  });
+
   test('Restore is hidden in read-only mode', async ({ page }) => {
     await createFreshRoom(page);
     await typeInEditor(page, 'some content');

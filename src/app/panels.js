@@ -5,6 +5,7 @@
 
 import { formatTimestamp, getDeviceId, parseDuration } from '../utils.js';
 import { listRevisions } from '../revisions.js';
+import { listComments } from '../comments.js';
 import { decryptContent, encryptContent, looksEncrypted } from '../encryption.js';
 import { loadRoom, setDeviceLimit, clearDeviceLimit } from '../rooms.js';
 import {
@@ -36,10 +37,12 @@ import { _renderRoomHeader, _updatePermissionContext, setupExpirationTimer } fro
 
 export async function _openHistoryPanel() {
   UI.openPanel('history-panel');
+  UI.setHistoryTab('versions'); // always reopen on the default tab, regardless of where it was left last time
   UI.setHistoryLoading(true);
+  let withPreviews = [];
   try {
     const revisions = await listRevisions(state.roomId);
-    const withPreviews = await Promise.all(revisions.map(async (rev) => {
+    withPreviews = await Promise.all(revisions.map(async (rev) => {
       let preview = rev.content || '';
       if (looksEncrypted(preview)) {
         if (!state.encKey) { preview = null; }
@@ -74,6 +77,63 @@ export async function _openHistoryPanel() {
   } finally {
     UI.setHistoryLoading(false);
   }
+  _loadActivityTimeline(withPreviews);
+}
+
+/**
+ * Builds the "Activity" tab's merged feed from every already-timestamped,
+ * room-scoped signal the schema persists: saved content versions (reusing
+ * the previews _openHistoryPanel already decrypted, so this does no extra
+ * network/decrypt work of its own), comments, and file uploads. Comments and
+ * revisions are both optional migrations (0003/0004) — each source is
+ * fetched independently and a missing table for one silently drops just
+ * that source rather than failing the whole tab, matching how every other
+ * optional-migration feature in this app degrades.
+ */
+async function _loadActivityTimeline(revisionsWithPreviews) {
+  const thisDeviceId = getDeviceId();
+  const revisionEntries = (revisionsWithPreviews || []).map((rev) => ({
+    type: 'revision',
+    created_at: rev.created_at,
+    device_name: rev.device_id === thisDeviceId ? 'this device' : null,
+  }));
+
+  let commentEntries = [];
+  try {
+    const comments = await listComments(state.roomId);
+    commentEntries = await Promise.all(comments.map(async (c) => {
+      let preview = c.text || '';
+      if (looksEncrypted(preview)) {
+        if (!state.encKey) { preview = null; }
+        else {
+          try { preview = await decryptContent(preview, state.encKey); }
+          catch { preview = null; }
+        }
+      }
+      return {
+        type: 'comment',
+        created_at: c.created_at,
+        device_name: c.device_name || (c.device_id === thisDeviceId ? 'this device' : null),
+        detail: typeof preview === 'string' ? preview.replace(/\s+/g, ' ').trim().slice(0, 140) : null,
+      };
+    }));
+  } catch {} // 0003_room_comments.sql not run — activity feed just omits comments
+
+  let fileEntries = [];
+  try {
+    const files = await listFiles(state.roomId);
+    fileEntries = files.map((f) => ({
+      type: 'file',
+      created_at: f.uploaded_at,
+      device_name: f.uploaded_by_device === thisDeviceId ? 'this device' : null,
+      detail: f.filename || null,
+    }));
+  } catch {} // file listing failed — activity feed just omits files
+
+  const merged = [...revisionEntries, ...commentEntries, ...fileEntries]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 200); // bound render cost on a long-lived, heavily-used room
+  UI.renderActivityTimeline(merged);
 }
 
 async function _restoreRevision(rev) {
@@ -101,6 +161,12 @@ async function _restoreRevision(rev) {
   _refreshPreviewIfActive();
   UI.closeAllPanels();
   UI.showToast('Version restored.', 'success');
+}
+
+/** Wire the Versions/Activity tab switcher inside the History panel. Called once at init — see wiring.js. */
+export function _wireHistoryTabs() {
+  document.getElementById('history-tab-versions')?.addEventListener('click', () => UI.setHistoryTab('versions'));
+  document.getElementById('history-tab-activity')?.addEventListener('click', () => UI.setHistoryTab('activity'));
 }
 
 // ── Templates handler ─────────────────────────────────────────────────────────

@@ -476,6 +476,56 @@ export function renderHistoryScrubber(entries, onRestore) {
   };
 }
 
+/** Switch the History panel between its "Versions" and "Activity" tabs. */
+export function setHistoryTab(tab) {
+  const isActivity = tab === 'activity';
+  document.getElementById('history-tab-versions')?.classList.toggle('active', !isActivity);
+  document.getElementById('history-tab-versions')?.setAttribute('aria-selected', String(!isActivity));
+  document.getElementById('history-tab-activity')?.classList.toggle('active', isActivity);
+  document.getElementById('history-tab-activity')?.setAttribute('aria-selected', String(isActivity));
+  document.getElementById('history-versions-view')?.classList.toggle('hidden', isActivity);
+  document.getElementById('history-activity-view')?.classList.toggle('hidden', !isActivity);
+}
+
+const ACTIVITY_ICONS = { revision: 'restore', comment: 'comment', file: 'upload' };
+const ACTIVITY_LABELS = { revision: 'Saved a version', comment: 'Added a comment', file: 'Uploaded a file' };
+
+/**
+ * A merged, chronological feed across every already-timestamped, room-scoped
+ * signal the app persists — saved content versions, comments, and file
+ * uploads — most recent first. Settings changes and device joins aren't
+ * included: nothing in the schema persists those with a timestamp today (see
+ * revisions.js/comments.js/files.js's header comments), so surfacing them
+ * here would need a new event-log table, out of scope for this pass.
+ * `entries` items: { type: 'revision'|'comment'|'file', created_at,
+ * device_name?, detail? } — `detail` is a short plain-text fragment (comment
+ * text preview, file name) already safe to escape here.
+ */
+export function renderActivityTimeline(entries) {
+  const list  = document.getElementById('history-activity-list');
+  const empty = document.getElementById('history-activity-empty');
+  if (!list) return;
+  list.setAttribute('role', 'list');
+  list.innerHTML = '';
+  if (!entries?.length) { empty?.classList.remove('hidden'); return; }
+  empty?.classList.add('hidden');
+
+  entries.forEach((entry) => {
+    const item = document.createElement('div');
+    item.className = 'history-item history-activity-item';
+    item.setAttribute('role', 'listitem');
+    const who = entry.device_name ? ` · ${escapeHtml(entry.device_name)}` : '';
+    const detail = entry.detail ? `<div class="history-preview">${escapeHtml(entry.detail)}</div>` : '';
+    item.innerHTML = `
+      <div class="history-activity-icon" aria-hidden="true">${getIcon(ACTIVITY_ICONS[entry.type] || 'clock', 15)}</div>
+      <div class="history-info">
+        <div class="history-meta">${ACTIVITY_LABELS[entry.type] || 'Activity'} · ${formatTimestamp(entry.created_at)}${who}</div>
+        ${detail}
+      </div>`;
+    list.appendChild(item);
+  });
+}
+
 // ── Expiration bar ────────────────────────────────────────────────────────────
 
 let _expInterval = null;
