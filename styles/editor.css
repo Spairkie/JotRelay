@@ -367,14 +367,13 @@ body.code-line-numbers .note-live .cm-md-codeblock-content::before {
   font-size: 10px; font-weight: 600; line-height: 1.5;
   color: #fff; white-space: nowrap;
   pointer-events: none;
-  /* Must outrank every in-editor float it can render near/under: the
-     scroll rail and comment-margin layer (both z-index 5/6, see the
-     rationale comment on .comment-margin-layer below), and the
-     comment-fab/remote-notice overlays (19/20) — a remote collaborator's
-     name label is document-content chrome that should never be hidden
-     by chrome floating on top of the document. Stays well below the
-     panel/modal/toast tiers (120+) since it's still in-document, not a
-     global overlay. */
+  /* Must outrank the scroll rail (z-index 5) and every other in-editor
+     float it can render near/under except comments, which now sit above
+     this label (z-index 22, see .comment-margin-layer below) by
+     deliberate choice — a comment marking a range must never be hidden
+     under a collaborator's cursor label passing through that same spot.
+     Stays well below the panel/modal/toast tiers (120+) since it's still
+     in-document, not a global overlay. */
   z-index: 21;
 }
 /* A remote collaborator's selected text range — background color set inline
@@ -842,9 +841,18 @@ body.lock-mode .md-toolbar { opacity: 0.4; pointer-events: none; }
    comments always has both in the same margin). An explicit lower z-index
    for the rail would fix the same overlap, but comments should render above
    the rail either way — it's chrome for navigating the document, not part
-   of its content. */
+   of its content.
+
+   z-index 22, not just enough to clear the rail (5): comments must render
+   above literally everything else that can appear in or over the document
+   surface — remote collaborator carets/labels (21, see .cm-remote-caret-label
+   above), the comment-fab and remote-notice overlays (19/20), and any CM6
+   decoration inside .cm-editor, none of which should ever be able to hide a
+   comment dot or its expanded bubble. Still well below the panel/modal/
+   toast tiers (120+), which are genuine global overlays rather than
+   in-document chrome. */
 .comment-margin-layer {
-  position: absolute; inset: 0; pointer-events: none; z-index: 6;
+  position: absolute; inset: 0; pointer-events: none; z-index: 22;
 }
 .comment-dot {
   position: absolute; right: 6px; width: 9px; height: 9px; border-radius: 50%;
@@ -874,7 +882,7 @@ body.lock-mode .md-toolbar { opacity: 0.4; pointer-events: none; }
   width: 220px; max-width: calc(100vw - 60px);
   background: var(--bg-elevated); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: 8px 10px;
-  box-shadow: var(--shadow-md); pointer-events: auto; z-index: 6;
+  box-shadow: var(--shadow-md); pointer-events: auto; z-index: 22;
   font-size: 12.5px; line-height: 1.4;
   /* Own keyframe (not shared with .comment-floating-composer, which animates
      a different transform) so this bubble's `forwards` fill lands back on
