@@ -235,7 +235,7 @@ function _ensurePromptModal() {
   el.innerHTML = `
     <div class="modal confirm-modal-inner">
       <p id="sp-prompt-message" class="confirm-modal-message"></p>
-      <input id="sp-prompt-input" class="auth-input prompt-modal-input" />
+      <input id="sp-prompt-input" name="sp-prompt-input" class="auth-input prompt-modal-input" autocomplete="off" />
       <div class="modal-actions">
         <button id="sp-prompt-cancel" class="modal-actions-btn modal-btn-cancel"></button>
         <button id="sp-prompt-ok"     class="modal-actions-btn modal-btn-confirm"></button>

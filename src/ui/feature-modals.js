@@ -308,6 +308,8 @@ function _renderInsertTab(body, builtins, customs, onChoose) {
   searchWrap.className = 'tmpl-search-wrap';
   const searchInput = document.createElement('input');
   searchInput.type = 'search';
+  searchInput.id = 'tmpl-search-input';
+  searchInput.name = 'tmpl-search-input';
   searchInput.placeholder = 'Search templates…';
   searchInput.className = 'tmpl-search-input';
   searchInput.autocomplete = 'off';
