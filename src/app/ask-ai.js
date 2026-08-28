@@ -1,18 +1,29 @@
 // JotRelay – app/ask-ai.js
 // "Ask AI": sends the current text selection — and only the selection,
 // never the rest of the note — plus a short user instruction to the ask-ai
-// Edge Function (src/ask-ai.js), then replaces the selection with the
-// result. A one-time consent notice is shown before the first call in this
-// browser, since selected text leaves the device to a third-party service.
+// Edge Function (src/ask-ai.js), then adds the result as an anchored
+// comment on that selection (same pipeline as the regular comments
+// feature) rather than replacing the selected text. A one-time consent
+// notice is shown before the first call in this browser, since selected
+// text leaves the device to a third-party service.
 
 import * as UI from '../ui.js';
-import * as LiveEditor from '../live-editor.js';
 import { canEdit, editBlockedReason } from '../permissions.js';
 import { askAi } from '../ask-ai.js';
-import { BODY_MAX } from '../templates.js';
+import { _currentSelectionRange, _submitComment } from './comments-preview.js';
 import { state } from './state.js';
 
 const CONSENT_KEY = 'syncpad_ai_consent_ack';
+
+// A soft pre-trim only — keeps an absurdly long AI answer from becoming an
+// enormous comment. _submitComment() (comments-preview.js) owns the actual
+// guarantee against syncpad_room_comments_text_len_check (it re-checks the
+// real post-encryption stored length and shrinks further if needed), since
+// a plaintext character count here can't reliably predict that: AES-GCM's
+// IV/tag + base64 overhead, and non-ASCII text's larger UTF-8-bytes-per-
+// character ratio, both inflate the stored value unpredictably.
+const COMMENT_TEXT_SAFE_MAX = 2500;
+const AI_COMMENT_PREFIX = '✨ Ask AI:\n\n';
 
 function _hasConsented() {
   try { return localStorage.getItem(CONSENT_KEY) === '1'; } catch { return false; }
@@ -21,60 +32,38 @@ function _recordConsent() {
   try { localStorage.setItem(CONSENT_KEY, '1'); } catch {}
 }
 
-// Mirrors _applyFormatToActiveSurface()'s (editor-behavior.js) surface
-// resolution — Preview mode targets the CM6 live proxy, otherwise the plain
-// textarea — but returns the current selection plus a replace() closure
-// instead of applying a fixed formatting action, since Ask AI's replacement
-// text isn't known until the network call returns. Unlike the synchronous
-// formatting helper this mirrors, replace() here fires well after an async
-// gap (consent dialog + instruction prompt + the network round-trip to
-// Gemini) during which the document can change — locally, or via realtime
-// sync from another device. It must NOT capture the document text now and
-// reuse that stale copy later: LiveEditor.applyEdit() replaces the *whole*
-// document, so applying it against a snapshot taken before the await would
-// silently discard every edit made while the request was in flight. Reading
-// LiveEditor.getValue() fresh inside replace() (same "read the live value at
-// call time" approach UI.replaceEditorRange() already uses for the plain-
-// textarea branch below) keeps that window as small as the unavoidable
-// start/end position drift, instead of the whole document.
-function _activeSelection() {
-  const useLive = LiveEditor.isMounted() && (state.markdownMode === 'preview' || LiveEditor.hasFocus());
-  if (useLive) {
-    const proxy = LiveEditor.asEditorProxy();
-    if (!proxy) return null;
-    const start = proxy.selectionStart ?? 0;
-    const end   = proxy.selectionEnd ?? 0;
-    return {
-      text: proxy.value.slice(start, end),
-      replace: (text) => {
-        const base = LiveEditor.getValue() ?? '';
-        const newValue = base.slice(0, start) + text + base.slice(end);
-        LiveEditor.applyEdit(newValue, start, start + text.length);
-      },
-    };
-  }
-  const editor = document.getElementById('note-editor');
-  if (!editor) return null;
-  const start = editor.selectionStart;
-  const end   = editor.selectionEnd;
-  return {
-    text: editor.value.slice(start, end),
-    replace: (text) => UI.replaceEditorRange(start, end, text, start, start + text.length),
-  };
-}
-
 export async function _runAskAi() {
   if (!canEdit()) { UI.showToast(editBlockedReason() || 'Editing is disabled.', 'warning'); return; }
 
-  const selection = _activeSelection();
-  if (!selection || !selection.text.trim()) {
+  // _currentSelectionRange() (comments-preview.js) already handles "which
+  // surface is actually active" (plain textarea vs. the CM6 live proxy) —
+  // reused rather than duplicated here, same as the regular "Add comment"
+  // context-menu action does. UI.getEditorValue() is always the canonical,
+  // up-to-date text regardless of which surface is visibly mounted (the
+  // live surface only ever mirrors it).
+  const range = _currentSelectionRange();
+  if (!range || !Number.isFinite(range.from) || !Number.isFinite(range.to) || range.to <= range.from) {
     UI.showToast('Select some text first, then Ask AI.', 'warning');
     return;
   }
+  const selectedText = UI.getEditorValue().slice(range.from, range.to);
+  if (!selectedText.trim()) {
+    UI.showToast('Select some text first, then Ask AI.', 'warning');
+    return;
+  }
+  // Captured before the consent dialog / instruction prompt / network round
+  // trip below — a long chain of awaits a user can sit through while
+  // navigating away (this is a live collaborative editor: switching rooms
+  // mid-request is one click). `range` is meaningless outside the room it
+  // was captured in, so if state.roomId has moved on by the time we're
+  // about to write, the result must be discarded rather than landing an
+  // out-of-context comment (wrong anchor offsets, wrong document) in
+  // whatever room the user has since navigated to.
+  const roomAtSelection = state.roomId;
 
   if (!_hasConsented()) {
     const ok = await UI.showConfirm(
-      'Ask AI sends your selected text to a third-party AI service (Google Gemini) for processing. It never sends the rest of your note. Continue?',
+      'Ask AI sends your selected text to a third-party AI service (Google Gemini) for processing. Its response is added as a comment on that selection — your note text is never changed. It never sends the rest of your note. Continue?',
       { confirmLabel: 'Continue', cancelLabel: 'Cancel' },
     );
     if (!ok) return;
@@ -89,13 +78,22 @@ export async function _runAskAi() {
 
   UI.showToast('Asking AI…', 'info');
   try {
-    let text = await askAi(selection.text, instruction.trim());
-    if (text.length > BODY_MAX) {
-      text = text.slice(0, BODY_MAX);
-      UI.showToast(`AI result trimmed to the ${BODY_MAX.toLocaleString()}-character limit.`, 'warning', 5000);
+    const result = await askAi(selectedText, instruction.trim());
+    if (state.roomId !== roomAtSelection) {
+      UI.showToast('You switched rooms — AI result discarded.', 'warning', 5000);
+      return;
     }
-    selection.replace(text);
-    UI.showToast('AI result inserted.', 'success');
+    let commentText = AI_COMMENT_PREFIX + result;
+    if (commentText.length > COMMENT_TEXT_SAFE_MAX) {
+      commentText = commentText.slice(0, COMMENT_TEXT_SAFE_MAX);
+      UI.showToast(`AI response trimmed to fit a comment (${COMMENT_TEXT_SAFE_MAX.toLocaleString()} characters).`, 'warning', 5000);
+    }
+    // _submitComment() (comments-preview.js) owns encryption, the
+    // anchor-text snapshot, the actual insert, refreshing every comment
+    // surface (panel/margin dots/floating bubble), and its own success/
+    // failure toast — the same single entry point the Comments panel and
+    // the right-click "Add comment" action already use.
+    await _submitComment(commentText, range);
   } catch (err) {
     UI.showToast(err?.message || 'Ask AI failed. Please try again.', 'error', 5000);
   }

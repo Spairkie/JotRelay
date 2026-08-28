@@ -13,6 +13,7 @@ import { _openTemplatesModalFresh, _openHistoryPanel } from './panels.js';
 import { _openCommentsPanel, _navigateComment, _refreshPreviewIfActive } from './comments-preview.js';
 import { _downloadBlob } from './export.js';
 import { closeMoreDropdown, _copyNoteToClipboard } from './header.js';
+import { _runAskAi } from './ask-ai.js';
 
 // Use REPORT_REASONS imported from rooms.js to keep client and server in sync.
 const REPORT_REASON_OPTIONS = REPORT_REASONS;
@@ -115,6 +116,13 @@ export function _wireTools() {
     'tool-copy': () => { _copyNoteToClipboard(); },
 
     'tool-export-more': () => { UI.openModal('export-modal'); },
+
+    // _runAskAi() reads whatever is currently selected in the editor —
+    // panel-open doesn't clear a textarea/CM6 selection, so this works the
+    // same as the toolbar button/context-menu entry points. Own permission
+    // check inside (canEdit()), own "select something first" guard, own
+    // toasts — nothing extra needed here.
+    'tool-ask-ai': () => { _runAskAi(); },
 
     'tool-clear': async () => {
       if (!canClearNote()) { UI.showToast(editBlockedReason() || 'Clear is disabled.', 'warning'); return; }
