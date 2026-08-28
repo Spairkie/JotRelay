@@ -1,0 +1,31 @@
+-- ============================================================
+-- SyncPad – Timed Reveal Migration
+-- SAFE TO RERUN: uses ALTER ... ADD COLUMN IF NOT EXISTS, so
+-- the script is fully idempotent.
+--
+-- Run this in your Supabase project → SQL Editor AFTER the
+-- base 0001_base_schema.sql has been applied.
+--
+-- What this migration adds
+-- ────────────────────────
+--   syncpad_rooms.reveal_at — nullable timestamptz. The mirror image of
+--   expires_at: instead of clearing content at a future time, it hides
+--   content from everyone except the room's creator until that time.
+--
+--   Deliberately just one column, no new table or RPC (unlike
+--   0005_device_limit.sql) — "is now >= reveal_at" is a pure client-side
+--   time comparison against a value the client already has once it loads
+--   the room row, with no server-side counting/atomicity concern like
+--   device_limit's distinct-device tally.
+--
+--   Client-side enforcement only, same as passcode_hash: room_id alone is
+--   already a sufficient read/write credential (see
+--   0009_revert_edit_token_write_gating.sql), so this cannot be a real
+--   confidentiality boundary — a technical visitor who queries the REST
+--   API directly still sees the content before reveal_at. It only gates
+--   the app's own UI, same caveat CLAUDE.md already documents for
+--   passcode_hash.
+-- ============================================================
+
+alter table public.syncpad_rooms
+  add column if not exists reveal_at timestamptz;

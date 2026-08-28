@@ -95,6 +95,7 @@ export function renderSettingsPanel(room) {
   const pcStatus  = document.getElementById('setting-passcode-status');
   const encStatus = document.getElementById('setting-enc-status');
   const expStatus = document.getElementById('setting-exp-status');
+  const revealStatus = document.getElementById('setting-reveal-status');
   const voStatus  = document.getElementById('setting-vo-status');
   const lockStatus = document.getElementById('setting-lock-status');
   const dlStatus  = document.getElementById('setting-dl-status');
@@ -104,6 +105,11 @@ export function renderSettingsPanel(room) {
   if (expStatus) expStatus.textContent = room.expires_at
     ? `${new Date(room.expires_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })} (${_expiresIn(room.expires_at)})`
     : 'Never';
+  if (revealStatus) {
+    revealStatus.textContent = room.reveal_at && new Date(room.reveal_at) > new Date()
+      ? `Hidden from others until ${new Date(room.reveal_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })} (${_expiresIn(room.reveal_at)})`
+      : 'Off — hide this note from everyone but you until a set time';
+  }
   if (voStatus) {
     voStatus.textContent = !room.view_once ? 'Off'
       : room.viewed || room.cleared_reason === 'view_once' ? 'Used (cleared)'
@@ -120,6 +126,7 @@ export function renderSettingsPanel(room) {
   const pcBtn   = document.getElementById('setting-passcode-btn');
   const encBtn  = document.getElementById('setting-enc-btn');
   const expBtn  = document.getElementById('setting-exp-btn');
+  const revealBtn = document.getElementById('setting-reveal-btn');
   const voBtn   = document.getElementById('setting-vo-btn');
   const lockBtn = document.getElementById('setting-lock-btn');
   const dlBtn   = document.getElementById('setting-dl-btn');
@@ -130,6 +137,9 @@ export function renderSettingsPanel(room) {
   // 'Modify' when an expiration is already set — the actual Remove button is
   // inside the collapsible controls section (setting-exp-remove-btn).
   if (expBtn)  expBtn.textContent  = room.expires_at         ? 'Modify'  : 'Set expiry';
+  // Same pattern as expBtn — actual removal is setting-reveal-remove-btn
+  // inside the collapsible controls section.
+  if (revealBtn) revealBtn.textContent = (room.reveal_at && new Date(room.reveal_at) > new Date()) ? 'Modify' : 'Set reveal';
   if (voBtn)   voBtn.textContent   = room.view_once          ? 'Disable' : 'Enable';
   if (lockBtn) lockBtn.textContent = room.editing_locked     ? 'Unlock'  : 'Lock';
   if (dlBtn)   dlBtn.textContent   = room.device_limit       ? 'Disable' : 'Enable';

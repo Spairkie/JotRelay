@@ -206,3 +206,26 @@ export async function resetViewOnceNote(roomId, replacementContent = '') {
     updated_by_device: getDeviceId(),
   });
 }
+
+// ── Timed reveal ──────────────────────────────────────────────────────────────
+// The mirror image of Expiration: instead of clearing content at a future
+// time, it hides content from everyone except the room's creator until that
+// time (see room-lifecycle.js's joinRoom(), which gates on this before the
+// passcode/encryption screens). Client-side only, same caveat as
+// passcode_hash — see supabase/migrations/0015_timed_reveal.sql's header.
+
+/**
+ * @param {string} durationStr  e.g. "10m", "1h", "2d"
+ * @returns {Promise<string>} ISO timestamp of the reveal
+ */
+export async function setTimedReveal(roomId, durationStr) {
+  const ms = parseDuration(durationStr);
+  if (!ms || ms <= 0) throw new Error('Invalid duration');
+  const reveal_at = new Date(Date.now() + ms).toISOString();
+  await updateRoomSettings(roomId, { reveal_at });
+  return reveal_at;
+}
+
+export async function clearTimedReveal(roomId) {
+  await updateRoomSettings(roomId, { reveal_at: null });
+}

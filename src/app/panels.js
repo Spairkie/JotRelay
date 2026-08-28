@@ -19,6 +19,7 @@ import {
   setExpiration, clearExpiration,
   enableViewOnce, disableViewOnce,
   setEditingLocked,
+  setTimedReveal, clearTimedReveal,
 } from '../settings.js';
 import { flushSave, setEncryption, snapshotBeforeDestructiveChange } from '../sync.js';
 import { clearDraft } from '../offline.js';
@@ -550,6 +551,41 @@ function _updateExpirationPreview() {
   preview.textContent = `Preview: This room will clear around ${new Date(Date.now() + ms).toLocaleString()}.`;
 }
 
+// ── Timed-reveal preset helpers ─────────────────────────────────────────────
+// Mirrors the Expiration preset helpers immediately above — same preset-chip
+// / custom-value-and-unit UI pattern, applied to a different setting.
+
+export function _selectRevealPreset(preset) {
+  state.revealPreset = preset;
+  document.querySelectorAll('[data-reveal-preset]').forEach((el) => el.classList.toggle('is-active', el.dataset.revealPreset === preset));
+  document.getElementById('reveal-custom-row')?.classList.toggle('hidden', preset !== 'custom');
+  _updateRevealPreview();
+}
+
+function _buildRevealDuration() {
+  if (state.revealPreset !== 'custom') return state.revealPreset;
+  const value = document.getElementById('reveal-custom-value')?.value?.trim();
+  const unit = document.getElementById('reveal-custom-unit')?.value?.trim();
+  if (!value) return { error: 'Please enter a number for the custom reveal delay.' };
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return { error: 'Custom reveal delay must be a number greater than 0.' };
+  if (!['s', 'm', 'h', 'd'].includes(unit)) return { error: 'Unsupported unit. Use seconds, minutes, hours, or days.' };
+  return `${n}${unit}`;
+}
+
+function _updateRevealPreview() {
+  const preview = document.getElementById('setting-reveal-preview');
+  if (!preview) return;
+  const built = _buildRevealDuration();
+  if (typeof built === 'object' && built?.error) {
+    preview.textContent = 'Preview: Select a valid duration.';
+    return;
+  }
+  const ms = parseDuration(built);
+  if (!ms) { preview.textContent = 'Preview: Select a valid duration.'; return; }
+  preview.textContent = `Preview: Others will be able to see this note starting around ${new Date(Date.now() + ms).toLocaleString()}.`;
+}
+
 // ── Settings panel ────────────────────────────────────────────────────────────
 
 export function _wireSettings() {
@@ -735,6 +771,50 @@ export function _wireSettings() {
     } catch { UI.showToast('Could not remove auto-expire.', 'error'); }
   });
   _selectExpirationPreset('10m');
+
+  // Toggle the timed-reveal controls panel open/closed — same pattern as
+  // Auto-expire immediately above, applied to setting-reveal-*.
+  document.getElementById('setting-reveal-btn')?.addEventListener('click', () => {
+    const controls = document.getElementById('setting-reveal-controls');
+    if (!controls) return;
+    const isHidden = controls.classList.toggle('hidden');
+    controls.toggleAttribute('inert', isHidden);
+    if (!isHidden) _updateRevealPreview();
+  });
+  document.querySelectorAll('[data-reveal-preset]').forEach((el) => el.addEventListener('click', () => _selectRevealPreset(el.dataset.revealPreset || '10m')));
+  document.getElementById('reveal-custom-value')?.addEventListener('input', _updateRevealPreview);
+  document.getElementById('reveal-custom-unit')?.addEventListener('change', _updateRevealPreview);
+  document.getElementById('setting-reveal-apply-btn')?.addEventListener('click', async () => {
+    if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }
+    const errorEl = document.getElementById('setting-reveal-error');
+    if (errorEl) { errorEl.textContent = ''; errorEl.classList.add('hidden'); }
+    const built = _buildRevealDuration();
+    if (typeof built === 'object' && built?.error) {
+      if (errorEl) { errorEl.textContent = built.error; errorEl.classList.remove('hidden'); }
+      return;
+    }
+    try {
+      await setTimedReveal(state.roomId, built);
+      state.room = await loadRoom(state.roomId);
+      _renderRoomHeader();
+      UI.renderSettingsPanel(state.room);
+      broadcastSettingsChange();
+      UI.showToast('Timed reveal set. Hidden from everyone but you until then.', 'success', 5000);
+    } catch { UI.showToast('Could not set timed reveal. Has supabase/migrations/0015_timed_reveal.sql been run?', 'error', 5000); }
+  });
+  document.getElementById('setting-reveal-remove-btn')?.addEventListener('click', async () => {
+    if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }
+    if (!state.room.reveal_at) { UI.showToast('No timed reveal is currently set.', 'warning'); return; }
+    try {
+      await clearTimedReveal(state.roomId);
+      state.room = await loadRoom(state.roomId);
+      _renderRoomHeader();
+      UI.renderSettingsPanel(state.room);
+      broadcastSettingsChange();
+      UI.showToast('Timed reveal removed.', 'success');
+    } catch { UI.showToast('Could not remove timed reveal.', 'error'); }
+  });
+  _selectRevealPreset('10m');
 
   document.getElementById('setting-vo-btn')?.addEventListener('click', async () => {
     if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }

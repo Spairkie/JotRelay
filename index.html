@@ -714,6 +714,25 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════
+     TIMED REVEAL SCREEN
+═══════════════════════════════════════════════════════════════ -->
+<div id="reveal-screen" class="auth-screen hidden">
+  <div class="auth-card">
+    <div class="auth-card-icon">⏳</div>
+    <h2>Not Yet Revealed</h2>
+    <p>This note unlocks at <strong id="reveal-at-time"></strong> for everyone except the person who set it up.</p>
+    <div class="room-badge" id="reveal-room-badge"></div>
+    <div class="reveal-countdown" id="reveal-countdown" aria-live="polite"></div>
+  </div>
+
+    <div class="legal-links" aria-label="Legal links">
+      <a href="contact">Contact</a>
+      <a href="privacy">Privacy</a>
+      <a href="terms">Terms</a>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
      CONTACT / PRIVACY / TERMS SCREENS
 ═══════════════════════════════════════════════════════════════ -->
 <div id="contact-screen" class="legal-screen hidden">
@@ -1466,6 +1485,39 @@
         <div class="exp-actions">
           <button class="setting-btn" id="setting-exp-apply-btn" type="button">Set expiry</button>
           <button class="setting-btn" id="setting-exp-remove-btn" type="button">Remove expiration</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Timed reveal</div>
+          <div class="setting-sub" id="setting-reveal-status">Off — hide this note from everyone but you until a set time</div>
+        </div>
+        <button class="setting-btn" id="setting-reveal-btn">Set reveal</button>
+      </div>
+      <div class="setting-stack hidden" id="setting-reveal-controls" inert>
+        <div class="setting-sub">Hide this note from everyone but you for:</div>
+        <div class="exp-presets" id="reveal-presets">
+          <button class="setting-chip is-active" data-reveal-preset="10m" type="button">10 min</button>
+          <button class="setting-chip" data-reveal-preset="1h" type="button">1 hour</button>
+          <button class="setting-chip" data-reveal-preset="1d" type="button">1 day</button>
+          <button class="setting-chip" data-reveal-preset="7d" type="button">7 days</button>
+          <button class="setting-chip" data-reveal-preset="custom" type="button">Custom</button>
+        </div>
+        <div class="exp-custom-row hidden" id="reveal-custom-row">
+          <input class="settings-input exp-custom-input" id="reveal-custom-value" type="number" min="1" step="1" inputmode="numeric" placeholder="Number" aria-label="Reveal delay amount" />
+          <select class="settings-input exp-custom-unit" id="reveal-custom-unit" aria-label="Reveal delay unit">
+            <option value="s">seconds</option>
+            <option value="m">minutes</option>
+            <option value="h">hours</option>
+            <option value="d">days</option>
+          </select>
+        </div>
+        <div class="setting-sub" id="setting-reveal-preview">Preview: Select a duration.</div>
+        <div class="setting-error hidden" id="setting-reveal-error" aria-live="polite"></div>
+        <div class="exp-actions">
+          <button class="setting-btn" id="setting-reveal-apply-btn" type="button">Set reveal</button>
+          <button class="setting-btn" id="setting-reveal-remove-btn" type="button">Remove reveal</button>
         </div>
       </div>
     </div>

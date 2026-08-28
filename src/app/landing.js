@@ -38,6 +38,7 @@ export async function _openShareModal() {
       isEditingLocked: !!state.room?.editing_locked,
       hasViewOnce: !!state.room?.view_once,
       expiresAt: state.room?.expires_at || null,
+      revealAt: state.room?.reveal_at || null,
       showRoomCode: false, // no room-owning identity in a read-only session to generate one from
     });
     UI.openModal('share-modal');
@@ -74,6 +75,7 @@ export async function _openShareModal() {
     isEditingLocked: !!state.room?.editing_locked,
     hasViewOnce: !!state.room?.view_once,
     expiresAt: state.room?.expires_at || null,
+    revealAt: state.room?.reveal_at || null,
     roomCode,
     roomCodeError,
   });

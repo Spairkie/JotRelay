@@ -538,4 +538,8 @@
 .auth-btn:hover  { opacity: 0.9; }
 .auth-btn:active { transform: scale(0.98); }
 .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.reveal-countdown {
+  text-align: center; font-family: var(--font-mono); font-size: 22px;
+  font-weight: 600; color: var(--accent); margin-top: 4px;
+}
 

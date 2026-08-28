@@ -10,6 +10,7 @@ export function showScreen(name) {
   document.getElementById('loading-screen')?.classList.toggle('hidden',    name !== 'loading');
   document.getElementById('passcode-screen')?.classList.toggle('hidden',   name !== 'passcode');
   document.getElementById('encryption-screen')?.classList.toggle('hidden', name !== 'encryption');
+  document.getElementById('reveal-screen')?.classList.toggle('hidden',     name !== 'reveal');
   document.getElementById('app-screen')?.classList.toggle('hidden',        name !== 'app');
   document.getElementById('info-screen')?.classList.toggle('hidden',       name !== 'info');
   document.getElementById('contact-screen')?.classList.toggle('hidden',    name !== 'contact');
@@ -261,4 +262,37 @@ export function showPasscodeError(msg)  { _showFieldError('passcode-input', 'pas
 export function clearPasscodeError()    { _clearFieldError('passcode-input', 'passcode-error'); }
 export function showEncryptionError(msg) { _showFieldError('encryption-input', 'encryption-error', msg); }
 export function clearEncryptionError()   { _clearFieldError('encryption-input', 'encryption-error'); }
+
+// ── Timed-reveal screen ─────────────────────────────────────────────────────
+// A passive wait screen — unlike passcode/encryption there's nothing to
+// submit, so this just fills in the room badge and starts a self-updating
+// countdown. room-lifecycle.js separately arms a one-shot timer that re-runs
+// joinRoom() once revealAt actually passes; this interval only owns the
+// visible text, not the actual transition.
+let _revealCountdownInterval = null;
+export function setRevealScreenInfo(roomId, revealAt) {
+  const badge = document.getElementById('reveal-room-badge');
+  if (badge) badge.textContent = roomId;
+  const timeEl = document.getElementById('reveal-at-time');
+  if (timeEl) timeEl.textContent = new Date(revealAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+
+  const countdownEl = document.getElementById('reveal-countdown');
+  clearInterval(_revealCountdownInterval);
+  if (!countdownEl) return;
+  const update = () => {
+    const remaining = new Date(revealAt) - Date.now();
+    if (remaining <= 0) { countdownEl.textContent = 'Unlocking…'; clearInterval(_revealCountdownInterval); return; }
+    const s = Math.floor(remaining / 1000) % 60;
+    const m = Math.floor(remaining / 60000) % 60;
+    const h = Math.floor(remaining / 3600000) % 24;
+    const d = Math.floor(remaining / 86400000);
+    countdownEl.textContent = d > 0 ? `${d}d ${h}h ${m}m`
+      : h > 0 ? `${h}h ${m}m ${String(s).padStart(2, '0')}s`
+      : m > 0 ? `${m}m ${String(s).padStart(2, '0')}s`
+      : `${s}s`;
+  };
+  update();
+  _revealCountdownInterval = setInterval(update, 1000);
+}
+export function clearRevealScreenCountdown() { clearInterval(_revealCountdownInterval); }
 
