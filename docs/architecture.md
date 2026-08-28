@@ -11,7 +11,7 @@ Browser (HTML + CSS + ES Modules)
     ├── index.html               — shell, Supabase config, screen containers
     ├── service-worker.js        — PWA cache (cache-first, immutable per CACHE_VERSION)
     └── src/*.js                 — ES modules (no bundler)
-            ├── app.js           — router, event wiring, global state
+            ├── app.js           — thin entry point; router/join-flow/event wiring live in src/app/*.js
             ├── ui.js            — all DOM manipulation
             ├── sync.js          — dual-track sync (Broadcast + Postgres)
             ├── presence.js      — device list, typing indicator, cursor line
@@ -30,15 +30,19 @@ Browser (HTML + CSS + ES Modules)
             ├── comments.js      — anchored inline comments (optional migration)
             ├── revisions.js     — version history snapshots (optional migration)
             ├── offline.js       — localStorage draft save/restore
-            ├── admin.js         — admin dashboard (Supabase Auth)
-            └── utils.js / icons.js / supabase.js — helpers
+            ├── ask-ai.js        — Ask AI client, proxied through the ask-ai Edge Function
+            ├── admin.js         — admin dashboard entry point; shell/tabs in src/admin/*.js
+            └── utils.js / icons.js / supabase.js / brand.js — helpers
 
 Supabase
-    ├── syncpad_rooms       (Postgres + Realtime)
-    ├── syncpad_files       (Postgres + Realtime)
-    ├── syncpad_share_links (Postgres)
-    ├── syncpad_room_reports (Postgres)
-    └── syncpad-files       (Storage bucket, private, signed URLs)
+    ├── syncpad_rooms          (Postgres + Realtime)
+    ├── syncpad_files          (Postgres + Realtime)
+    ├── syncpad_room_comments  (Postgres + Realtime, optional migration)
+    ├── syncpad_room_revisions (Postgres, optional migration)
+    ├── syncpad_share_links    (Postgres)
+    ├── syncpad_room_reports   (Postgres)
+    ├── syncpad-files          (Storage bucket, private, signed URLs)
+    └── Edge Functions: syncpad-cleanup (Storage orphan cleanup), ask-ai (Gemini proxy)
 ```
 
 ---
@@ -46,7 +50,7 @@ Supabase
 ## 2. Module Responsibilities
 
 ### `app.js`
-The application entry point and central coordinator. It owns the URL router, wires all cross-module event listeners, and holds the canonical module-level state variables (see §5). It does NOT perform DOM manipulation directly — all rendering is delegated to `ui.js`.
+A thin entry point today, not the central coordinator it once was — file-image resolver wiring, the passcode/encryption auth-gate forms, and starting the router. The URL router, the room join flow, and all cross-module event wiring live in `src/app/*.js` (see that directory's own module map in `app.js`'s header comment), and the canonical shared state is `src/app/state.js`'s single `state` object (see §5), not module-level variables here. It does NOT perform DOM manipulation directly — all rendering is delegated to `ui.js`.
 
 ### `ui.js`
 Contains every function that reads from or writes to the DOM. All `document.querySelector`, `innerHTML`, `classList`, and event-listener registrations for UI elements live here. It does NOT contain business logic, network calls, or application state.
@@ -66,8 +70,29 @@ Handles file upload to the `syncpad-files` Storage bucket, maintains the signed-
 ### `file-preview.js`
 Renders the in-app preview modal for attached files (images, PDFs, text, etc.). It requests signed URLs from `files.js` and inserts the appropriate preview element into the modal. It does NOT manage the file list or interact with Storage directly.
 
+### `comments.js`
+CRUD for anchored inline comments (`syncpad_room_comments`) and their Realtime subscription — a comment has no independent lifetime of its own, cascading away with its room. Requires the optional `0003_room_comments.sql` migration (and `0013_comment_anchor_text.sql` for auto-delete-on-text-removal); silently unavailable without it. It does NOT decide where a comment's margin dot/bubble renders — that's `ui/collab.js`'s job, working from the anchor offsets this module returns.
+
+### `revisions.js`
+Lists and saves version-history snapshots of a room's content (`syncpad_room_revisions`), pruned server-side to the most recent 50 per room. Requires the optional `0004_version_history.sql` migration. It does NOT decide *when* to save a snapshot (periodic timer, or right before a destructive change like Clear/Start New/a template swap) — that's `src/app/room-lifecycle.js`'s call; this module just performs the read/write.
+
+### `offline.js`
+Saves every keystroke to `localStorage` as a local draft (encrypted-at-rest for an encrypted room) and restores it on room load if it's newer than the server's own content, so nothing typed is ever truly lost even if the durable Postgres save hasn't confirmed yet. It does NOT talk to Supabase at all — purely a same-device, same-browser safety net.
+
+### `ask-ai.js`
+A thin client for the `ask-ai` Supabase Edge Function (`supabase/functions/ask-ai/`), which proxies a selected-text-plus-instruction request to Google Gemini's free tier server-side so no API key ever reaches the browser. Selection-only by design — it never sends the rest of the note. It does NOT own the selection/consent/comment-insertion flow — that's `src/app/ask-ai.js`, which captures the selection, shows the one-time consent notice, and lands the result as a comment via `comments-preview.js`'s `_submitComment()`.
+
 ### `markdown.js`
 Implements a safe, custom Markdown renderer without relying on an external library. It sanitises output to prevent XSS and applies JotRelay-specific rendering rules. It does NOT handle editing or preview toggling — those are managed by `app.js` and `ui.js`.
+
+### `live-editor.js`
+The CodeMirror 6-backed "Live" editable preview surface — a Typora-style experience where formatting renders inline as you type (hidden syntax markers, real inline tables/images/checkboxes, remote collaborator carets/selections) instead of a separate raw-text-vs-rendered-preview split. Mounted whenever the mode toggle is off Write (Live or Split). Tables are directly editable in place: clicking a cell focuses it, typing edits it, and Tab/Shift-Tab/Enter navigate between cells, each committing as a single-range replace against the underlying Markdown. It does NOT power the static/export/file-preview rendering path — that's `markdown.js`, built from the same Lezer parse tree but otherwise a fully separate, read-only renderer.
+
+### `markdown-highlight-extension.js`
+A shared CodeMirror/Lezer grammar extension for `==highlight==` syntax, used by both `markdown.js` and `live-editor.js` so the two renderers parse and agree on the same syntax. It does NOT render the highlight itself — each renderer applies its own styling to the parsed span.
+
+### `markdown-table-utils.js`
+Shared GFM table-alignment parsing (and cell-text escaping for the editable-table commit path) used by both `markdown.js` and `live-editor.js`, so a table's column alignment (`:---`, `:---:`, `---:`) is interpreted identically in the static and Live renderers. It does NOT render tables itself — it's parsing/serialization logic each renderer's own table-rendering code calls into.
 
 ### `encryption.js`
 Provides AES-256-GCM encryption and decryption using the Web Crypto API, with PBKDF2 key derivation. It exposes functions to encrypt/decrypt room content given a passphrase and salt. It does NOT store keys or passphrases — key material is held in `app.js` module-level state and never written to disk or the database.
@@ -76,7 +101,10 @@ Provides AES-256-GCM encryption and decryption using the Web Crypto API, with PB
 Maintains the frontend permission context for the current session (e.g. read-only vs. read-write, owner status). It exposes getter functions used throughout the app to gate UI actions. It does NOT enforce permissions on the server; JotRelay intentionally keeps normal room/file RLS broad for a transparent demo project.
 
 ### `settings.js`
-Implements handlers for the room settings panel: expiry presets, passcode changes, read-only toggles, and share-link management. It does NOT own the settings UI structure — the DOM is defined in `ui.js` and `index.html`.
+Room settings mutations: passcode (set/remove/check), encryption (enable/disable, including the pre-disable passphrase re-verification), auto-expiration (set/clear/handle), view-once (enable/disable/consume/reset), editing lock, and timed reveal (set/clear — the mirror image of auto-expiration, hiding content from non-creators until a future time; see `joinRoom()` in §4). It does NOT own the settings UI structure or share-link generation — the DOM is defined in `ui.js`/`index.html`, and read-only share links/short codes live in `rooms.js`.
+
+### `rooms.js`
+Room CRUD against `syncpad_rooms` (`loadRoom`, `createRoom`, `updateRoom`/`updateRoomSettings`), plus the read-only share-link and short-room-code RPCs (`get_or_create_readonly_share_link`, `resolve_readonly_share_link`, `get_or_create_room_code`, `resolve_room_code`) and room-report submission. It does NOT decide *whether* a write is currently allowed — that's `permissions.js`'s job; this module just performs whatever write it's asked to.
 
 ### `templates.js`
 Manages the 17 built-in templates and any custom templates persisted in `localStorage` under the key `syncpad_custom_templates`. It exposes `exportCustomTemplates()` and `importCustomTemplates(json)`, and enforces the `BODY_MAX = 50,000` character limit. It does NOT render the template picker UI — that is handled by `ui.js`.
@@ -88,10 +116,25 @@ Applies and persists the active theme by writing to the `data-theme` attribute o
 Registers global `keydown` listeners and maps key combinations to application actions (formatting, navigation, search, etc.). It does NOT implement the actions themselves — it calls into `app.js` or `ui.js` functions.
 
 ### `admin.js`
-Implements the `/admin` dashboard: Supabase Auth sign-in, RLS-gated admin queries, and the three admin tabs (Rooms, Reports, Cleanup). It calls the `run_cleanup_expired_syncpad_rooms_as_admin` RPC for the Cleanup tab. It does NOT share any state or logic with the regular room flow — it is a self-contained screen activated only on the `/admin` route.
+The `/admin` route's entry point today — Supabase Auth sign-in and auth-state routing only. The dashboard shell and its five tabs (Rooms, Reports, Files, Audit Log, Cleanup) live in `src/admin/*.js` (see `admin.js`'s own header comment for the module map), each RLS-gated the same way. It calls the `run_cleanup_expired_syncpad_rooms_as_admin` RPC for the Cleanup tab. It does NOT share any state or logic with the regular room flow — it is a self-contained screen activated only on the `/admin` route.
 
 ### `utils.js`
 Collects small, stateless helper functions (string formatting, date utilities, debounce, etc.) used across multiple modules. It does NOT import from any other JotRelay module — it is a pure utility leaf with no side effects.
+
+### `brand.js`
+Exports a single `BRAND_NAME` constant, imported by the handful of JS modules that render the product name at runtime (exported-file `<title>`, native share-sheet title, command-palette label, admin "Back to…" buttons, console log prefixes) — see CLAUDE.md's Rebranding Checklist for what this does and doesn't centralize (most visible copy is still static HTML in `index.html`).
+
+### `icons.js`
+A lookup table of inline SVG icon strings, keyed by name, used by `ui.js` wherever an icon needs to be built dynamically rather than hardcoded in `index.html`'s static markup. It does NOT contain any rendering logic beyond string lookup.
+
+### `supabase.js`
+Initializes and exports the single shared Supabase client instance (from `window.SYNCPAD_CONFIG`, injected inline in `index.html`), used by every other module that talks to Supabase. It does NOT hold any application state of its own.
+
+### `scroll-rail.js`
+Renders the hover-revealed heading-overview "minimap" alongside each editor surface's own native scrollbar, and the shared smooth-scroll primitive both surfaces' scroll-to-heading/search-match jumps use. Mouse-precision-sized and hidden entirely on touch/coarse-pointer devices. It does NOT persist scroll position across visits — that's `scroll-memory.js`.
+
+### `scroll-memory.js`
+Persists and restores the last scroll position for a room, keyed by a fingerprint of that room's content (length + a fast hash) so a stale saved position for now-different content is detected and skipped rather than restored to the wrong place. Never active for an encrypted room or a consumed view-once room, where the fingerprint itself would be a plaintext-content oracle sitting in localStorage. It does NOT scroll anything itself — callers read the saved offset and apply it via each surface's own scroll API.
 
 ### `keyboard-viewport.js`
 Tracks the on-screen keyboard via `window.visualViewport`, exposing the covered height as a live `--kb-inset` CSS custom property that any bottom-anchored fixed element can consume, and re-triggers each editor surface's own native caret-visibility scroll shortly after a keyboard resize settles (a passive container resize alone doesn't make a `<textarea>` or CodeMirror re-scroll to keep the caret visible). Separately, it also toggles `body.keyboard-open` on focus entering/leaving any text-editing element (textarea, non-button `<input>`, or a `contenteditable`) while the viewport is at the mobile breakpoint — a focus-driven signal rather than a `--kb-inset`-driven one, since `--kb-inset` is legitimately `0px` on platforms where the layout viewport already resizes natively for the keyboard, which leaves no geometric gap to detect "the keyboard is open" there even though it is. CSS (`modals.css`'s "KEYBOARD OPEN — MOBILE" rules) uses that class to hide the bottom action bar outright and reclaim its footprint, rather than only repositioning it above the keyboard. It does NOT itself position any UI beyond that one class toggle — consuming elements opt in via their own CSS/JS. Imported by `app.js` for its side effects only; exports nothing.

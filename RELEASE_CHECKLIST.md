@@ -44,6 +44,7 @@ Use this checklist before publishing a new version or sharing the demo link.
 - [ ] **Source mode** — textarea is editable, Live surface hidden
 - [ ] **Live mode** (default for fresh rooms) — the CodeMirror 6 surface renders formatting inline and is itself directly editable (not a read-only render); textarea hidden
 - [ ] **Split mode** — Source and Live visible side by side, scroll-synced
+- [ ] **Editable tables in Live mode** — click into a cell and type; Tab/Shift-Tab/Enter navigate between cells; edits persist back to the raw Markdown
 - [ ] **Checklist preview** — GFM checkboxes render; checking one updates the raw note
 - [ ] **Safe Markdown** — pasting `<script>alert(1)</script>` or raw HTML into the editor does NOT execute or render as HTML in preview
 - [ ] **Built-in templates** — at least 3 templates apply correctly (replace and append)
@@ -58,7 +59,48 @@ Use this checklist before publishing a new version or sharing the demo link.
 
 ---
 
-## 4. Keyboard Shortcuts
+## 4. Room Settings & Security
+
+All of these are frontend/convenience controls except Lock editing (section 1) — see `docs/security.md` before treating any of them as a real access boundary.
+
+- [ ] **Set passcode** — Settings panel prompts for passcode + confirm; mismatched entries show an inline error, not a silent failure
+- [ ] **Passcode gate** — a fresh visit to a passcoded room shows the passcode screen before any content; correct passcode unlocks, incorrect one shows an error and does not unlock
+- [ ] **Remove passcode** — room opens directly again on the next visit
+- [ ] **Enable encryption** — passphrase prompt; existing content re-encrypts; encryption badge appears
+- [ ] **Encrypted room, no key** — a fresh visit prompts for the passphrase before showing any content; wrong passphrase shows an error, does not reveal ciphertext
+- [ ] **Disable encryption** — requires re-entering the passphrase to confirm; content reverts to plaintext
+- [ ] **Auto-expire** — set a short custom duration (e.g. 10s); after it passes, reopening the room shows the content cleared; the in-editor expiration bar shows a live countdown while armed
+- [ ] **View-once** — enable it, then open the room from a second, non-creator device/context; content clears server-side after that first view; the creator's own device is exempt and never consumes it
+- [ ] **Device limit** — set a low limit (e.g. 2); joining from that many distinct devices (excluding the creator) clears the room; the creator's own devices don't count against the limit
+- [ ] **Timed reveal** — set a short custom delay (e.g. 10s); a non-creator visitor sees the `#reveal-screen` countdown instead of the note; the creator's own device sees the note normally the whole time; once the delay passes, the waiting visitor is auto-revealed into the room without a manual reload
+- [ ] **Share modal security chips** — with passcode/encryption/lock/view-once/expiry/timed-reveal set, the Share modal shows a chip for each active one
+
+---
+
+## 5. Comments & History
+
+- [ ] **Add comment** — via the floating add-comment button, `Ctrl/⌘+Shift+/`, the selection context menu, or the Comments panel; a margin dot appears at the anchored line
+- [ ] **Comment dot/bubble** — clicking a margin dot expands a floating bubble with the full text and Prev/Next navigation; the dot and bubble render above the document text and any remote collaborator's caret, never hidden behind either
+- [ ] **Delete comment** — removes it from the panel, the margin, and (in a second tab) live
+- [ ] **Comment auto-delete** — deleting the anchored text itself removes the orphaned comment
+- [ ] **History → Versions tab** — lists past snapshots; Restore round-trips content correctly; the scrubber slider previews each snapshot
+- [ ] **History → Activity tab** — shows a merged, chronological feed of saved versions, comments, and file uploads; switching between the two tabs preserves each one's own state
+
+---
+
+## 6. Ask AI
+
+Requires the `ask-ai` Supabase Edge Function deployed with a `GEMINI_API_KEY` secret — see `supabase/functions/ask-ai/README.md`. If it isn't deployed, confirm the failure mode is a clear toast, not a silent no-op or an unhandled error.
+
+- [ ] **First use in a browser** — shows the one-time consent notice before sending anything
+- [ ] **Selection required** — running Ask AI with nothing selected shows a toast, does not call the Edge Function
+- [ ] **Result lands as a comment** — the AI's response is added as a comment on the original selection; the note text itself is unchanged
+- [ ] **All entry points work** — toolbar button, right-click context menu, Tools panel, command palette, and `Alt+Shift+A` all reach the same flow
+- [ ] **Room switch mid-request** — starting Ask AI, then navigating to a different room before it resolves, discards the result instead of landing a comment in the wrong room
+
+---
+
+## 7. Keyboard Shortcuts
 
 Every shortcut below must work identically whether focus is in the Write-mode
 textarea or the CM6 live surface (Preview/Split) — historically these only
@@ -82,6 +124,7 @@ Preview mode.
 - [ ] `Alt + Shift + S` — opens the Share modal
 - [ ] `Alt + Shift + T` — inserts a timestamp at the caret
 - [ ] `Alt + Shift + C` — copies the whole note to the clipboard
+- [ ] `Alt + Shift + A` — runs Ask AI on the current selection
 - [ ] `Esc` — closes open panel, modal, or More dropdown
 - [ ] `Ctrl/⌘ + B/I/K` in **read-only mode** — does nothing (no text change)
 - [ ] `Ctrl/⌘ + B/I/K` in **locked mode** — does nothing
@@ -89,7 +132,7 @@ Preview mode.
 
 ---
 
-## 5. Files
+## 8. Files
 
 - [ ] **Upload via file picker** — click upload zone, select file, list updates
 - [ ] **Drag-and-drop on upload zone** — drop overlay appears; file uploads
@@ -100,10 +143,11 @@ Preview mode.
 - [ ] **Download file** — download button fetches signed URL; file saves
 - [ ] **Delete file** — confirm dialog; file disappears from list (also in second tab)
 - [ ] **Read-only user** — sees file list with preview + download only; no upload zone, no delete button
+- [ ] **Encrypted room upload** — a file uploaded to an encrypted room decrypts correctly for preview/download; filename/type remain readable (not encrypted)
 
 ---
 
-## 6. File Preview
+## 9. File Preview
 
 - [ ] **Preview PNG/JPG/GIF/WebP** — image shown in modal lightbox at full width
 - [ ] **Preview SVG** — "Open SVG in new tab" shown (not embedded inline)
@@ -121,7 +165,7 @@ Preview mode.
 
 ---
 
-## 7. Admin dashboard
+## 10. Admin dashboard
 
 - [ ] `/JotRelay/admin` shows a login form (email + password)
 - [ ] Invalid credentials show an error message; valid credentials load the dashboard
@@ -136,7 +180,7 @@ Preview mode.
 
 ---
 
-## 8. Themes & Appearance
+## 11. Themes & Appearance
 
 - [ ] **Charcoal Amber** (default) — loads without data-theme attribute; amber accent
 - [ ] **Midnight Blue** — blue accent; dark background
@@ -154,7 +198,7 @@ Preview mode.
 
 ---
 
-## 9. Mobile
+## 12. Mobile
 
 - [ ] Landing screen renders correctly on narrow viewport
 - [ ] **Bottom action bar** is visible and all 5 buttons are tappable
@@ -164,16 +208,19 @@ Preview mode.
 - [ ] `/JotRelay/admin` dashboard renders correctly on mobile viewport
 - [ ] **Tap targets** are at least 44×44 px for all buttons
 - [ ] **Orientation change** — layout reflows correctly
+- [ ] **On-screen keyboard** — the bottom action bar/comment composer/expiration bar reposition above the keyboard instead of being covered by it
+- [ ] **Background/reopen** — background the tab (or switch apps) for 30+ seconds, then reopen; content resyncs without a stale-data flash, and without a jarring resync on a quick alt-tab
 
 ---
 
-## 10. Deployment
+## 13. Deployment
 
 - [ ] `supabase/migrations/0001_base_schema.sql` applied successfully in Supabase SQL Editor
 - [ ] `syncpad-files` Storage bucket exists and is **private**
 - [ ] Storage policies applied (upload, read, delete for `anon`)
 - [ ] Storage cleanup warning acknowledged: SQL-only room deletion does not remove physical `syncpad-files` objects
 - [ ] Optional `syncpad-cleanup` Edge Function deployed or manual bucket pruning process documented
+- [ ] Optional `ask-ai` Edge Function deployed with a `GEMINI_API_KEY` secret, if Ask AI is meant to work on this deployment
 - [ ] GitHub Pages is serving from the correct branch and folder
 - [ ] `service-worker.js`'s `CACHE_VERSION` is bumped when cached assets change (check the file directly for the current value — it changes almost every release)
 - [ ] Hard refresh (`Ctrl+Shift+R`) loads fresh content, no stale cache issues
@@ -183,14 +230,14 @@ Preview mode.
 
 ---
 
-## 11. Automated tests
+## 14. Automated tests
 
 - [ ] `npm test` runs without errors (or known failures documented) — it starts `tests/spa-server.js` on port 5555 automatically if nothing's already listening there
-- [ ] All 27 spec files in `tests/` pass — see `docs/playwright.md` §4 for the current list; spot-check at minimum: `landing`, `editor`, `editor-modes`, `markdown`, `live-editor-rendering`, `search`, `settings`, `routing`, `shortcuts`, `comments`, `editor-context-menu`, `read-only`, `templates`, `accessibility`, `utils`
+- [ ] All spec files in `tests/` pass — see `docs/playwright.md` §4 for the current list and count; spot-check at minimum: `landing`, `editor`, `editor-modes`, `markdown`, `live-editor-rendering`, `search`, `settings`, `routing`, `shortcuts`, `comments`, `editor-context-menu`, `read-only`, `templates`, `accessibility`, `utils`
 
 ---
 
-## 12. Documentation
+## 15. Documentation
 
 - [ ] **View-once caveat is visible** — docs/UX copy clearly says view-once is convenience-only, not secure destruction
 - [ ] README.md describes only **actually implemented** features
@@ -201,7 +248,7 @@ Preview mode.
 - [ ] Screenshots added to `docs/screenshots/` or placeholder paths noted in README
 - [ ] `RELEASE_CHECKLIST.md` is present (this file)
 
-## 13. Anti-spam and abuse-control checks
+## 16. Anti-spam and abuse-control checks
 
 - [ ] Contact form still includes Web3Forms `botcheck` honeypot field
 - [ ] Report reason allowlist enforced (frontend + DB constraint)
