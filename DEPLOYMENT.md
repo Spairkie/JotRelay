@@ -78,7 +78,7 @@ If you previously deployed with the edit-token migrations (`0007_room_edit_token
 
 ### Optional feature migrations
 
-These genuinely are opt-in — the app works without them, and each feature just silently no-ops (or shows a "check Supabase setup" error) until its migration is run. `baseline.sql` includes `0002`–`0006`, `0008`, and `0010`–`0014` — the table below is for applying them individually to an **existing** project that hasn't run them yet (run `0001` first, then any of these you want, in any order). Two of these (`0013`, `0014`) are marked below as **not actually safe to skip** despite living in this "optional" table — the client unconditionally writes their column on every request regardless of whether the room uses the feature, so without the migration the request fails outright rather than the feature just being unavailable.
+These genuinely are opt-in — the app works without them, and each feature just silently no-ops (or shows a "check Supabase setup" error) until its migration is run. `baseline.sql` includes `0002`–`0006`, `0008`, and `0010`–`0015` — the table below is for applying them individually to an **existing** project that hasn't run them yet (run `0001` first, then any of these you want, in any order). Two of these (`0013`, `0014`) are marked below as **not actually safe to skip** despite living in this "optional" table — the client unconditionally writes their column on every request regardless of whether the room uses the feature, so without the migration the request fails outright rather than the feature just being unavailable.
 
 | Migration | Enables | Symptom if skipped |
 |---|---|---|
@@ -94,6 +94,7 @@ These genuinely are opt-in — the app works without them, and each feature just
 | [`supabase/migrations/0011_short_file_references.sql`](supabase/migrations/0011_short_file_references.sql) | Short, sequential-per-room file references (`syncpad-file:3` instead of the full storage path) so inserted file links stay human-typeable; safe to rerun, and legacy long-form references keep resolving unchanged | New file references still embed the full storage path — longer links, but nothing breaks |
 | [`supabase/migrations/0012_admin_sort_indexes.sql`](supabase/migrations/0012_admin_sort_indexes.sql) | Indexes on `syncpad_rooms.updated_at`/`created_at` and `syncpad_files.uploaded_at` — the columns the admin dashboard's Rooms/Files tabs actually sort and range-filter by | Nothing breaks — those admin queries just fall back to a full table scan + in-memory sort, which scales with total room/file count instead of the page size actually requested |
 | [`supabase/migrations/0014_file_encryption.sql`](supabase/migrations/0014_file_encryption.sql) | Client-side AES-256-GCM encryption of a file's *content* on upload to an encrypted room (same key as note text) — lifts the earlier restriction that blocked file uploads outright while a room was encrypted. **Run this on any existing project before deploying an updated client** — `uploadFile()` unconditionally writes `syncpad_files.encrypted` on every insert now, encrypted room or not, so without this column present the insert fails and **all** file uploads break, not just encrypted-room ones | Every file upload fails (`syncpad_files.encrypted` column doesn't exist) |
+| [`supabase/migrations/0015_timed_reveal.sql`](supabase/migrations/0015_timed_reveal.sql) | Timed Reveal room setting — hides content from everyone but the room's creator until a set future time | The "Timed reveal" row in Settings → Room Controls shows an error toast when set; `reveal_at` stays `null` |
 
 If a feature you expect to see doesn't work, re-check that its migration was actually run — the Supabase SQL Editor's query history shows past runs.
 
@@ -271,6 +272,7 @@ Check `service-worker.js` directly for the current value rather than trusting a 
 | Room quarantine (optional, `/admin`) | **Backend-enforced** if `0008_quarantine_enforcement.sql` is applied — same trigger technique as room lock; frontend-only otherwise (see `0006`'s header) |
 | `/admin` route | Supabase Auth (`signInWithPassword`) + `is_syncpad_admin()` RLS — not a public-facing feature |
 | Passcode | Client-side hash check |
+| Timed reveal | **Frontend-only** — a pure client-side comparison against `reveal_at`; a technical visitor querying the REST API directly still sees content before the reveal time |
 | Text encryption | In-browser (AES-256-GCM) |
 | File access | Signed URLs (1 h TTL) — no end-to-end encryption |
 

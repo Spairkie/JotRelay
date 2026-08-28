@@ -53,7 +53,7 @@ import {
 import { refreshFiles, openFileDeepLink } from './files-panel.js';
 import { _refreshComments, _applyMarkdownMode, _refreshPreviewIfActive, _debouncedRefreshPreview, _debouncedPruneDeletedCommentAnchors, _pruneDeletedCommentAnchors, _captureTopOffset, _resetSplitPaneTracking } from './comments-preview.js';
 import { _closeSlashMenu, _focusActiveEditorSurface } from './editor-behavior.js';
-import { _selectExpirationPreset } from './panels.js';
+import { _selectExpirationPreset, _selectRevealPreset } from './panels.js';
 import { wireEvents } from './wiring.js';
 import { wireLandingEvents, wireContactEvents, wireMarketingPageEvents } from './landing.js';
 
@@ -146,6 +146,33 @@ function _showQuarantinedScreen(room) {
       : 'This room has been quarantined by an administrator and is no longer accessible.',
   });
   UI.showScreen('info');
+}
+
+// A passive wait screen (no submit — nothing for the visitor to do but
+// wait), so unlike passcode/encryption there's no onXSubmit() handler pair.
+// Arms a one-shot timer capped the same way setupExpirationTimer() caps its
+// own recheck delay (setTimeout's max is a signed 32-bit ms count — roughly
+// 24.8 days — so a reveal further out than that needs to be rearmed rather
+// than scheduled directly), then simply re-runs joinRoom(): the freshly
+// re-fetched room will either still be gated (creator changed nothing, timer
+// just re-arms against the same still-future reveal_at) or fall through to
+// the passcode/encryption/app screens normally, including if the creator
+// removed the reveal entirely in the meantime.
+function _showRevealScreen(room) {
+  UI.showScreen('reveal');
+  UI.setRevealScreenInfo(state.roomId, room.reveal_at);
+  clearTimeout(state.revealTimer);
+  const remaining = new Date(room.reveal_at) - Date.now();
+  const _roomIdAtArm = state.roomId;
+  // No stale-navigation guard needed inside the callback: unlike an in-flight
+  // await, a setTimeout callback that's been clearTimeout()'d (as
+  // teardownRealtimeSession() does to state.revealTimer at the top of every
+  // joinRoom() call, including navigation to a different room) simply never
+  // fires at all — there's no async window where this could still run
+  // against a room the user has since left.
+  state.revealTimer = setTimeout(() => {
+    joinRoom(_roomIdAtArm);
+  }, Math.min(Math.max(remaining, 0), EXPIRATION_TIMER_MAX_DELAY_MS));
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
@@ -471,6 +498,22 @@ export async function joinRoom(roomId, { isNewRoom = false } = {}) {
   // this is a no-op for installs that haven't run it.
   if (state.room.quarantined_at) {
     _showQuarantinedScreen(state.room);
+    return;
+  }
+
+  // Timed reveal: hides content from everyone except the room's creator
+  // until reveal_at passes — the mirror image of Auto-expire. Checked before
+  // passcode/encryption (no need to prompt for either if the visitor
+  // couldn't see the content yet anyway), using created_by_device the same
+  // way View-once and Device limit already exempt the creator below in
+  // startApp() — this check just runs earlier, since a non-creator must
+  // never reach the editor at all while still waiting.
+  if (
+    state.room.reveal_at &&
+    new Date(state.room.reveal_at) > new Date() &&
+    state.room.created_by_device !== getDeviceId()
+  ) {
+    _showRevealScreen(state.room);
     return;
   }
 
@@ -1535,6 +1578,13 @@ export function teardownRealtimeSession() {
   // wrong room.
   clearTimeout(state.expTimer);
   state.expTimer = null;
+  // Cancel any pending timed-reveal re-check timer (see _showRevealScreen())
+  // for the same reason as expTimer above — its callback closes over the
+  // room id it was armed for and must not fire against whatever room this
+  // navigation is leaving for.
+  clearTimeout(state.revealTimer);
+  state.revealTimer = null;
+  UI.clearRevealScreenCountdown();
   // Remove the online/offline listener registered in startApp(). Without this
   // each room navigation accumulates a new listener on window, causing duplicate
   // flushSave calls and stale status updates after re-connecting.
@@ -1562,6 +1612,8 @@ export function teardownRealtimeSession() {
   // with its inputs open in the next room even though state.expPreset is back to
   // the default.
   _selectExpirationPreset('10m');
+  // Same reasoning, same pattern, for the timed-reveal preset picker.
+  _selectRevealPreset('10m');
   // Exit bulk-select mode so the next room starts with a clean files panel.
   state.filesSelectMode = false;
   state.selectedFiles   = new Set();

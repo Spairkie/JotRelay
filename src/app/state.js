@@ -20,6 +20,7 @@ export const state = {
   unsubFiles: null,
   unsubComments: null,
   expTimer: null,
+  revealTimer: null, // one-shot timer that re-runs joinRoom() once a timed-reveal room's reveal_at passes while the reveal-screen is showing
   scrollSaveTimer: null, // periodic persisted-scroll-position save — see scroll-memory.js
   onlineCleanup: null, // v1: teardown fn returned by onOnlineChange()
   monospace: false,
@@ -33,6 +34,7 @@ export const state = {
   showPreview: false, // derived: state.markdownMode !== 'write'
   previewObserverWired: false,
   expPreset: '10m',
+  revealPreset: '10m',
   // Which remote device_id (if any) the local view auto-scrolls to follow.
   followedDeviceId: null,
   // Raw (not-yet-decrypted-for-display) comments from the last _refreshComments()

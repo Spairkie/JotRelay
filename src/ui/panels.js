@@ -95,6 +95,7 @@ export function renderSettingsPanel(room) {
   const pcStatus  = document.getElementById('setting-passcode-status');
   const encStatus = document.getElementById('setting-enc-status');
   const expStatus = document.getElementById('setting-exp-status');
+  const revealStatus = document.getElementById('setting-reveal-status');
   const voStatus  = document.getElementById('setting-vo-status');
   const lockStatus = document.getElementById('setting-lock-status');
   const dlStatus  = document.getElementById('setting-dl-status');
@@ -104,6 +105,11 @@ export function renderSettingsPanel(room) {
   if (expStatus) expStatus.textContent = room.expires_at
     ? `${new Date(room.expires_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })} (${_expiresIn(room.expires_at)})`
     : 'Never';
+  if (revealStatus) {
+    revealStatus.textContent = room.reveal_at && new Date(room.reveal_at) > new Date()
+      ? `Hidden from others until ${new Date(room.reveal_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })} (${_expiresIn(room.reveal_at)})`
+      : 'Off — hide this note from everyone but you until a set time';
+  }
   if (voStatus) {
     voStatus.textContent = !room.view_once ? 'Off'
       : room.viewed || room.cleared_reason === 'view_once' ? 'Used (cleared)'
@@ -120,6 +126,7 @@ export function renderSettingsPanel(room) {
   const pcBtn   = document.getElementById('setting-passcode-btn');
   const encBtn  = document.getElementById('setting-enc-btn');
   const expBtn  = document.getElementById('setting-exp-btn');
+  const revealBtn = document.getElementById('setting-reveal-btn');
   const voBtn   = document.getElementById('setting-vo-btn');
   const lockBtn = document.getElementById('setting-lock-btn');
   const dlBtn   = document.getElementById('setting-dl-btn');
@@ -130,6 +137,9 @@ export function renderSettingsPanel(room) {
   // 'Modify' when an expiration is already set — the actual Remove button is
   // inside the collapsible controls section (setting-exp-remove-btn).
   if (expBtn)  expBtn.textContent  = room.expires_at         ? 'Modify'  : 'Set expiry';
+  // Same pattern as expBtn — actual removal is setting-reveal-remove-btn
+  // inside the collapsible controls section.
+  if (revealBtn) revealBtn.textContent = (room.reveal_at && new Date(room.reveal_at) > new Date()) ? 'Modify' : 'Set reveal';
   if (voBtn)   voBtn.textContent   = room.view_once          ? 'Disable' : 'Enable';
   if (lockBtn) lockBtn.textContent = room.editing_locked     ? 'Unlock'  : 'Lock';
   if (dlBtn)   dlBtn.textContent   = room.device_limit       ? 'Disable' : 'Enable';
@@ -474,6 +484,56 @@ export function renderHistoryScrubber(entries, onRestore) {
     const entry = entries[Number(slider.value)];
     if (entry && !entry.isNow && !entry.locked) onRestore?.(entry);
   };
+}
+
+/** Switch the History panel between its "Versions" and "Activity" tabs. */
+export function setHistoryTab(tab) {
+  const isActivity = tab === 'activity';
+  document.getElementById('history-tab-versions')?.classList.toggle('active', !isActivity);
+  document.getElementById('history-tab-versions')?.setAttribute('aria-selected', String(!isActivity));
+  document.getElementById('history-tab-activity')?.classList.toggle('active', isActivity);
+  document.getElementById('history-tab-activity')?.setAttribute('aria-selected', String(isActivity));
+  document.getElementById('history-versions-view')?.classList.toggle('hidden', isActivity);
+  document.getElementById('history-activity-view')?.classList.toggle('hidden', !isActivity);
+}
+
+const ACTIVITY_ICONS = { revision: 'restore', comment: 'comment', file: 'upload' };
+const ACTIVITY_LABELS = { revision: 'Saved a version', comment: 'Added a comment', file: 'Uploaded a file' };
+
+/**
+ * A merged, chronological feed across every already-timestamped, room-scoped
+ * signal the app persists — saved content versions, comments, and file
+ * uploads — most recent first. Settings changes and device joins aren't
+ * included: nothing in the schema persists those with a timestamp today (see
+ * revisions.js/comments.js/files.js's header comments), so surfacing them
+ * here would need a new event-log table, out of scope for this pass.
+ * `entries` items: { type: 'revision'|'comment'|'file', created_at,
+ * device_name?, detail? } — `detail` is a short plain-text fragment (comment
+ * text preview, file name) already safe to escape here.
+ */
+export function renderActivityTimeline(entries) {
+  const list  = document.getElementById('history-activity-list');
+  const empty = document.getElementById('history-activity-empty');
+  if (!list) return;
+  list.setAttribute('role', 'list');
+  list.innerHTML = '';
+  if (!entries?.length) { empty?.classList.remove('hidden'); return; }
+  empty?.classList.add('hidden');
+
+  entries.forEach((entry) => {
+    const item = document.createElement('div');
+    item.className = 'history-item history-activity-item';
+    item.setAttribute('role', 'listitem');
+    const who = entry.device_name ? ` · ${escapeHtml(entry.device_name)}` : '';
+    const detail = entry.detail ? `<div class="history-preview">${escapeHtml(entry.detail)}</div>` : '';
+    item.innerHTML = `
+      <div class="history-activity-icon" aria-hidden="true">${getIcon(ACTIVITY_ICONS[entry.type] || 'clock', 15)}</div>
+      <div class="history-info">
+        <div class="history-meta">${ACTIVITY_LABELS[entry.type] || 'Activity'} · ${formatTimestamp(entry.created_at)}${who}</div>
+        ${detail}
+      </div>`;
+    list.appendChild(item);
+  });
 }
 
 // ── Expiration bar ────────────────────────────────────────────────────────────

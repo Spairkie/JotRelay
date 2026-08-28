@@ -62,7 +62,7 @@ function _formatExpiresIn(expiresAt) {
 export function populateShareModal({
   editableUrl, readOnlyUrl, readOnlyError = false, hasPasscode, hasEncryption,
   roomPath = '', roomDisplayTitle = '', hasReadOnlyLink = false, isEditingLocked = false,
-  hasViewOnce = false, expiresAt = null, roomCode = '', roomCodeError = false, showRoomCode = true,
+  hasViewOnce = false, expiresAt = null, revealAt = null, roomCode = '', roomCodeError = false, showRoomCode = true,
 } = {}) {
   const roomPathEl = document.getElementById('share-room-path');
   const titleEl = document.getElementById('share-modal-title');
@@ -81,6 +81,13 @@ export function populateShareModal({
     if (isEditingLocked) chips.push('<span class="share-security-chip">Editing locked</span>');
     const expiresIn = _formatExpiresIn(expiresAt);
     if (expiresIn) chips.push(`<span class="share-security-chip">${escapeHtml(expiresIn)}</span>`);
+    // reveal_at in the past means it's already unlocked — same "expired
+    // means nothing to warn about" treatment _formatExpiresIn() gives a past
+    // expiresAt, just without a distinct "Revealed" chip cluttering the
+    // common case where reveal already happened long ago.
+    if (revealAt && new Date(revealAt) > new Date()) {
+      chips.push(`<span class="share-security-chip">Hidden from others until ${escapeHtml(new Date(revealAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }))}</span>`);
+    }
     securityNotesEl.innerHTML = chips.join('');
     securityNotesEl.classList.toggle('hidden', chips.length === 0);
   }
@@ -308,6 +315,8 @@ function _renderInsertTab(body, builtins, customs, onChoose) {
   searchWrap.className = 'tmpl-search-wrap';
   const searchInput = document.createElement('input');
   searchInput.type = 'search';
+  searchInput.id = 'tmpl-search-input';
+  searchInput.name = 'tmpl-search-input';
   searchInput.placeholder = 'Search templates…';
   searchInput.className = 'tmpl-search-input';
   searchInput.autocomplete = 'off';

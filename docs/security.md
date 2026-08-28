@@ -30,6 +30,7 @@ These features exist as UX conveniences. They do not constitute security boundar
 | Passcode protection | PBKDF2 hash of the passcode is stored in `syncpad_rooms`; the client computes and compares the hash | The hash is readable by anyone with the anon key; the passcode itself is not stored, but a determined attacker can attempt offline brute-force against the hash |
 | View-once rooms | Server clears content after the first non-creator editable view | A viewer can still copy or screenshot content before the server clears it; the clearing is not atomic with the act of viewing |
 | Read-only links (`?mode=read`, `/share/:token`) | The frontend hides edit affordances and blocks local write attempts when a forced-read-only route is detected | `room_id` + the anon key is sufficient to write regardless of which link was used — a read-only visitor necessarily learns `room_id` from viewing the room's content, so a technical visitor can call the write path directly, bypassing the UI entirely. Use room lock for an actual guarantee that a room can't be edited (see below) |
+| Timed reveal | `joinRoom()` shows a countdown screen instead of the room's content whenever `reveal_at` is in the future and the visiting device isn't the room's creator (`created_by_device`) | A pure client-side `SELECT`-time comparison — a technical visitor querying the REST API directly with the anon key sees the content before `reveal_at`, same as any other frontend-only control here |
 
 ### Backend-Enforced Controls
 

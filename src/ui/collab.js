@@ -70,6 +70,9 @@ export function openFloatingCommentComposer(coords, onSubmit) {
 
   const input = document.createElement('input');
   input.type = 'text';
+  input.id = 'comment-floating-composer-input';
+  input.name = 'comment-floating-composer-input';
+  input.autocomplete = 'off';
   input.maxLength = 1000;
   input.placeholder = 'Add a comment…';
   input.setAttribute('aria-label', 'New comment');

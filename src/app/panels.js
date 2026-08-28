@@ -5,6 +5,7 @@
 
 import { formatTimestamp, getDeviceId, parseDuration } from '../utils.js';
 import { listRevisions } from '../revisions.js';
+import { listComments } from '../comments.js';
 import { decryptContent, encryptContent, looksEncrypted } from '../encryption.js';
 import { loadRoom, setDeviceLimit, clearDeviceLimit } from '../rooms.js';
 import {
@@ -18,6 +19,7 @@ import {
   setExpiration, clearExpiration,
   enableViewOnce, disableViewOnce,
   setEditingLocked,
+  setTimedReveal, clearTimedReveal,
 } from '../settings.js';
 import { flushSave, setEncryption, snapshotBeforeDestructiveChange } from '../sync.js';
 import { clearDraft } from '../offline.js';
@@ -36,10 +38,12 @@ import { _renderRoomHeader, _updatePermissionContext, setupExpirationTimer } fro
 
 export async function _openHistoryPanel() {
   UI.openPanel('history-panel');
+  UI.setHistoryTab('versions'); // always reopen on the default tab, regardless of where it was left last time
   UI.setHistoryLoading(true);
+  let withPreviews = [];
   try {
     const revisions = await listRevisions(state.roomId);
-    const withPreviews = await Promise.all(revisions.map(async (rev) => {
+    withPreviews = await Promise.all(revisions.map(async (rev) => {
       let preview = rev.content || '';
       if (looksEncrypted(preview)) {
         if (!state.encKey) { preview = null; }
@@ -74,6 +78,63 @@ export async function _openHistoryPanel() {
   } finally {
     UI.setHistoryLoading(false);
   }
+  _loadActivityTimeline(withPreviews);
+}
+
+/**
+ * Builds the "Activity" tab's merged feed from every already-timestamped,
+ * room-scoped signal the schema persists: saved content versions (reusing
+ * the previews _openHistoryPanel already decrypted, so this does no extra
+ * network/decrypt work of its own), comments, and file uploads. Comments and
+ * revisions are both optional migrations (0003/0004) — each source is
+ * fetched independently and a missing table for one silently drops just
+ * that source rather than failing the whole tab, matching how every other
+ * optional-migration feature in this app degrades.
+ */
+async function _loadActivityTimeline(revisionsWithPreviews) {
+  const thisDeviceId = getDeviceId();
+  const revisionEntries = (revisionsWithPreviews || []).map((rev) => ({
+    type: 'revision',
+    created_at: rev.created_at,
+    device_name: rev.device_id === thisDeviceId ? 'this device' : null,
+  }));
+
+  let commentEntries = [];
+  try {
+    const comments = await listComments(state.roomId);
+    commentEntries = await Promise.all(comments.map(async (c) => {
+      let preview = c.text || '';
+      if (looksEncrypted(preview)) {
+        if (!state.encKey) { preview = null; }
+        else {
+          try { preview = await decryptContent(preview, state.encKey); }
+          catch { preview = null; }
+        }
+      }
+      return {
+        type: 'comment',
+        created_at: c.created_at,
+        device_name: c.device_name || (c.device_id === thisDeviceId ? 'this device' : null),
+        detail: typeof preview === 'string' ? preview.replace(/\s+/g, ' ').trim().slice(0, 140) : null,
+      };
+    }));
+  } catch {} // 0003_room_comments.sql not run — activity feed just omits comments
+
+  let fileEntries = [];
+  try {
+    const files = await listFiles(state.roomId);
+    fileEntries = files.map((f) => ({
+      type: 'file',
+      created_at: f.uploaded_at,
+      device_name: f.uploaded_by_device === thisDeviceId ? 'this device' : null,
+      detail: f.filename || null,
+    }));
+  } catch {} // file listing failed — activity feed just omits files
+
+  const merged = [...revisionEntries, ...commentEntries, ...fileEntries]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 200); // bound render cost on a long-lived, heavily-used room
+  UI.renderActivityTimeline(merged);
 }
 
 async function _restoreRevision(rev) {
@@ -101,6 +162,12 @@ async function _restoreRevision(rev) {
   _refreshPreviewIfActive();
   UI.closeAllPanels();
   UI.showToast('Version restored.', 'success');
+}
+
+/** Wire the Versions/Activity tab switcher inside the History panel. Called once at init — see wiring.js. */
+export function _wireHistoryTabs() {
+  document.getElementById('history-tab-versions')?.addEventListener('click', () => UI.setHistoryTab('versions'));
+  document.getElementById('history-tab-activity')?.addEventListener('click', () => UI.setHistoryTab('activity'));
 }
 
 // ── Templates handler ─────────────────────────────────────────────────────────
@@ -484,6 +551,41 @@ function _updateExpirationPreview() {
   preview.textContent = `Preview: This room will clear around ${new Date(Date.now() + ms).toLocaleString()}.`;
 }
 
+// ── Timed-reveal preset helpers ─────────────────────────────────────────────
+// Mirrors the Expiration preset helpers immediately above — same preset-chip
+// / custom-value-and-unit UI pattern, applied to a different setting.
+
+export function _selectRevealPreset(preset) {
+  state.revealPreset = preset;
+  document.querySelectorAll('[data-reveal-preset]').forEach((el) => el.classList.toggle('is-active', el.dataset.revealPreset === preset));
+  document.getElementById('reveal-custom-row')?.classList.toggle('hidden', preset !== 'custom');
+  _updateRevealPreview();
+}
+
+function _buildRevealDuration() {
+  if (state.revealPreset !== 'custom') return state.revealPreset;
+  const value = document.getElementById('reveal-custom-value')?.value?.trim();
+  const unit = document.getElementById('reveal-custom-unit')?.value?.trim();
+  if (!value) return { error: 'Please enter a number for the custom reveal delay.' };
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return { error: 'Custom reveal delay must be a number greater than 0.' };
+  if (!['s', 'm', 'h', 'd'].includes(unit)) return { error: 'Unsupported unit. Use seconds, minutes, hours, or days.' };
+  return `${n}${unit}`;
+}
+
+function _updateRevealPreview() {
+  const preview = document.getElementById('setting-reveal-preview');
+  if (!preview) return;
+  const built = _buildRevealDuration();
+  if (typeof built === 'object' && built?.error) {
+    preview.textContent = 'Preview: Select a valid duration.';
+    return;
+  }
+  const ms = parseDuration(built);
+  if (!ms) { preview.textContent = 'Preview: Select a valid duration.'; return; }
+  preview.textContent = `Preview: Others will be able to see this note starting around ${new Date(Date.now() + ms).toLocaleString()}.`;
+}
+
 // ── Settings panel ────────────────────────────────────────────────────────────
 
 export function _wireSettings() {
@@ -669,6 +771,50 @@ export function _wireSettings() {
     } catch { UI.showToast('Could not remove auto-expire.', 'error'); }
   });
   _selectExpirationPreset('10m');
+
+  // Toggle the timed-reveal controls panel open/closed — same pattern as
+  // Auto-expire immediately above, applied to setting-reveal-*.
+  document.getElementById('setting-reveal-btn')?.addEventListener('click', () => {
+    const controls = document.getElementById('setting-reveal-controls');
+    if (!controls) return;
+    const isHidden = controls.classList.toggle('hidden');
+    controls.toggleAttribute('inert', isHidden);
+    if (!isHidden) _updateRevealPreview();
+  });
+  document.querySelectorAll('[data-reveal-preset]').forEach((el) => el.addEventListener('click', () => _selectRevealPreset(el.dataset.revealPreset || '10m')));
+  document.getElementById('reveal-custom-value')?.addEventListener('input', _updateRevealPreview);
+  document.getElementById('reveal-custom-unit')?.addEventListener('change', _updateRevealPreview);
+  document.getElementById('setting-reveal-apply-btn')?.addEventListener('click', async () => {
+    if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }
+    const errorEl = document.getElementById('setting-reveal-error');
+    if (errorEl) { errorEl.textContent = ''; errorEl.classList.add('hidden'); }
+    const built = _buildRevealDuration();
+    if (typeof built === 'object' && built?.error) {
+      if (errorEl) { errorEl.textContent = built.error; errorEl.classList.remove('hidden'); }
+      return;
+    }
+    try {
+      await setTimedReveal(state.roomId, built);
+      state.room = await loadRoom(state.roomId);
+      _renderRoomHeader();
+      UI.renderSettingsPanel(state.room);
+      broadcastSettingsChange();
+      UI.showToast('Timed reveal set. Hidden from everyone but you until then.', 'success', 5000);
+    } catch { UI.showToast('Could not set timed reveal. Has supabase/migrations/0015_timed_reveal.sql been run?', 'error', 5000); }
+  });
+  document.getElementById('setting-reveal-remove-btn')?.addEventListener('click', async () => {
+    if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }
+    if (!state.room.reveal_at) { UI.showToast('No timed reveal is currently set.', 'warning'); return; }
+    try {
+      await clearTimedReveal(state.roomId);
+      state.room = await loadRoom(state.roomId);
+      _renderRoomHeader();
+      UI.renderSettingsPanel(state.room);
+      broadcastSettingsChange();
+      UI.showToast('Timed reveal removed.', 'success');
+    } catch { UI.showToast('Could not remove timed reveal.', 'error'); }
+  });
+  _selectRevealPreset('10m');
 
   document.getElementById('setting-vo-btn')?.addEventListener('click', async () => {
     if (!canChangeSettings()) { UI.showToast(editBlockedReason() || 'Settings are disabled.', 'warning'); return; }
