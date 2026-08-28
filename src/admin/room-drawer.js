@@ -10,6 +10,19 @@ import {
   _logAdminAction, _adminTypedConfirm, _deleteRoomAndStorage,
 } from './shared.js';
 import { _loadStats } from './stats.js';
+import { _renderRoomsTab } from './rooms-tab.js';
+
+// The drawer can be opened from Rooms, Reports, Files, or Audit — so a
+// lock/quarantine/delete action here must not blindly re-render whatever
+// happens to be in #admin-content (that would replace an unrelated active
+// tab out from under the admin). Only refresh when Rooms is actually the
+// tab behind the drawer; _renderRoomsTab() re-fetches from Supabase itself,
+// so this also picks up any other admin's concurrent changes, not just ours.
+async function _refreshRoomsTabIfActive() {
+  if (state.activeTab !== 'rooms') return;
+  const contentEl = document.getElementById('admin-content');
+  if (contentEl) await _renderRoomsTab(contentEl);
+}
 
 export async function _openRoomDetail(roomId) {
   const drawer    = document.getElementById('admin-drawer');
@@ -169,12 +182,14 @@ export async function _openRoomDetail(roomId) {
     if (error) { await showAlert(`Error: ${_friendlyErrorMessage(error)}`); return; }
     await _logAdminAction('lock_editing', { target_room_id: room.room_id });
     _showToast('Editing locked.', 'success'); _closeDrawer();
+    await _refreshRoomsTabIfActive();
   });
   document.getElementById('drawer-unlock-btn')?.addEventListener('click', async () => {
     const { error } = await state.sb.from('syncpad_rooms').update({ editing_locked: false }).eq('room_id', room.room_id);
     if (error) { await showAlert(`Error: ${_friendlyErrorMessage(error)}`); return; }
     await _logAdminAction('unlock_editing', { target_room_id: room.room_id });
     _showToast('Editing unlocked.', 'success'); _closeDrawer();
+    await _refreshRoomsTabIfActive();
   });
 
   document.getElementById('drawer-quarantine-btn')?.addEventListener('click', async () => {
@@ -199,6 +214,7 @@ export async function _openRoomDetail(roomId) {
     }
     await _logAdminAction('quarantine_room', { target_room_id: room.room_id, metadata: { reason } });
     _showToast('Room quarantined.', 'success'); _closeDrawer();
+    await _refreshRoomsTabIfActive();
   });
 
   document.getElementById('drawer-unquarantine-btn')?.addEventListener('click', async () => {
@@ -211,6 +227,7 @@ export async function _openRoomDetail(roomId) {
     }
     await _logAdminAction('unquarantine_room', { target_room_id: room.room_id });
     _showToast('Room unquarantined.', 'success'); _closeDrawer();
+    await _refreshRoomsTabIfActive();
   });
 
   document.getElementById('drawer-delete-btn')?.addEventListener('click', async () => {
@@ -223,16 +240,11 @@ export async function _openRoomDetail(roomId) {
     const { error } = await _deleteRoomAndStorage(room.room_id);
     if (error) { await showAlert(`Error: ${_friendlyErrorMessage(error)}`); return; }
     const idx = state.rooms.findIndex(r => r.room_id === room.room_id);
-    if (idx !== -1) state.rooms.splice(idx, 1);
+    if (idx !== -1) { state.rooms.splice(idx, 1); state.roomsTotal = Math.max(0, state.roomsTotal - 1); }
     await _logAdminAction('delete_room', { target_room_id: room.room_id });
     _showToast('Room deleted.', 'success');
     _closeDrawer();
-    // Re-render the rooms table
-    const tbody = document.getElementById('admin-rooms-tbody');
-    if (tbody) {
-      const row = tbody.querySelector(`tr[data-room-id="${CSS.escape(room.room_id)}"]`);
-      row?.remove();
-    }
+    await _refreshRoomsTabIfActive();
     await _loadStats();
   });
 }

@@ -108,7 +108,11 @@ export async function _renderDashboard(sb, session, { onLogout } = {}) {
     const onClick = () => {
       const tab    = card.dataset.targetTab;
       const filter = card.dataset.filter;
-      if (filter && tab === 'rooms') state.roomsFilter = filter;
+      // A card with no data-filter (e.g. "Total rooms") means "show
+      // everything" — must actively reset to the 'all' filter, not just
+      // skip setting one, or a previous card's filter (e.g. "Active
+      // today") stays applied underneath the "Total rooms" label.
+      if (tab === 'rooms') state.roomsFilter = filter || 'all';
       switchTab(tab);
     };
     card.addEventListener('click', onClick);
@@ -175,6 +179,16 @@ function _teardownDashboard() {
   if (state.refreshedTimer) { clearInterval(state.refreshedTimer); state.refreshedTimer = null; }
   state.rooms = []; state.reports = []; state.files = []; state.audit = [];
   state.roomsSelected.clear();
+  // Filter/search/sort/pagination aren't reset above despite state.js's own
+  // header comment promising it here — without this, signing out and a
+  // different admin signing back in on the same tab (no full page reload)
+  // silently inherited whatever the previous admin had filtered/searched/
+  // sorted to.
+  state.roomsOffset = 0; state.roomsTotal = 0; state.roomsFilter = 'all';
+  state.roomsSort = { col: 'updated_at', dir: 'desc' }; state.roomsSearch = '';
+  state.reportsOffset = 0; state.reportsTotal = 0; state.reportsFilter = 'new';
+  state.filesOffset = 0; state.filesTotal = 0;
+  state.auditOffset = 0;
 }
 
 function _setupKeyboardShortcuts(switchTab) {
