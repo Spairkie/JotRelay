@@ -1614,6 +1614,17 @@ export function teardownRealtimeSession() {
   _selectExpirationPreset('10m');
   // Same reasoning, same pattern, for the timed-reveal preset picker.
   _selectRevealPreset('10m');
+  // Collapse both settings-panel accordions too — expanding either one
+  // (setting-exp-btn/setting-reveal-btn) toggles its own .hidden class
+  // directly, with nothing else that ever re-collapses it. Without this,
+  // opening "Set expiry" or "Set reveal" in one room and then navigating
+  // to a different room left the Settings panel showing that section
+  // already expanded, for a room whose own expiry/reveal state the visitor
+  // hasn't actually asked to see or change yet.
+  document.getElementById('setting-exp-controls')?.classList.add('hidden');
+  document.getElementById('setting-exp-controls')?.setAttribute('inert', '');
+  document.getElementById('setting-reveal-controls')?.classList.add('hidden');
+  document.getElementById('setting-reveal-controls')?.setAttribute('inert', '');
   // Exit bulk-select mode so the next room starts with a clean files panel.
   state.filesSelectMode = false;
   state.selectedFiles   = new Set();
