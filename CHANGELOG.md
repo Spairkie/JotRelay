@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 68 — Admin dashboard staleness fixes, export file-link bug
+
+#### Fixed
+- **File-attachment links (as opposed to images) broke in every exported/printed/copied document.** The export pipeline's file-ref resolver correctly extracted a URL for both `<img data-syncpad-file>` and `<a data-syncpad-file>` (non-image attachments render as the latter), but only rewrote the `<img>` tag shape — an attachment link kept its dead `href="#"` in the output even though the live in-app preview resolves the same element correctly.
+- **Locking, unlocking, quarantining, or deleting a room from its detail drawer never refreshed the Rooms tab behind it** — a lock badge, the room count, and the pager all stayed stale until the tab was manually reopened. Fixed with a targeted refresh that only fires when Rooms is actually the active tab (the drawer can also be opened from Reports/Files/Audit, so a blind refresh would replace an unrelated tab out from under the admin).
+- **The "Total rooms" stat card didn't clear an active Rooms filter.** Clicking "Active today" or "Expired" (which set one) and then "Total rooms" (which doesn't) left the Rooms tab still filtered under a label implying the full set.
+- **CSV room export didn't neutralize leading `=`/`+`/`-`/`@` in room names** — a classic formula-injection vector (e.g. `=HYPERLINK(...)`) when the export is opened in Excel/Sheets/LibreOffice. Prefixed with an apostrophe, the same "force text" convention GitHub/GitLab use for their own CSV exports of user content.
+- **Signing out of the admin dashboard didn't reset filter/search/sort/pagination state**, despite `admin/state.js`'s own header comment documenting that it should — a second admin signing in on the same tab (no full page reload) silently inherited whatever the previous admin had filtered, searched, or sorted to.
+
 ### Phase 67 — Settings-panel accordion reset, About modal feature list
 
 #### Fixed
