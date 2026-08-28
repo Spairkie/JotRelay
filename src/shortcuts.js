@@ -25,7 +25,7 @@
 //   Alt + Shift + S          Open share modal
 //   Alt + Shift + T          Insert timestamp
 //   Alt + Shift + C          Copy note
-//   Alt + Shift + A          Ask AI on the current selection
+//   Alt + Shift + A          Ask AI — comment on the current selection
 //   Esc                      Close panel / modal / dropdown
 //
 // Why Alt+Shift for P/S/T/C: Ctrl/Cmd+Shift+<letter> collides with
@@ -78,7 +78,7 @@ let _editor = null;
  * @param {Function} handlers.onOpenSearch
  * @param {Function} handlers.onForceClose   – called for Esc when not in editor
  * @param {Function} handlers.onOpenShortcuts
- * @param {Function} handlers.onAskAi        – Alt+Shift+A, Ask AI on the current selection
+ * @param {Function} handlers.onAskAi        – Alt+Shift+A, Ask AI comment on the current selection
  * @param {Function} handlers.onApplyFormat  – (action) => void, surface-aware formatting
  * @param {Function} handlers.isLiveFocused  – () => boolean, is the CM6 live surface focused
  */

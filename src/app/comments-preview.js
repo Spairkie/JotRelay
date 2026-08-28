@@ -60,10 +60,33 @@ export async function _openCommentsPanel() {
   }
 }
 
+// Matches syncpad_room_comments_text_len_check (0003_room_comments.sql),
+// which applies to the stored `text` column — i.e. the post-encryption
+// ciphertext for an encrypted room, not the plaintext callers pass in. A
+// caller-side character-count guess (as ask-ai.js used to do on its own)
+// can't reliably stay under this: AES-GCM's IV/tag + base64 overhead, and
+// non-ASCII text's larger UTF-8 byte-per-character ratio (e.g. CJK is 3
+// bytes/char in UTF-8 but 1 UTF-16 code unit in JS string length), both
+// inflate the stored value well past what a plaintext .length check
+// expects. Enforced once here, on the actual stored value, so every
+// caller (the comment composer, replies, Ask AI) is covered uniformly.
+const TEXT_MAX = 4000;
+
 export async function _submitComment(text, anchor) {
   if (!canEdit()) { UI.showToast(editBlockedReason() || 'Editing is disabled.', 'warning'); return; }
   try {
-    const payloadText = state.encKey ? await encryptContent(text, state.encKey) : text;
+    let payloadText = state.encKey ? await encryptContent(text, state.encKey) : text;
+    if (payloadText.length > TEXT_MAX) {
+      // Shrink the plaintext and re-encrypt until the stored value actually
+      // fits — re-checking the real encrypted length each time rather than
+      // trying to back-compute a byte budget, since AES-GCM/base64 overhead
+      // is fixed but UTF-8 byte-per-character expansion isn't known upfront.
+      let trimmed = text;
+      while (payloadText.length > TEXT_MAX && trimmed.length > 0) {
+        trimmed = trimmed.slice(0, Math.ceil(trimmed.length * 0.9));
+        payloadText = state.encKey ? await encryptContent(trimmed, state.encKey) : trimmed;
+      }
+    }
     // Snapshot of the anchored text itself, so a later edit can be detected
     // as "the commented text is gone" and the comment auto-deleted (see
     // _pruneDeletedCommentAnchors). Point comments (no selection, just a
