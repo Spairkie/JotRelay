@@ -8,6 +8,111 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 68 — Admin dashboard staleness fixes, export file-link bug
+
+#### Fixed
+- **File-attachment links (as opposed to images) broke in every exported/printed/copied document.** The export pipeline's file-ref resolver correctly extracted a URL for both `<img data-syncpad-file>` and `<a data-syncpad-file>` (non-image attachments render as the latter), but only rewrote the `<img>` tag shape — an attachment link kept its dead `href="#"` in the output even though the live in-app preview resolves the same element correctly.
+- **Locking, unlocking, quarantining, or deleting a room from its detail drawer never refreshed the Rooms tab behind it** — a lock badge, the room count, and the pager all stayed stale until the tab was manually reopened. Fixed with a targeted refresh that only fires when Rooms is actually the active tab (the drawer can also be opened from Reports/Files/Audit, so a blind refresh would replace an unrelated tab out from under the admin).
+- **The "Total rooms" stat card didn't clear an active Rooms filter.** Clicking "Active today" or "Expired" (which set one) and then "Total rooms" (which doesn't) left the Rooms tab still filtered under a label implying the full set.
+- **CSV room export didn't neutralize leading `=`/`+`/`-`/`@` in room names** — a classic formula-injection vector (e.g. `=HYPERLINK(...)`) when the export is opened in Excel/Sheets/LibreOffice. Prefixed with an apostrophe, the same "force text" convention GitHub/GitLab use for their own CSV exports of user content.
+- **Signing out of the admin dashboard didn't reset filter/search/sort/pagination state**, despite `admin/state.js`'s own header comment documenting that it should — a second admin signing in on the same tab (no full page reload) silently inherited whatever the previous admin had filtered, searched, or sorted to.
+
+### Phase 67 — Settings-panel accordion reset, About modal feature list
+
+#### Fixed
+- **The Settings panel's "Set expiry"/"Set reveal" accordion sections stayed expanded across room navigation.** Opening either one toggles its own `.hidden`/`inert` state directly with nothing else that ever re-collapses it, so leaving a room with one expanded left the Settings panel showing that section already open in the next room, before the visitor had asked to see or change that room's own expiry/reveal state. Fixed by collapsing both in `teardownRealtimeSession()` (`src/app/room-lifecycle.js`), alongside the existing preset-picker resets it already sits next to.
+
+#### Changed
+- **The About modal's feature list was missing several shipped features** — Live/Split editing, inline comments, version history, Ask AI, and timed reveal weren't mentioned. Brought current.
+
+### Phase 66 — Presskit branding regeneration, leftover rebrand text
+
+#### Fixed
+- **Every presskit marketing asset — all 6 screenshots, the demo video, its poster frame, and the zip bundle — still showed the old "SyncPad" branding**, including a fake `syncpad.app` domain visible in one screenshot's Share modal. `scripts/mockups/*.html` (the HTML these are rendered from) is auto-extracted from `index.html`, which already said "JotRelay," but the rendered PNG/video/zip *artifacts* were never regenerated after the rebrand — a real, user-facing regression found by acting as a user and walking the marketing site. Fixed by re-running the existing deterministic pipeline (`npm run presskit:screenshots` / `presskit:video` / `presskit:zip`) — no manual image edits; every output visually re-verified before committing.
+- Two more leftover "SyncPad" text mentions found via a full-repo sweep: `supabase/functions/syncpad-cleanup/README.md`'s title (function/directory name intentionally kept unrenamed per CLAUDE.md's exclusion list — only the human-readable title changed) and `vendor/codemirror-entry.js`'s header comment.
+
+### Phase 65 — Documentation accuracy pass
+
+#### Fixed
+- **A verification pass across `README.md`, `docs/architecture.md`, `docs/playwright.md`, `RELEASE_CHECKLIST.md`, `docs/security.md`, and `DEPLOYMENT.md` found and fixed several stale claims**, checked against real source rather than assumed correct: feature lists missing Ask AI/Timed Reveal/the Activity tab/editable tables/Web Share Target; `docs/architecture.md`'s Module Responsibilities table documented only 19 of 32 modules (now all 32, with `app.js`/`admin.js`'s entries rewritten to reflect the current thin-entry-point / 5-tab architecture instead of stale pre-split descriptions); a hardcoded service-worker cache-version string that goes stale almost every release (now points at the file instead); a Playwright spec-file count of 28 against an actual 43 (full table of all 43 files added to `docs/playwright.md`); and `RELEASE_CHECKLIST.md` had zero coverage for passcode, encryption, view-once, device limit, timed reveal, comments, version history, or Ask AI — full sections added for each.
+
+### Phase 64 — Comment z-index above editor chrome
+
+#### Fixed
+- **Comment markers and the floating comment bubble could render behind other in-editor floating chrome** (remote cursor name labels in particular). Raised `.comment-margin-layer`/`.comment-floating-bubble` from `z-index: 6` to `22`, above `.cm-remote-caret-label` (21) — comments now consistently render on top of the editor surface and its own overlays.
+
+### Phase 63 — Timed Reveal
+
+#### Added
+- **Timed Reveal** — hide a note from everyone but its creator until a set time, mirroring Auto-expire's UI (a `reveal_at` column, preset/custom pickers in the Settings panel) but gating the opposite direction: `joinRoom()` shows a countdown screen to any non-creator device visiting before `reveal_at`, exempting the creating device the same way View-once and Device limit already do. The countdown screen auto-resolves once the time passes, no manual reload needed. Client-side only, same enforcement caveat as passcode — documented in CLAUDE.md, `docs/security.md`, and `DEPLOYMENT.md`'s security table. It only gates at join time: a non-creator device already inside a room when Timed Reveal is turned on remotely is not retroactively blanked, unlike encryption's key-clearing behavior — there's no cryptographic reason to force that here.
+
+### Phase 62 — History panel Activity tab
+
+#### Added
+- **A second "Activity" tab in the History panel**, alongside the existing content-snapshot view — merges every already-timestamped, room-scoped signal the schema persists (saved versions, comments, file uploads) into one chronological feed, most recent first. Comments and revisions are both optional migrations, so each source degrades independently rather than breaking the tab if one isn't installed. Settings changes and device joins aren't included, since nothing in the schema persists those with a timestamp today. The panel/tool-button label changed from "Version History" to reflect the broader scope.
+
+### Phase 61 — Accessibility and panel-shadow fixes
+
+#### Fixed
+- **A permanent dark vertical band along the right edge of the window, visible even with no panel open.** All 7 side panels (tools/files/history/comments/presence/settings/search) plus the admin drawer and PWA bar applied `box-shadow` unconditionally while transform-hidden off-screen — a shadow's blur radius isn't clipped by `transform`, so each one bled past its own edge into the visible page, and with 7 panels stacked at the same off-screen position, it compounded into a constant visible band. Fixed by moving `box-shadow` from the base rule to each panel's `.open`/`.visible` state.
+- Dynamically-created inputs (the floating comment composer, the generic prompt modal, the templates search box) were built via `document.createElement('input')` with no `id`/`name`/`autocomplete`, tripping DevTools' form-field accessibility warnings. Added `autocomplete="off"` (none are login/identity fields) plus `id`/`name` to each.
+
+### Phase 60 — Ask AI
+
+#### Added
+- **"Ask AI"** — a Gemini-powered assistant scoped to the current text selection only; the client never sends the rest of the note. A new `ask-ai` Supabase Edge Function (same service-role-key pattern as `syncpad-cleanup`) proxies the request to Gemini's free tier server-side, so no end user needs their own API key and the key never ships in client JS. Reuses the existing rate-limit infrastructure from `0010_anonymous_write_rate_limiting.sql` as a guard on the shared key. `src/ask-ai.js` is the thin Edge Function client; `src/app/ask-ai.js` owns the selection/consent/UI flow (a one-time consent notice before first use). Reachable via a toolbar button, an editor context-menu item, and `Alt+Shift+A`.
+- The response lands as an anchored comment on the selected text (same pipeline as regular comments — encryption, anchor-text snapshot, realtime broadcast, margin dots/panel/floating bubble) rather than overwriting the selection, and is also reachable from the Tools panel.
+
+#### Fixed
+- Google retired `gemini-2.0-flash`; updated the default model to the current one. `GEMINI_MODEL` remains overridable via `supabase secrets set` without a redeploy for whenever the model lineup shifts again.
+- Several correctness fixes from code review, including: capturing `state.roomId` before the consent/prompt/network round trip and discarding the result if the visitor navigated to a different room in the meantime, rather than writing a stale-anchor comment into the wrong room.
+
+### Phase 59 — Editable GFM table cells in Live mode
+
+#### Changed
+- **Table cells in Live/Split mode are now directly editable**, instead of the previous all-or-nothing behavior (a static rendered table until the selection touched it, at which point the *entire* table reverted to raw pipe/dash syntax to edit anything). Each cell is now its own `contenteditable` island wired back into the CM6 document via `view.dispatch()` — the same bridge the existing checkbox widget uses — committing on blur/Enter/Tab, with the table staying rendered as a real `<table>` throughout editing. Scoped to cell *text* only for this pass; row/column structure is still edited via raw syntax.
+
+### Phase 58 — Web Share Target ("send to JotRelay")
+
+#### Added
+- **JotRelay now appears in the OS/browser "Share to…" sheet once installed as a PWA**, via `manifest.json`'s `share_target`. Sharing text/a link from another app creates a fresh room and seeds its content through the normal template-insertion pipeline — the same `joinRoom()`/state-reset path as any other navigation, no special-cased shortcut.
+
+### Phase 57 — Passcode modal, about/legal page polish
+
+#### Changed
+- **"Set passcode" now opens a dedicated modal** (passcode + confirm fields, inline mismatch validation, visual weight matching the passcode auth-gate screen) instead of the generic single-field prompt dialog.
+- The device-limit setting row now wraps on narrow viewports instead of crowding its label.
+- Polished the About modal (icon, checkmark list, a security note styled as a callout matching the Share modal's warning-list pattern) and the contact/privacy/terms legal screens — bullets grouped under sub-headings for scannability, with every existing bullet's text preserved verbatim.
+
+### Phase 56 — Resync on refocus, view-once auto-revert, shortcut/z-index fixes
+
+#### Fixed
+- **Mobile backgrounding could leave stale content on screen indefinitely.** Passive `navigator.onLine` events aren't a reliable signal on their own — a blip can resolve without the OS ever reporting the interface down, and a backgrounded/sleeping device can wake up already reconnected with no event delivered at all. The app now actively resyncs (re-fetches fresh room content and reconciles) unconditionally on `visibilitychange`/`focus`/`pageshow`, not only when it already believed it was offline, throttled to avoid a visible flash on ordinary quick tab switches. A slow poll while genuinely believed-offline covers the case where nothing fires on the same tab at all.
+- **View-once rooms now always revert to a normal room once reset**, instead of re-arming view-once — `resetViewOnceNote()` dropped its `keepViewOnce` option, `disableViewOnce()` now also clears `cleared_reason` (a latent gap that left stale state behind), and the consumed-room panel's button copy was updated to match.
+- `shortcuts.js`: fixed a Caps Lock edge case where mod-only single-letter shortcuts (Ctrl+B/I/K/S/F) matched only the lowercase form, unlike the Shift-combo branches which already checked both cases; consolidated a duplicate global Escape listener into the one in `header.js`.
+- A collaborator's remote cursor name label could render behind other in-editor floating chrome (the comment FAB, the remote-edit notice) — raised its z-index above both.
+- The expiration bar's "Remove" button could be covered by the floating comment button on short mobile viewports — `.comment-fab` now gets a dynamic bottom offset when the expiration bar is visible.
+- `#btn-share` didn't fill its own hover background on desktop — its fixed icon-only box left the "Share" label rendering outside the hoverable area. Sized to its actual icon+label content instead.
+
+### Phase 55 — Unified scroll rail, seamless scroll continuity, reliable PWA reconnect
+
+#### Added
+- **The heading minimap and scrollbar are merged into one custom component** (`src/scroll-rail.js`) that works identically across both editor surfaces — the CM6 Live/Split view and the plain Write-mode textarea (which has no parser to walk for headings, so it gets its own regex-based line scan plus a mirror-div measurement for pixel-accurate, wrap-aware tick positions). Native scrolling is untouched; only the native scrollbar's paint is hidden under the new rail, which adds a draggable thumb and heading ticks that fade in by distance from the pointer rather than all at once.
+- **Scroll position now carries across mode switches (Write ↔ Live ↔ Split) and revisits** as a source character-offset instead of leaving the newly-revealed surface at whatever it last happened to show. Split-mode's two-pane sync migrated from percentage-of-scrollable-range matching to the same offset anchor for one consistent mechanism instead of two.
+
+#### Fixed
+- **The app could get stuck showing the offline banner until an unrelated action (the next debounced save) happened to touch the network** — passive `navigator.onLine` events aren't a reliable signal on their own, so a blip could resolve, or a backgrounded device wake up already reconnected, with no event ever firing. Added active re-verification on the tab regaining visibility plus a slow poll while genuinely believed offline, as a fallback for a blip that fires nothing on the same tab at all. (Superseded by Phase 56's broader unconditional-resync fix above.)
+- The PWA install banner and service-worker cache versioning had several correctness fixes across multiple review rounds on this work, confirmed against real browser behavior rather than assumed correct from the diff.
+
+### Phase 54 — Admin "back to app" link, edge-function CORS, storage-orphan sweep
+
+#### Added
+- A link back to the main app from the admin dashboard header.
+
+#### Fixed
+- The `syncpad-cleanup` edge function's CORS headers rejected the `apikey`/`x-client-info` headers Supabase's own client sends, blocking browser-based calls to it.
+- The admin "reset entire database" action didn't sweep every true Storage orphan it should have.
+
 ### Phase 53 — Admin dashboard sort/filter indexes
 
 #### Added

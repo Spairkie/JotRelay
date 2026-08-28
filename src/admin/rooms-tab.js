@@ -174,7 +174,13 @@ async function _exportRoomsCsv() {
 /** RFC 4180-ish CSV serialization: quote a field only when it needs it. */
 function _toCsv(header, rows) {
   const esc = (v) => {
-    const s = v == null ? '' : String(v);
+    let s = v == null ? '' : String(v);
+    // room_name is fully user-controlled; a leading =/+/-/@ opens it as a
+    // formula in Excel/Sheets/LibreOffice (classic CSV/formula injection —
+    // e.g. `=HYPERLINK("http://evil.example","click")`). Prefix with a
+    // apostrophe, the standard neutralizer these apps already treat as
+    // "force text", same as GitHub/GitLab do for CSV exports of user content.
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return [header, ...rows].map((row) => row.map(esc).join(',')).join('\r\n');

@@ -40,8 +40,9 @@ how they were generated.
 - **Typora-style live markdown editing** — the Live surface (CodeMirror 6) renders formatting inline as you type (hidden syntax markers, real tables/images/checkboxes) alongside a raw Source mode and a side-by-side Split view, plus a safe custom renderer (no CM6 dependency) powering export/print/file-preview output
 - **File upload and preview** — images, text, Markdown, CSV, PDF (no library)
 - **Presence, typing indicator, and cursor/activity tracking**
+- **Ask AI** — select text and get a Gemini-powered suggestion added as a comment on that selection (never replaces your text, never sends the rest of the note); proxied through a Supabase Edge Function so no API key ever reaches the browser
 - **Responsive layout** with 10 themes, bottom action bar on mobile
-- **Progressive Web App** (PWA) — installable, offline-capable
+- **Progressive Web App** (PWA) — installable, offline-capable, and a Web Share Target so you can share text/links into JotRelay from your OS's own share sheet once installed
 - **Thorough documentation** and a working Supabase SQL schema
 
 ---
@@ -62,9 +63,10 @@ how they were generated.
 - **Short room codes** — a 6-character spoken/typed alternative to the full link (e.g. reading it aloud on a call), same access level as the plain link. Get one from the Share modal's "Short code" row; join with one by typing it straight into the landing page's join box. Requires the optional `supabase/migrations/0002_short_room_codes.sql` migration — see [Optional feature migrations](DEPLOYMENT.md#optional-feature-migrations)
 - **QR codes** with download button for each link type
 - **Room editing lock** — pause edits on all devices; enforced server-side by a database trigger, not just the frontend
+- **"Share to JotRelay"** — once installed as a PWA, JotRelay registers as a Web Share Target in the OS's own share sheet; sharing text/a link from another app creates a brand-new room seeded with that title/text/URL as Markdown
 
 ### Content & Editing
-- **Three editor modes — Source, Live, and Split** — Source shows raw markdown text; Live (the default for new rooms, remembered per-device once you switch) is a Typora-style CodeMirror 6 surface that renders formatting inline as you type — headings, bold/italic, GFM tables, images, checkboxes, GitHub-style alerts (`> [!NOTE]` etc.), footnotes, and syntax-highlighted fenced code blocks all render live, with raw syntax revealed only where the caret currently is; Split shows Source and Live side by side with synced scrolling
+- **Three editor modes — Source, Live, and Split** — Source shows raw markdown text; Live (the default for new rooms, remembered per-device once you switch) is a Typora-style CodeMirror 6 surface that renders formatting inline as you type — headings, bold/italic, GFM tables (editable in place — click a cell and type, Tab/Shift-Tab/Enter to navigate), images, checkboxes, GitHub-style alerts (`> [!NOTE]` etc.), footnotes, and syntax-highlighted fenced code blocks all render live, with raw syntax revealed only where the caret currently is; Split shows Source and Live side by side with synced scrolling
 - **Safe Markdown rendering** — a from-scratch renderer (built on the same Lezer parse tree CodeMirror uses) with no raw HTML pass-through; powers export, PDF/print, and file preview output; XSS-safe
 - **Images** — `![alt](https://…)` renders inline (http/https only)
 - **Bare URL autolinking** — plain `https://…` text becomes a clickable link automatically
@@ -75,7 +77,8 @@ how they were generated.
 - **Find & Replace** — case-insensitive (toggle to case-sensitive) search with Prev / Next navigation, Replace, and Replace All
 - **Selection context menu** — right-click selected text, in either Source or Live mode, for cut/copy/paste/delete/select-all or to add a comment, without navigating to the toolbar or Comments panel first. On a touchscreen, long-press defers to the device's own native text-selection UI (selection handles, the OS Copy/Select All/Share callout) instead of opening this menu
 - **Inline comments** — anchor a comment to a text range from the Comments panel, the selection context menu, or the floating add-comment button (bottom-right of the editor, or `Ctrl/⌘ + Shift + /`) which opens a composer right at your selection/caret; a small dot in the editor's margin marks each comment's anchor line — click to expand it into a floating bubble with the full text and Prev/Next navigation between comments, without needing to open the panel; requires the optional `supabase/migrations/0003_room_comments.sql` migration
-- **Version History** — browse and restore past snapshots of a room's content, including a scrubbable time-slider; requires the optional `supabase/migrations/0004_version_history.sql` migration
+- **History panel** — a **Versions** tab to browse and restore past snapshots of a room's content (including a scrubbable time-slider; requires the optional `supabase/migrations/0004_version_history.sql` migration), plus an **Activity** tab that merges saved versions, comments, and file uploads into one chronological timeline
+- **Ask AI** — select any text, describe what you want done with it (fix grammar, summarize, make more concise, …), and get a Gemini-powered response added as a **comment** on that selection — your note text is never changed, and only the selection is sent, never the rest of the note. One-time consent notice before the first use in a browser. Reachable from the toolbar, right-click context menu, Tools panel, command palette, or `Alt+Shift+A`. Requires deploying the `ask-ai` Supabase Edge Function with a `GEMINI_API_KEY` secret — see `supabase/functions/ask-ai/README.md`
 - **Command palette** — `Ctrl/⌘ + K` (or the More menu) opens a searchable list of every app action — modes, panels, sharing, export, themes, and more — filter by typing, navigate with arrow keys, run with Enter
 - **Slash-command quick-insert** — type `/` at the start of a line (Source mode) to open a filterable popup for headings, lists, checklist, links, code blocks, dividers, timestamp, and templates, without leaving the keyboard for the toolbar
 - **Keyboard shortcuts** — see [Keyboard Shortcuts](#keyboard-shortcuts) below
@@ -96,6 +99,7 @@ how they were generated.
 - **Auto-expiration** — rooms cleared at open after expiry; pg_cron backend cleanup optional
 - **View-once** — note cleared server-side after first non-creator editable viewer
 - **Device limit** — auto-clear the note once N distinct devices (excluding the creator's own) have joined the room; requires the optional `supabase/migrations/0005_device_limit.sql` migration
+- **Timed reveal** — hide a room's content from everyone but its creator until a set future time (the mirror image of Auto-expire); the creator keeps writing normally while a non-creator visitor sees a live countdown instead of the note. Convenience only, same as passcode; requires the optional `supabase/migrations/0015_timed_reveal.sql` migration
 - **Anonymous write rate limiting** — server-side, per-device and per-IP caps on room creation and report submission; requires the optional `supabase/migrations/0010_anonymous_write_rate_limiting.sql` migration
 
 ### Files
@@ -131,6 +135,7 @@ how they were generated.
 | `Alt + Shift + S` | Open the Share modal |
 | `Alt + Shift + T` | Insert a timestamp |
 | `Alt + Shift + C` | Copy the note |
+| `Alt + Shift + A` | Ask AI — comment on the current selection |
 | `Tab` / `Shift + Tab` | Indent / dedent (in the editor) |
 | `Esc` | Close panel / modal / dropdown |
 
@@ -242,6 +247,7 @@ ORDER  BY room_id, uploaded_at;
 | View-once is convenience-only | Not a secure destruction guarantee; viewers can still copy or capture content before it clears |
 | File filename/type are not encrypted | A file's content is encrypted in an encrypted room, but its name and MIME type stay plaintext, and files uploaded before encryption was turned on stay plaintext too |
 | Passcode is a convenience gate | Hash is checked client-side; not server-enforced |
+| Timed reveal is a convenience gate | A pure client-side time comparison, checked only at join time; not server-enforced, and doesn't retroactively hide content from a device already inside the room when it's turned on remotely |
 | Storage cleanup needs service-role maintenance | Admin room deletion removes known physical objects first; backend cleanup paths need the optional `syncpad-cleanup` Edge Function because SQL cannot delete Storage objects |
 
 ---
@@ -272,6 +278,7 @@ Browser UI (HTML/CSS/JS)
             ├── templates.js    — 17 built-ins + localStorage custom templates
             ├── theme.js        — CSS variable theme system
             ├── shortcuts.js    — keyboard shortcut handler
+            ├── ask-ai.js       — Ask AI client, proxied through the ask-ai Edge Function
             └── admin.js        — admin dashboard entry point; shell/tabs in src/admin/*.js
 
 Supabase Backend
@@ -281,7 +288,8 @@ Supabase Backend
     ├── syncpad_room_revisions (Postgres table, optional migration)
     ├── syncpad_share_links   (Postgres table)
     ├── syncpad_room_reports  (Postgres table, insert-only for anon)
-    └── syncpad-files         (Storage bucket, private, signed URLs)
+    ├── syncpad-files         (Storage bucket, private, signed URLs)
+    └── Edge Functions        — syncpad-cleanup (Storage orphan cleanup), ask-ai (Gemini proxy for Ask AI)
 ```
 
 See [`docs/architecture.md`](docs/architecture.md) for the full module-by-module breakdown and data flow diagrams.
@@ -348,6 +356,11 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 
 ### Recently completed
 
+- [x] Ask AI — selection-only, Gemini-powered, comment-based rewrite/summarize assistant, proxied through a Supabase Edge Function
+- [x] Timed reveal — hide a room from everyone but its creator until a set future time
+- [x] History panel Activity tab — a merged timeline of saved versions, comments, and file uploads
+- [x] Editable tables in the Live surface — click a cell and type, Tab/Shift-Tab/Enter to navigate
+- [x] Web Share Target — "Share to JotRelay" from the OS share sheet once installed as a PWA
 - [x] Command palette — `Ctrl/⌘+K` opens a searchable list of every app action
 - [x] Multi-file upload — drag-and-drop and file-picker both accept multiple files at once, uploaded sequentially with per-file progress
 - [x] Correct download filenames — downloads now carry the original uploaded filename via a forced-download signed URL, instead of the sanitized/timestamped Storage path name
@@ -361,7 +374,7 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 - [x] Admin dashboard — Supabase Auth gate, rooms / reports / cleanup tabs
 - [x] Templates Library v2 — 17 built-ins, searchable modal, export / import JSON
 - [x] PDF export — browser `window.print()` in a styled preview window
-- [x] Playwright test suite — grown from an initial ~75 scenarios across 6 spec files to 28 spec files today; see `docs/playwright.md` for current scope
+- [x] Playwright test suite — grown from an initial ~75 scenarios across 6 spec files to 43 spec files today; see `docs/playwright.md` for current scope
 - [x] Editor modernization — floating card layout, comfortable max writing width, split-view divider
 - [x] Typora-style Live editing surface — CodeMirror 6-backed, replacing the old read-only rendered-HTML preview pane as the default view for new rooms
 
@@ -376,7 +389,7 @@ See [`docs/playwright.md`](docs/playwright.md) for the full test guide.
 - [x] Batch admin expired-room cleanup queries for larger room sets
 - [x] Add real `/share/:token` protected-room regression tests
 - [x] Add admin user setup documentation in `docs/admin-setup.md`
-- [x] Bump service worker cache version on every release that changes cached assets (currently `syncpad-v45` — see `service-worker.js`)
+- [x] Bump service worker cache version on every release that changes cached assets — check `service-worker.js`'s `CACHE_VERSION` for the current value, since it changes with nearly every release and this doc doesn't get updated in lockstep
 - [x] Anonymous write rate limiting for room creation (30/device + 60/IP per 15 min) and report submission (10/device + 20/IP per 15 min) — optional `supabase/migrations/0010_anonymous_write_rate_limiting.sql`; see [Optional feature migrations](DEPLOYMENT.md#optional-feature-migrations)
 
 ### Outside current demo scope

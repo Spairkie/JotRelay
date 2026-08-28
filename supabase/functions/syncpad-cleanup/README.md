@@ -1,4 +1,4 @@
-# SyncPad Cleanup Edge Function
+# Cleanup Edge Function
 
 Optional service-role maintenance function for Supabase Storage cleanup.
 

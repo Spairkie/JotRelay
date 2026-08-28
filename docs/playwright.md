@@ -75,37 +75,52 @@ npx playwright test --project=webkit
 
 ## 4. Test File Overview
 
-All spec files live in `tests/`. Each file is focused on a single area of the application. There are 28 spec files today.
+All spec files live in `tests/`. Each file is focused on a single area of the application. There are 43 spec files today.
 
 | File | What it tests |
 |---|---|
 | `accessibility.spec.js` | Keyboard navigation, ARIA roles, focus management, and the custom confirm dialog |
 | `admin.spec.js` | Admin dashboard: route, login form, unauthenticated access denial, pagination, stats |
 | `command-palette.spec.js` | Command palette open/close, filtering, keyboard navigation, and the `Ctrl+K` context split between "insert link" (in the editor) and "open the palette" (elsewhere) |
+| `comments-mobile-composer-dock.spec.js` | The floating comment composer's mobile "dock above the keyboard" positioning, re-measured after the on-screen keyboard actually opens (not just at the caret's pre-keyboard snapshot position) |
+| `comments-mobile-composer-rotation.spec.js` | The floating comment composer re-evaluates desktop-vs-mobile mode on an in-progress phone rotation across the 639px breakpoint, instead of staying stuck in whichever mode was captured when it opened |
+| `comments-mobile.spec.js` | Tap-to-view a comment's anchored text on touch devices — the margin dot is CSS-hidden there, so `.cm-comment-anchor` spans are the tap target instead |
 | `comments.spec.js` | Comments — the merged cursor-chat + comments feature: the Comments panel composer, the floating add-comment composer, margin dots, the floating bubble, and Prev/Next comment navigation |
 | `dialogs.spec.js` | `showPrompt()`, focus trapping in modals, and other dialog-related keyboard/accessibility improvements |
 | `editor-context-menu.spec.js` | Right-click context menu: clipboard (Cut/Copy/Paste), selection (Select all/Delete), Add comment, and read-only viewers' reduced item set |
 | `editor-modes.spec.js` | Editor mode switching (Source/Live/Split) and CSS class correctness — note Live is the default for fresh rooms, not Source |
 | `editor.spec.js` | Core editor: textarea input, word count, Source/Live/Split mode switching, the CM6 live surface, auto-pair, smart punctuation, Focus mode, Typewriter mode, export actions |
 | `export.spec.js` | Export and copy behavior: empty-note warning toasts, file downloads, copy to clipboard |
+| `file-encryption.spec.js` | Files uploaded to an encrypted room are AES-256-GCM-encrypted client-side before reaching Storage, and decrypted back into a local Blob object URL for preview/download |
 | `files.spec.js` | File attachments: multi-file upload, bulk select/delete, and download-filename correctness |
-| `history.spec.js` | Version history: opening the panel, the empty state, the snapshot-before-Clear-note → Restore round trip, and the scrubber slider |
+| `header-logo-nav.spec.js` | The in-room header logo links to the create/join screen (`/JotRelay/app/`), not the marketing landing page, since it's only ever visible once already inside a room |
+| `history.spec.js` | History panel: the Versions tab (opening the panel, the empty state, the snapshot-before-Clear-note → Restore round trip, the scrubber slider) and the Activity tab's merged timeline |
 | `landing-demo.spec.js` | The coded interactive hero demo on the landing page: scene navigation, autoplay pause/resume, reduced motion, offscreen/hidden-tab pausing, no backend calls |
 | `landing.spec.js` | Landing page: rendering, "New room" navigation, "Join room" navigation, recent-rooms list, active-section nav highlighting |
 | `live-editor-rendering.spec.js` | The CM6-backed Live/Split surface's own rendering path (separate from `markdown.js`'s static renderer): GFM tables, GitHub-style alerts, footnotes, fenced-code syntax highlighting |
 | `markdown.spec.js` | The static `renderMarkdown()` renderer: headings, bold, italic, code, links, checklists, tables of contents, highlight/`==mark==`, XSS safety |
+| `mobile-keyboard.spec.js` | `src/keyboard-viewport.js`'s `--kb-inset` CSS custom property, tracking the on-screen keyboard's footprint on platforms where `window.innerHeight` doesn't shrink for it |
+| `onboarding.spec.js` | The first-time product tour — spotlight steps, replay from the More menu, and the auto-trigger mechanism itself on a genuinely new room |
+| `pwa-unsaved-warning.spec.js` | The `beforeunload` warning driven by `hasUnsavedChanges()` — specifically about the durable Postgres save not having confirmed yet, not local drafts (which are already safe) |
+| `pwa.spec.js` | Installability and offline behavior — the two things a PWA install actually promises; runs everywhere since it never touches Supabase |
 | `read-only.spec.js` | Read-only share link behavior: `?mode=read` and `/share/:token`, editor disabled, no upload/delete, unlocking passcode/encrypted rooms while staying read-only |
 | `remote-selection.spec.js` | A remote collaborator's selection renders as a highlighted span (not just a caret) in the CM6 live surface, and Devices panel "Follow" mode |
 | `room-errors.spec.js` | Room load error states, the retry button, multi-room navigation, and offline reconnect reconciliation |
 | `room-title.spec.js` | Inline room-title editing |
 | `routing.spec.js` | URL routing: `/`, `/admin`, `/contact`, `/privacy`, `/terms`, arbitrary room IDs, single screen visible at a time, browser Back/Forward |
+| `scroll-continuity.spec.js` | Scroll position stays continuous across mode switches (Write/Live/Split) and across repeat visits to the same room |
+| `scroll-rail-unified.spec.js` | Both editor surfaces' scroll rails share one mounting/positioning architecture and one smooth-scroll primitive |
 | `search.spec.js` | Find & Replace panel: `Ctrl+F` to open, match count, Next/Prev cycling, Replace/Replace All, case-sensitive toggle |
 | `settings.spec.js` | Settings panel: expiration presets, theme picker, paste-stripping toggle, view-once, device limit, editing lock, file sort |
 | `short-room-code.spec.js` | Short, human-typeable/speakable room codes — an alternate spelling of the editable room link, generated on demand in the Share modal |
 | `shortcuts.spec.js` | Keyboard shortcuts, verified in both the plain Write textarea and the CM6 live surface, including the `Alt+Shift` combos |
 | `slash-menu.spec.js` | The `/`-triggered quick-insert menu in Source mode |
+| `sync-unsaved-race.spec.js` | Two async-ordering races in `sync.js`'s save-status tracking (`hasUnsavedChanges()`), which drives the `beforeunload` warning |
 | `templates-custom.spec.js` | Custom template CRUD — save, rename (`showPrompt`), delete (`showConfirm`) |
 | `templates.spec.js` | Templates modal: open, tab switching, insert, search/filter, save-as-template |
+| `theme-contrast.spec.js` | Accessibility guard: every theme's filled-button text/background combination clears WCAG AA's 4.5:1 contrast ratio |
+| `timed-reveal.spec.js` | Timed reveal: the Settings panel UI and the join-time gate — a non-creator visitor sees `#reveal-screen` until `reveal_at` passes, while the room's creator always sees the room normally |
+| `tools-panel.spec.js` | The Tools panel's File section: "Copy Note" and "More Export Options" |
 | `utils.spec.js` | Unit tests via `inBrowser()`: `escapeHtml`, `formatFileSize`, `countWords`, `TEMPLATES`/`BODY_MAX`, `getTemplate`, `importCustomTemplates`/`exportCustomTemplates`, `renderMarkdown` XSS safety, `toggleChecklistItem` |
 
 ---
