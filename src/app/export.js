@@ -61,10 +61,20 @@ export const _resolveFileImageRefsForExport = async (html) => {
       urlByRef.set(ref, await _toEmbeddableUrl(url));
     } catch { /* left unresolved */ }
   }));
-  return html.replace(/<img data-syncpad-file="([^"]+)"([^>]*)>/g, (full, ref, rest) => {
-    const url = urlByRef.get(ref);
-    return url ? `<img src="${escapeHtml(url)}"${rest}>` : full;
-  });
+  return html
+    .replace(/<img data-syncpad-file="([^"]+)"([^>]*)>/g, (full, ref, rest) => {
+      const url = urlByRef.get(ref);
+      return url ? `<img src="${escapeHtml(url)}"${rest}>` : full;
+    })
+    // Non-image file references render as <a href="#" data-syncpad-file="…">
+    // (markdown.js) rather than <img> — same live-preview resolution in
+    // ui/editor.js, so the export must rewrite both tag shapes or a
+    // file-attachment link silently keeps its dead href="#" in every
+    // exported/printed/copied document.
+    .replace(/<a href="#" data-syncpad-file="([^"]+)"([^>]*)>/g, (full, ref, rest) => {
+      const url = urlByRef.get(ref);
+      return url ? `<a href="${escapeHtml(url)}"${rest}>` : full;
+    });
 };
 
 export function _wireExportModal() {
