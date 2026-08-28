@@ -1,4 +1,4 @@
-// SyncPad – vendor/codemirror-entry.js
+// JotRelay – vendor/codemirror-entry.js
 // Source entry for the vendored CodeMirror 6 bundle. Rebuild with:
 //   npm run build:vendor
 // The committed artifact is vendor/codemirror.js — a single self-contained
