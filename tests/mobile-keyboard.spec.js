@@ -340,4 +340,55 @@ test.describe('body.keyboard-open — bottom action bar reclaim', () => {
     expect(result.composerGone).toBe(true);
     expect(result.stillHasClass).toBe(false);
   });
+
+  test('a keyboard-open stuck by a path that never fires focusout (e.g. Android back-button dismissal) self-heals once the viewport geometry actually recovers', async ({ page }) => {
+    // focusout is keyboard-open's only OTHER cleanup path, and removing a
+    // focused element isn't guaranteed to fire it on every browser (see the
+    // previous test) — Android's back-button/gesture keyboard dismissal is
+    // a second, broader case with the same symptom: it's well documented
+    // that this closes the keyboard WITHOUT blurring the focused input at
+    // all, so no focusout fires there either, on any browser. Simulate that
+    // directly (force the class stuck with no focus event behind it) and
+    // confirm the geometry-based fallback in keyboard-viewport.js still
+    // clears it once the real viewport height recovers.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await goToLanding(page);
+    await stubVisualViewportAndImport(page);
+
+    const result = await page.evaluate(async () => {
+      // Seed the "no keyboard" baseline the same way the module's own
+      // initial call does at load — before anything opens the keyboard.
+      window.__fakeVV.height = window.innerHeight;
+      window.__fakeVVListeners.resize.forEach((fn) => fn());
+
+      // Force the class on with nothing behind it — no textarea, no focus
+      // event — the same end state a missed focusout would leave behind.
+      document.body.classList.add('keyboard-open');
+
+      // The keyboard "opens" (shrinks the viewport) — should stay stuck,
+      // same as it would while genuinely still open.
+      window.__fakeVV.height = window.innerHeight - 300;
+      window.__fakeVVListeners.resize.forEach((fn) => fn());
+      const stillOpenWhileShrunk = document.body.classList.contains('keyboard-open');
+
+      // A partial recovery that's still bigger than the margin (e.g. the
+      // keyboard's own resize height briefly overshooting mid-animation)
+      // must NOT be mistaken for the keyboard actually closing.
+      window.__fakeVV.height = window.innerHeight - 220;
+      window.__fakeVVListeners.resize.forEach((fn) => fn());
+      const stillOpenAfterSmallRecovery = document.body.classList.contains('keyboard-open');
+
+      // The keyboard actually closes (viewport recovers to baseline) with
+      // no focus event of any kind — geometry alone should heal it.
+      window.__fakeVV.height = window.innerHeight;
+      window.__fakeVVListeners.resize.forEach((fn) => fn());
+      const healedAfterRealRecovery = !document.body.classList.contains('keyboard-open');
+
+      return { stillOpenWhileShrunk, stillOpenAfterSmallRecovery, healedAfterRealRecovery };
+    });
+
+    expect(result.stillOpenWhileShrunk).toBe(true);
+    expect(result.stillOpenAfterSmallRecovery).toBe(true);
+    expect(result.healedAfterRealRecovery).toBe(true);
+  });
 });

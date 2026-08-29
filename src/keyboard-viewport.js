@@ -133,3 +133,50 @@ document.addEventListener('focusout', (e) => {
     }
   }, 50);
 });
+
+// ── Self-heal a stuck keyboard-open ─────────────────────────────────────
+// focusout is this class's ONLY cleanup path above, and that's a real gap:
+// removing a focused element from the DOM doesn't reliably fire it
+// (inconsistent across browsers/mobile Safari — see
+// closeFloatingCommentComposer()'s note in ui/collab.js, which works around
+// it for one call site by blurring explicitly before removing). Android's
+// back-button/gesture keyboard dismissal is a second, broader case with the
+// same symptom: it's well documented that this closes the keyboard WITHOUT
+// blurring the focused input at all, so no focusout ever fires there
+// either. Either way the bottom action bar (and anything else gated by
+// body.keyboard-open, see modals.css's "KEYBOARD OPEN — MOBILE" rules)
+// stays hidden until something unrelated happens to blur/refocus a field
+// correctly.
+//
+// Fix: cross-check against real geometry, which is reliable regardless of
+// *why* the keyboard closed — a keyboard closing is fundamentally a
+// viewport-size change, so it always raises a visualViewport (or window)
+// resize even when no DOM focus event fires. Track the tallest viewport
+// height seen at the current width (the no-keyboard baseline — mobile
+// browser URL-bar auto-hide can also shrink the viewport, but only by
+// ~50-100px, far less than a keyboard's 200px+), and treat a height back
+// within a keyboard-sized margin of that peak as "the keyboard is actually
+// closed," clearing the stuck class even though nothing ever blurred.
+let _peakViewportHeight = 0;
+let _peakViewportWidth  = 0;
+const KEYBOARD_HEIGHT_MARGIN = 150;
+
+function _healStuckKeyboardOpen() {
+  // Track the peak on every call, not just while keyboard-open is set — the
+  // correct "no keyboard" baseline is only ever observed while the keyboard
+  // genuinely isn't open, which is exactly when the class-gated early
+  // return below would otherwise have skipped recording it, leaving no
+  // real baseline to ever compare a later stuck-open state against.
+  const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  const w = window.innerWidth;
+  if (w !== _peakViewportWidth) { _peakViewportWidth = w; _peakViewportHeight = h; }
+  else if (h > _peakViewportHeight) { _peakViewportHeight = h; }
+
+  if (!document.body.classList.contains('keyboard-open')) return;
+  if (_peakViewportHeight - h < KEYBOARD_HEIGHT_MARGIN) {
+    document.body.classList.remove('keyboard-open');
+  }
+}
+window.addEventListener('resize', _healStuckKeyboardOpen);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', _healStuckKeyboardOpen);
+_healStuckKeyboardOpen(); // seed the peak baseline immediately, not just on the first resize

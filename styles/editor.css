@@ -376,6 +376,15 @@ body.code-line-numbers .note-live .cm-md-codeblock-content::before {
      in-document, not a global overlay. */
   z-index: 21;
 }
+/* Flipped below the caret instead of above it — toggled by live-editor.js's
+   _RemoteCaretLabelPlugin whenever the caret is on the first visible line
+   and the default above-caret position would render the label clipped
+   above .note-live's own overflow:hidden edge. Mirrors the flush corner
+   to the opposite side so it still visually "points" at the caret. */
+.note-live .cm-remote-caret-label.cm-remote-caret-label-below {
+  top: auto; bottom: -1.35em;
+  border-radius: 0 3px 3px 3px;
+}
 /* A remote collaborator's selected text range — background color set inline
    per-device (color-mix from colorForDevice()) since it's dynamic, same
    pattern as the caret's border/label colors above. */
