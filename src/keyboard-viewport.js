@@ -159,6 +159,7 @@ document.addEventListener('focusout', (e) => {
 // closed," clearing the stuck class even though nothing ever blurred.
 let _peakViewportHeight = 0;
 let _peakViewportWidth  = 0;
+let _lastViewportHeight = 0;
 const KEYBOARD_HEIGHT_MARGIN = 150;
 
 function _healStuckKeyboardOpen() {
@@ -169,11 +170,27 @@ function _healStuckKeyboardOpen() {
   // real baseline to ever compare a later stuck-open state against.
   const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
   const w = window.innerWidth;
-  if (w !== _peakViewportWidth) { _peakViewportWidth = w; _peakViewportHeight = h; }
-  else if (h > _peakViewportHeight) { _peakViewportHeight = h; }
+  if (w !== _peakViewportWidth) {
+    // A width change (orientation flip) invalidates the old baseline, but
+    // don't also run the heal check against it THIS call — if the keyboard
+    // is still genuinely open post-rotation, its current (still-shrunk)
+    // height would become the new "peak" and immediately measure as fully
+    // recovered (delta 0), incorrectly clearing keyboard-open while the
+    // keyboard is still on screen. Just reseed and wait for the next call.
+    _peakViewportWidth = w; _peakViewportHeight = h; _lastViewportHeight = h;
+    return;
+  }
+  if (h > _peakViewportHeight) _peakViewportHeight = h;
+  // Only ever heal on a genuine recovery (height growing back), never on a
+  // fresh shrink — otherwise a real keyboard shorter than the margin below
+  // (landscape/split/floating keyboards can be under 150px) would measure
+  // as "already recovered" the instant it opens, clearing keyboard-open on
+  // a keyboard that's still genuinely up rather than only a stuck one.
+  const isRecovering = h > _lastViewportHeight;
+  _lastViewportHeight = h;
 
   if (!document.body.classList.contains('keyboard-open')) return;
-  if (_peakViewportHeight - h < KEYBOARD_HEIGHT_MARGIN) {
+  if (isRecovering && _peakViewportHeight - h < KEYBOARD_HEIGHT_MARGIN) {
     document.body.classList.remove('keyboard-open');
   }
 }

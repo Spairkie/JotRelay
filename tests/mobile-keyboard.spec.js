@@ -391,4 +391,59 @@ test.describe('body.keyboard-open — bottom action bar reclaim', () => {
     expect(result.stillOpenAfterSmallRecovery).toBe(true);
     expect(result.healedAfterRealRecovery).toBe(true);
   });
+
+  test('rotating the device while the keyboard is still open does not falsely heal keyboard-open', async ({ page }) => {
+    // The self-heal's peak-height baseline is tracked per viewport WIDTH
+    // (a fresh baseline per orientation) — rotating mid-typing changes that
+    // width, and if the reseed on that width change also ran the heal
+    // check in the same call, the current (still keyboard-shrunk) height
+    // would become the brand new "peak," delta 0, immediately clearing
+    // keyboard-open even though the keyboard never closed. This is the same
+    // bug the back-button test above covers, just reached via rotation
+    // instead of a dismissal path that skips focusout.
+    //
+    // window.innerWidth is stubbed directly (not page.setViewportSize(),
+    // which would also fire a REAL window resize event that the original,
+    // non-stubbed module import — still alive from the page's own boot —
+    // would react to independently against its own baseline, racing this
+    // test's fully synthetic one) — same reasoning as stubbing
+    // visualViewport itself, just for the other geometry input this
+    // function reads.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await goToLanding(page);
+    await stubVisualViewportAndImport(page);
+
+    const result = await page.evaluate(async () => {
+      window.__fakeVV.height = window.innerHeight; // seed portrait baseline
+      window.__fakeVVListeners.resize.forEach((fn) => fn());
+
+      document.body.classList.add('keyboard-open');
+      window.__fakeVV.height = window.innerHeight - 300; // keyboard opens
+      window.__fakeVVListeners.resize.forEach((fn) => fn());
+      const stillOpenBeforeRotation = document.body.classList.contains('keyboard-open');
+
+      // Rotate to landscape — width changes, and the keyboard is still up,
+      // so the new height reflects the (shorter) landscape height minus
+      // the still-open keyboard.
+      const landscapeWidth = window.innerHeight;   // swap dimensions
+      const landscapeHeight = window.innerWidth;
+      Object.defineProperty(window, 'innerWidth', { value: landscapeWidth, configurable: true });
+      window.__fakeVV.height = landscapeHeight - 150;
+      window.__fakeVVListeners.resize.forEach((fn) => fn());
+      const stillOpenAfterRotation = document.body.classList.contains('keyboard-open');
+
+      // The keyboard genuinely closes in the new orientation afterward —
+      // the fallback should still heal normally once a real recovery
+      // actually happens.
+      window.__fakeVV.height = landscapeHeight;
+      window.__fakeVVListeners.resize.forEach((fn) => fn());
+      const healedAfterRealClose = !document.body.classList.contains('keyboard-open');
+
+      return { stillOpenBeforeRotation, stillOpenAfterRotation, healedAfterRealClose };
+    });
+
+    expect(result.stillOpenBeforeRotation).toBe(true);
+    expect(result.stillOpenAfterRotation).toBe(true);
+    expect(result.healedAfterRealClose).toBe(true);
+  });
 });

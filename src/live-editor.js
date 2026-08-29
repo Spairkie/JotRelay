@@ -590,7 +590,14 @@ class _RemoteCaretLabelPlugin {
     this.reposition();
   }
   update(update) {
-    if (update.docChanged || update.viewportChanged
+    // geometryChanged too, not just docChanged/viewportChanged — a layout-
+    // only resize (the on-screen keyboard opening, a side panel or
+    // split-mode toggle shrinking .note-live) can shrink the visible area
+    // enough to newly clip an already-rendered label without any CM6
+    // transaction of its own, so neither of the other two flags fires. See
+    // _RailPlugin's update() a few hundred lines below, which checks the
+    // same flag for the same reason.
+    if (update.docChanged || update.viewportChanged || update.geometryChanged
       || update.transactions.some((tr) => tr.effects.some((e) => e.is(_setRemoteCursorsEffect)))) {
       this.reposition();
     }
