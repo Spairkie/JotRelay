@@ -458,7 +458,6 @@ export function renderFloatingComments(dots, { activeId, onToggle, onDelete, onN
   // render call that asked for it — reset fresh here rather than toggled,
   // so a later scroll-triggered refresh (animate: false) never inherits it.
   bubble.className = `comment-floating-bubble${animate ? ' comment-bubble-navigating' : ''}`;
-  bubble.style.top = `${active.y}px`;
   const bodyHtml = active.text == null
     ? '<span class="comment-text-locked">🔒 Encrypted — open with the passphrase to view</span>'
     : escapeHtml(active.text);
@@ -474,5 +473,24 @@ export function renderFloatingComments(dots, { activeId, onToggle, onDelete, onN
   bubble.querySelector('.comment-nav-next')?.addEventListener('click', () => onNavigate?.(1));
   bubble.querySelector('.comment-delete-btn')?.addEventListener('click', () => onDelete?.(active.id));
   if (!existingBubble) layer.appendChild(bubble);
+  // Clamp, don't just center on active.y: the bubble is vertically centered
+  // on its dot via CSS's translateY(-50%), so a comment anchored near the
+  // very top/bottom of the visible pane would otherwise render partly (or
+  // entirely) above/below .editor-wrap's own overflow:hidden edge — the
+  // layer spans the whole card including the toolbar row, so the minimum
+  // also has to clear #md-toolbar's real height, not just 0. Needs the
+  // bubble already in the DOM (offsetHeight) — measured after appending
+  // above, so this must run last.
+  bubble.style.top = `${_clampFloatingBubbleTop(bubble, active.y)}px`;
+}
+
+function _clampFloatingBubbleTop(bubble, desiredTop) {
+  const layer = document.getElementById('comment-margin-layer');
+  const toolbarH = document.getElementById('md-toolbar')?.offsetHeight || 0;
+  const pad = 8;
+  const half = bubble.offsetHeight / 2;
+  const minTop = toolbarH + pad + half;
+  const maxTop = Math.max(minTop, (layer?.clientHeight || 0) - pad - half);
+  return Math.min(Math.max(desiredTop, minTop), maxTop);
 }
 

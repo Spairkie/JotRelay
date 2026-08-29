@@ -573,6 +573,76 @@ const _remoteCursorField = StateField.define({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+// A remote collaborator's name label floats above its caret's line
+// (.cm-remote-caret-label, editor.css) — deliberate, Google-Docs-style. But
+// .note-live clips overflow (its own overflow:hidden, wrapping CM6's
+// .cm-scroller), so whenever that caret sits on the very first visible
+// line, the label's upward offset pokes it above the clipped top edge —
+// invisible exactly when a collaborator's cursor is most likely to have
+// just been scrolled into view. Flip it to render below the caret instead
+// whenever that would happen, the same "clamp against the real viewport"
+// idea _openEditorContextMenu already uses for its own position.
+class _RemoteCaretLabelPlugin {
+  constructor(view) {
+    this.view = view;
+    this._onScroll = () => this.reposition();
+    view.scrollDOM.addEventListener('scroll', this._onScroll, { passive: true });
+    this.reposition();
+  }
+  update(update) {
+    // geometryChanged too, not just docChanged/viewportChanged — a layout-
+    // only resize (the on-screen keyboard opening, a side panel or
+    // split-mode toggle shrinking .note-live) can shrink the visible area
+    // enough to newly clip an already-rendered label without any CM6
+    // transaction of its own, so neither of the other two flags fires. See
+    // _RailPlugin's update() a few hundred lines below, which checks the
+    // same flag for the same reason.
+    if (update.docChanged || update.viewportChanged || update.geometryChanged
+      || update.transactions.some((tr) => tr.effects.some((e) => e.is(_setRemoteCursorsEffect)))) {
+      this.reposition();
+    }
+  }
+  reposition() {
+    // requestMeasure(), not a direct read/write here — for two reasons.
+    // First, CM6 doesn't necessarily sync a widget decoration's actual DOM
+    // (creating/moving the .cm-remote-caret-label element itself) until
+    // after this update() call returns — querying for labels right now, at
+    // update() time, can find none at all yet, even on the very update that
+    // introduced or moved one, silently skipping the flip check entirely.
+    // Second, even once the DOM exists, its layout may not have settled
+    // synchronously either — reading getBoundingClientRect() immediately
+    // can measure a transient mid-update position. requestMeasure()'s read
+    // phase runs once CM6's own DOM sync and layout for this update have
+    // actually finished, the same guarantee the rest of this file's
+    // geometry reads rely on elsewhere (e.g. ScrollRail's own measurement
+    // pass) — so the label lookup itself has to happen inside read(), not
+    // before scheduling it.
+    this.view.requestMeasure({
+      read: (view) => {
+        const labels = view.dom.querySelectorAll('.cm-remote-caret-label');
+        if (!labels.length) return null;
+        const scrollerTop = view.scrollDOM.getBoundingClientRect().top;
+        // Reset before measuring each — otherwise a label already flipped
+        // below (from a previous scroll position) would measure its own
+        // flipped rect instead of where the default "above" position would
+        // put it, and could never flip back once the caret scrolls away
+        // from the edge.
+        const shouldFlip = Array.from(labels).map((label) => {
+          label.classList.remove('cm-remote-caret-label-below');
+          return label.getBoundingClientRect().top < scrollerTop;
+        });
+        return { labels, shouldFlip };
+      },
+      write: (result) => {
+        if (!result) return;
+        result.labels.forEach((label, i) => label.classList.toggle('cm-remote-caret-label-below', result.shouldFlip[i]));
+      },
+    });
+  }
+  destroy() { this.view.scrollDOM.removeEventListener('scroll', this._onScroll); }
+}
+const _remoteCaretLabelPlugin = ViewPlugin.fromClass(_RemoteCaretLabelPlugin);
+
 // "3/5 done" badges above top-level checklists. CM6 requires block-level
 // widgets to come from a StateField, not a ViewPlugin (the seamless-folding
 // plugin above only ever produces inline/replace decorations) — recomputed
@@ -1718,6 +1788,7 @@ export function mount(container, initialValue, { onChange, onCursorActivity, onI
         placeholder('Start writing… Your note syncs live across devices.'),
         _readOnly.of(EditorState.readOnly.of(!!readOnly)),
         _remoteCursorField,
+        _remoteCaretLabelPlugin,
         _checklistProgressField,
         _tocField,
         _railPlugin,

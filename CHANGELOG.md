@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 69 — Mobile keyboard-dismiss bar staleness, remote cursor/comment clipping
+
+#### Fixed
+- **The bottom action bar (and anything else gated by `body.keyboard-open`) could stay hidden after the on-screen keyboard actually closed.** `focusout` was its only cleanup path, and that's unreliable in more than one real case: removing a focused element from the DOM doesn't reliably fire it on every browser (mobile Safari in particular — already worked around for one call site, the floating comment composer), and Android's back-button/gesture keyboard dismissal is a second, broader case with the same symptom — it's well documented that this closes the keyboard *without* blurring the focused input at all, so no `focusout` fires there either. Fixed with a geometry-based fallback in `keyboard-viewport.js`: track the tallest viewport height seen at the current width (the no-keyboard baseline), and clear a stuck `keyboard-open` once the real viewport height recovers to near that peak, regardless of whether anything ever blurred.
+- **A remote collaborator's name label could render invisible, clipped above the editor's own scrollable edge.** The label floats above its caret's line by design (Google-Docs-style), but `.note-live` clips overflow — so a caret on the very first visible line pushed its label above that clipped top edge, invisible exactly when a collaborator's cursor was most likely to have just been scrolled into view. Fixed with a new CM6 plugin (`live-editor.js`) that flips the label to render below the caret instead whenever the default position would clip it.
+- **The expanded comment bubble could render partly or fully clipped when its comment was anchored near the top or bottom of the visible editor pane.** It's centered on its margin dot via a `translateY(-50%)` transform with no boundary clamping, so a comment near either edge pushed half the bubble outside `.editor-wrap`'s own clipped bounds. Fixed by clamping its vertical position to stay fully within the visible pane (and below the toolbar row, which the comment layer's coordinate space spans).
+
 ### Phase 68 — Admin dashboard staleness fixes, export file-link bug
 
 #### Fixed
